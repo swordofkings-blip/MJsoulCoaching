@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雀魂 牌譜シミュレーター & Gemini相談</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --table-bg: radial-gradient(circle, #184c31 0%, #0d281a 100%);
+            --table-border: #1f3f2a;
+            --card-bg: rgba(22, 26, 37, 0.6);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent-green: #10b981;
+            --accent-yellow: #fbbf24;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+            --tile-bg: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%);
+            --tile-border: #d1d5db;
+            --tile-back-bg: linear-gradient(180deg, #2c7a52 0%, #1f573a 100%);
+            --tile-back-border: #123523;
+            --font-display: 'Outfit', 'Noto Sans JP', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-display);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* ヘッダー */
+        header {
+            padding: 1rem 2rem;
+            background: rgba(13, 14, 18, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            background: linear-gradient(to right, var(--accent-green), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            cursor: pointer;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-green);
+        }
+
+        /* メインレイアウト */
+        .app-container {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 65px);
+            position: relative;
+        }
+
+        /* 左側：シミュレーター盤面 */
+        .simulator-pane {
+            flex: 1;
+            background-color: #08090c;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+            position: relative;
+        }
+
+        /* 右側：コントロール & Geminiプロンプトパネル */
+        .control-pane {
+            width: 420px;
+            background: rgba(13, 15, 23, 0.95);
+            border-left: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            overflow-y: auto;
+            z-index: 5;
+        }
+
+        /* 麻雀卓 - 960px x 740px へ拡張。高さを少し潰して縦方向のゆとりを確保しつつ被りを排除 */
+        .mahjong-table {
+            width: 960px; /* 卓の横幅。牌や川の配置に十分な余白を持たせるための960px */
+            height: 740px; /* 卓の縦幅。画面全体の縦スクロールを不要にするための740px */
+            background: var(--table-bg);
+            border: 20px solid #1a1b20; /* 卓の額縁（枠線）。960pxの広さに対して重厚感を出すための20px幅 */
+            box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.8), 0 24px 48px rgba(0, 0, 0, 0.6);
+            border-radius: 44px; /* 卓の角丸。高さが縮小された卓の縦横比に合わせた44pxの円弧 */
+            position: relative;
+        }
+
+        /* 中央の表示エリア - 240px x 200px へ縮めて縦方向の被りを防止 */
+        .table-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 240px; /* 中央表示領域の幅。ドラ表示牌が5枚並んだ際（32px*5 = 160px）に余白を持たせるための240px */
+            height: 200px; /* 中央表示領域の高さ。高さを200pxに潰して河との干渉を物理的に防ぐ */
+            background: rgba(0, 0, 0, 0.55);
+            border: 2px solid var(--table-border);
+            border-radius: 12px; /* 中央表示部の角丸。200pxのサイズ感に適した12pxの円弧 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+            font-size: 0.85rem;
+            z-index: 2;
+        }
+
+        .center-info {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .center-info span {
+            text-shadow: 0 0 4px rgba(255,255,255,0.2);
+        }
+
+        .center-dora {
+            display: flex;
+            gap: 4px;
+            margin-top: 5px;
+        }
+
+        /* プレイヤー手牌エリア - 新しい構造 */
+        .player-area {
+            position: absolute;
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            z-index: 3;
+        }
+        
+        .melds-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* 各プレイヤーのエリア配置 */
+        .player-area {
+            position: absolute;
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            z-index: 3;
+        }
+        
+        .player-area[data-pos="bottom"] {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .player-area[data-pos="top"] {
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) rotate(180deg);
+        }
+        
+        .player-area[data-pos="right"] {
+            right: -200px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-90deg);
+        }
+        
+        .player-area[data-pos="left"] {
+            left: -200px;
+            top: 50%;
+            transform: translateY(-50%) rotate(90deg);
+        }
+
+        /* 河（捨て牌）配置 - グリッドのセルサイズを牌サイズ(32x44)以上に設定して被りを排除 */
+        .river-bottom {
+            position: absolute;
+            display: grid; 
+            grid-template-rows: repeat(3, 46px);
+            grid-template-columns: repeat(6, 34px);
+            gap: 2px;
+            z-index: 1;
+            bottom: 90px;
+            left: 50%; 
+            transform: translateX(-50%);
+        }
+        
+        .river-top {
+            position: absolute;
+            display: grid; 
+            grid-template-rows: repeat(3, 46px);
+            grid-template-columns: repeat(12, 34px);
+            gap: 2px;
+            z-index: 1;
+            top: 90px;
+            left: calc(50% - 102px);
+            transform: translateX(-50%);
+        }
+
+        .river-right {
+            position: absolute;
+            display: grid;
+            grid-template-rows: repeat(12, 34px);
+            grid-template-columns: repeat(3, 46px);
+            gap: 2px;
+            z-index: 1;
+            right: 180px; 
+            top: calc(50% - 102px);
+            transform: translateY(-50%);
+        }
+
+        .river-left {
+            position: absolute;
+            display: grid;
+            grid-template-rows: repeat(6, 34px);
+            grid-template-columns: repeat(3, 46px);
+            gap: 2px;
+            z-index: 1;
+            left: 180px; 
+            top: 268px;
+        }
+
+
+        /* プレイヤー席情報表示 - 卓の「外側」の左右スペースに逃がすことで、卓内のいかなる牌とも絶対に被らないように配置 */
+        .seat-info {
+            position: absolute;
+            background: rgba(22, 26, 37, 0.9);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            min-width: 110px; /* 席情報の横幅。プレイヤー名と点数がしっかり収まる110px */
+        }
+        .seat-info.bottom { bottom: 20px; left: -130px; } /* 卓の左外側下。手牌や副露の邪魔をしない左端-130px */
+        .seat-info.right { bottom: 20px; right: -130px; } /* 卓の右外側下。右端-130px */
+        .seat-info.top { top: 20px; right: -130px; } /* 卓の右外側上。右端-130px */
+        .seat-info.left { top: 20px; left: -130px; }
+
+        .seat-info.active {
+            border-color: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            background: rgba(16, 185, 129, 0.15);
+        }
+
+        .seat-wind {
+            font-weight: bold;
+            color: var(--accent-yellow);
+        }
+
+        .seat-score {
+            font-family: monospace;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+
+        /* 麻雀牌のデザイン */
+        .tile {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: #111827;
+            user-select: none;
+            position: relative;
+        }
+
+        /* 手牌と副露牌の基本スタイル */
+        .player-area .tile {
+            width: 32px;
+            height: 44px;
+            font-size: 0.95rem;
+            background: var(--tile-bg);
+            border: 1px solid var(--tile-border);
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 -2px 0 #d1d5db;
+        }
+        
+        .player-area .tsumo-gap {
+            margin-left: 12px;
+        }
+        
+        /* 河の捨て牌スタイル */
+        .river-bottom .tile, .river-top .tile, .river-right .tile, .river-left .tile {
+            width: 32px;
+            height: 44px;
+            font-size: 0.95rem;
+            background: var(--tile-bg);
+            border: 1px solid var(--tile-border);
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 -2px 0 #d1d5db;
+        }
+        
+        /* ドラ表示牌スタイル */
+        .center-dora .tile {
+            width: 32px;
+            height: 44px;
+            font-size: 0.95rem;
+            background: var(--tile-bg);
+            border: 1px solid var(--tile-border);
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 -2px 0 #d1d5db;
+        }
+
+        /* 牌の裏面 */
+        .tile-back {
+            background: var(--tile-back-bg) !important;
+            border: 1px solid var(--tile-back-border) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 -2px 0 #123523 !important;
+        }
+
+        /* 牌の種類別カラー */
+        .tile-m { color: #1e3a8a; } /* 萬子 */
+        .tile-p { color: #065f46; } /* 筒子 */
+        .tile-s { color: #b45309; } /* 索子 */
+        .tile-z { color: #991b1b; } /* 字牌 */
+        .tile-aka { color: #dc2626 !important; } /* 赤ドラ */
+
+        /* 牌の個別回転用スタイル */
+        .tile-horizontal {
+            transform: rotate(-90deg);
+        }
+        .tile-rotated-right {
+            transform: rotate(-90deg);
+        }
+        .tile-rotated-left {
+            transform: rotate(90deg);
+        }
+        .tile-rotated-top {
+            transform: rotate(180deg);
+        }
+
+        /* 捨て牌がポン・チーなどで鳴かれた場合の表示 */
+        .tile-claimed {
+            opacity: 0.25;
+        }
+
+        /* コントロール・設定エリア */
+        .control-section {
+            margin-bottom: 1.5rem;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 1.2rem;
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+            color: var(--accent-green);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 再生操作ボタン */
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.8rem;
+        }
+
+        .btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 0.6rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-green);
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--accent-green);
+            color: #0b0c10;
+            border: none;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #059669;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+        }
+
+        /* スライダー */
+        .slider-wrapper {
+            margin-top: 1rem;
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-green);
+            background: rgba(255,255,255,0.1);
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* ドロップダウン */
+        select {
+            width: 100%;
+            background: #161821;
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 0.6rem;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        select:focus {
+            border-color: var(--accent-green);
+        }
+
+        /* 視点選択ラジオ */
+        .radio-group {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.4rem;
+        }
+
+        .radio-label {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 0.5rem;
+            text-align: center;
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+        }
+
+        .radio-group input[type="radio"] {
+            display: none;
+        }
+
+        .radio-group input[type="radio"]:checked + .radio-label {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        /* プロンプトテキストボックス */
+        .prompt-preview {
+            background: #08090c;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 0.8rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            max-height: 180px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: 0.8rem;
+        }
+
+        /* トースト */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #10b981;
+            color: #0b0c10;
+            padding: 1rem 1.5rem;
+            border-radius: 10px;
+            font-weight: bold;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            transform: translateY(150%);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 1100px) {
+            .app-container {
+                flex-direction: column;
+                height: auto;
+                overflow-y: auto;
+            }
+            .control-pane {
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid var(--card-border);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1 onclick="window.location.href='/'">雀魂 牌譜シミュレーター</h1>
+        <button class="back-btn" onclick="window.location.href='/'">一覧に戻る</button>
+    </header>
+
+    <div class="app-container">
+        <!-- 左側：シミュレーター盤面 -->
+        <div class="simulator-pane">
+            <div class="mahjong-table">
+                <!-- 中央情報表示 -->
+                <div class="table-center">
+                    <div class="center-info">
+                        <span id="displayRound">東1局</span>
+                        <span id="displayBen">0本場</span>
+                    </div>
+                    <div class="center-info" style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">
+                        <span>残りツモ山: <span id="displayLeftTiles" style="color:var(--text-main); font-weight:bold;">69</span> 枚</span>
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted);">ドラ表示牌</div>
+                    <div class="center-dora" id="displayDoras"></div>
+                </div>
+
+                <!-- プレイヤー0のエリア (手前固定) -->
+                <div class="player-area" id="area0">
+                    <div class="player-hand-wrapper" id="hand0"></div>
+                    <div class="melds-wrapper" id="melds0"></div>
+                </div>
+                <div class="river-bottom" id="river0"></div>
+                <div class="seat-info bottom" id="seatInfo0">
+                    <span class="seat-wind">東</span>
+                    <span class="seat-name">Player 0</span>
+                    <span class="seat-score">25000</span>
+                </div>
+
+                <!-- プレイヤー1のエリア (右) -->
+                <div class="player-area" id="area1">
+                    <div class="player-hand-wrapper" id="hand1"></div>
+                    <div class="melds-wrapper" id="melds1"></div>
+                </div>
+                <div class="river-right" id="river1"></div>
+                <div class="seat-info right" id="seatInfo1">
+                    <span class="seat-wind">南</span>
+                    <span class="seat-name">Player 1</span>
+                    <span class="seat-score">25000</span>
+                </div>
+
+                <!-- プレイヤー2のエリア (奥) -->
+                <div class="player-area" id="area2">
+                    <div class="player-hand-wrapper" id="hand2"></div>
+                    <div class="melds-wrapper" id="melds2"></div>
+                </div>
+                <div class="river-top" id="river2"></div>
+                <div class="seat-info top" id="seatInfo2">
+                    <span class="seat-wind">西</span>
+                    <span class="seat-name">Player 2</span>
+                    <span class="seat-score">25000</span>
+                </div>
+
+                <!-- プレイヤー3のエリア (左) -->
+                <div class="player-area" id="area3">
+                    <div class="player-hand-wrapper" id="hand3"></div>
+                    <div class="melds-wrapper" id="melds3"></div>
+                </div>
+                <div class="river-left" id="river3"></div>
+                <div class="seat-info left" id="seatInfo3">
+                    <span class="seat-wind">北</span>
+                    <span class="seat-name">Player 3</span>
+                    <span class="seat-score">25000</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：コントロール & Geminiプロンプトパネル -->
+        <div class="control-pane">
+            <!-- 局ジャンプ -->
+            <div class="control-section">
+                <div class="section-title">局の選択</div>
+                <select id="roundSelect" onchange="jumpToRoundStart(this.value)">
+                    <option value="">データをロード中...</option>
+                </select>
+            </div>
+
+            <!-- アクションタイムライン -->
+            <div class="control-section">
+                <div class="section-title">手番タイムライン</div>
+                <div class="slider-wrapper">
+                    <div class="slider-labels">
+                        <span id="timelineStart">手番: 0</span>
+                        <span id="timelineCurrent" style="color:var(--accent-green); font-weight:bold;">手番: 0</span>
+                        <span id="timelineEnd">最大: 0</span>
+                    </div>
+                    <input type="range" id="actionSlider" min="0" max="0" value="0" oninput="jumpToAction(parseInt(this.value))">
+                </div>
+                <div class="btn-group">
+                    <button class="btn" id="btnPrev" onclick="step(-1)">◀ 1手戻る</button>
+                    <button class="btn" id="btnPlay" onclick="togglePlay()">自動再生</button>
+                    <button class="btn" id="btnNext" onclick="step(1)">1手進む ▶</button>
+                </div>
+            </div>
+
+            <!-- 視点選択 -->
+            <div class="control-section">
+                <div class="section-title">相談プレイヤー視点</div>
+                <div class="radio-group" id="viewPerspectiveGroup">
+                    <input type="radio" name="perspective" id="pers0" value="0" checked onchange="changePerspective(0)">
+                    <label class="radio-label" for="pers0">席 0</label>
+                    
+                    <input type="radio" name="perspective" id="pers1" value="1" onchange="changePerspective(1)">
+                    <label class="radio-label" for="pers1">席 1</label>
+                    
+                    <input type="radio" name="perspective" id="pers2" value="2" onchange="changePerspective(2)">
+                    <label class="radio-label" for="pers2">席 2</label>
+                    
+                    <input type="radio" name="perspective" id="pers3" value="3" onchange="changePerspective(3)">
+                    <label class="radio-label" for="pers3">席 3</label>
+                </div>
+            </div>
+
+            <!-- Geminiプロンプト生成 -->
+            <div class="control-section" style="flex: 1; display: flex; flex-direction: column; margin-bottom: 0;">
+                <div class="section-title" style="margin-bottom: 0.4rem;">Gemini 相談用プロンプト</div>
+                <button class="btn btn-primary" onclick="copyGeminiPrompt()">
+                    📋 プロンプトをコピーする
+                </button>
+                <div class="prompt-preview" id="promptPreview">
+                    プロンプトのプレビューがここに表示されます...
+                </div>
+            </div>
+
+            <!-- ライセンス表記（MITライセンス規定に基づく著作権クレジットの表示） -->
+            <div style="text-align: center; margin-top: 1.2rem; font-size: 0.65rem; color: var(--text-muted); opacity: 0.55;">
+                Powered by majsoul_wrapper (Copyright &copy; 2020 Yue Qin, MIT License)
+            </div>
+        </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div class="toast" id="copyToast">
+        <span>📋 コピペ用のプロンプトをクリップボードにコピーしました！</span>
+    </div>
+
+    <script>
+        let gameData = null;
+        let rawActionsList = []; // 全ての有効アクション（打牌を含む）を格納するための配列
+        let timelineSteps = [];  // タイムラインで停止する各手番の rawActionsList 内のインデックスを格納するための配列
+        let currentActionIndex = 0; // 現在停止しているタイムラインステップのインデックス
+        let isPlaying = false;
+        let playInterval = null;
+        let perspectiveSeat = 0; // 視点プレイヤー (0~3)。0は下（自分）、1は右（上家）、2は奥（対面）、3は左（下家）を表す
+
+        // 牌の日本語変換マップ
+        const TILE_NAMES = {
+            '1m': '1萬', '2m': '2萬', '3m': '3萬', '4m': '4萬', '5m': '5萬', '6m': '6萬', '7m': '7萬', '8m': '8萬', '9m': '9萬', '0m': '赤5萬',
+            '1p': '1筒', '2p': '2筒', '3p': '3筒', '4p': '4筒', '5p': '5筒', '6p': '6筒', '7p': '7筒', '8p': '8筒', '9p': '9筒', '0p': '赤5筒',
+            '1s': '1索', '2s': '2索', '3s': '3索', '4s': '4索', '5s': '5索', '6s': '6索', '7s': '7索', '8s': '8索', '9s': '9索', '0s': '赤5索',
+            '1z': '東', '2z': '南', '3z': '西', '4z': '北', '5z': '白', '6z': '發', '7z': '中'
+        };
+
+        const WIND_NAMES = ['東', '南', '西', '北'];
+
+        /**
+         * @title 麻雀牌ソート比較関数
+         * @description 2つの麻雀牌の文字列表記（例: '5m', '0p', '1z'）を比較し、手牌の並び順（萬子(m) -> 筒子(p) -> 索子(s) -> 字牌(z)）にソートするための比較用数値を返します。
+         * @param {string} a - 比較対象の牌A (例: '5m', '0p', '1z')
+         * @param {string} b - 比較対象の牌B (例: '5m', '0p', '1z')
+         * @returns {number} 負の数(A < B)、0(A === B)、正の数(A > B)
+         */
+        function compareTiles(a, b) {
+            const suitOrder = { 'm': 0, 'p': 1, 's': 2, 'z': 3 };
+            const suitA = a.slice(1);
+            const suitB = b.slice(1);
+            
+            // スート（萬・筒・索・字）が異なる場合はその順序でソート
+            if (suitOrder[suitA] !== suitOrder[suitB]) {
+                return suitOrder[suitA] - suitOrder[suitB];
+            }
+            
+            // 赤5（'0'）は5より手前に並べるため、ソート基準値を 4.5 とする（4 < 4.5 < 5 の順で理牌させるための意図的な数値）
+            const numA = a.charAt(0) === '0' ? 4.5 : parseInt(a.charAt(0)) || 0;
+            const numB = b.charAt(0) === '0' ? 4.5 : parseInt(b.charAt(0)) || 0;
+            
+            return numA - numB;
+        }
+
+        /**
+         * @title 副露スロット生成関数
+         * @description 副露データから麻雀の標準ルールに従って「鳴き牌の並び順と向き」を決定し、描画用のスロット配列を作成します。
+         * @param {Object} m - 副露オブジェクト。{ type: string, tiles: Array<string>, froms: Array<number> }
+         * @param {number} seat - 副露を晒しているプレイヤーの元の座席インデックス
+         * @returns {Array<Object>} スロットオブジェクトの配列。各スロットは { type: string, tiles: Array<string>, froms: Array<number> }
+         */
+        function getMeldSlots(m, seat) {
+            const type = m.type;
+            const tiles = m.tiles;
+            const froms = m.froms;
+
+            if (type === 'ankan') {
+                // 暗槓の表現形式：両端の2枚を裏返し（裏向き）、中の2枚を表向きにする
+                // 麻雀公式ルールに基づく意図的な順序（0と3番目を裏、1と2番目を表）
+                return [
+                    { type: 'back', tiles: [tiles[0]], froms: [froms[0]] },
+                    { type: 'vertical', tiles: [tiles[1]], froms: [froms[1]] },
+                    { type: 'vertical', tiles: [tiles[2]], froms: [froms[2]] },
+                    { type: 'back', tiles: [tiles[3]], froms: [froms[3]] }
+                ];
+            }
+
+            // 鳴いた牌（fromsが自分と異なるもの）のインデックスを特定
+            let claimedIdx = -1;
+            for (let i = 0; i < froms.length; i++) {
+                if (froms[i] !== seat) {
+                    claimedIdx = i;
+                    break;
+                }
+            }
+
+            // 万が一鳴き牌が見つからない場合の安全策としてのフォールバック
+            if (claimedIdx === -1) {
+                return tiles.map((t, idx) => ({
+                    type: 'vertical',
+                    tiles: [t],
+                    froms: [froms[idx]]
+                }));
+            }
+
+            const donor = froms[claimedIdx];
+            // 鳴き元が自分から見て上家（3）、対面（2）、下家（1）のどれにあたるかを剰余算で算出
+            // 麻雀は4人対局のため、4を足して4で割った余りを求める
+            const diff = (donor - seat + 4) % 4;
+
+            // 自分で持っていた牌（自摸や手牌由来）を抽出
+            const ownedTiles = [];
+            const ownedFroms = [];
+            tiles.forEach((t, i) => {
+                if (i !== claimedIdx) {
+                    ownedTiles.push(t);
+                    ownedFroms.push(froms[i]);
+                }
+            });
+
+            if (type === 'minggang') {
+                // 大明槓：4スロット構成
+                // 鳴き元に応じて横向き牌の挿入位置を変更する
+                const slots = [];
+                if (diff === 3) {
+                    // 上家から鳴いた場合：横牌は左端に配置
+                    slots.push({ type: 'horizontal', tiles: [tiles[claimedIdx]], froms: [donor] });
+                    ownedTiles.forEach((t, i) => slots.push({ type: 'vertical', tiles: [t], froms: [ownedFroms[i]] }));
+                } else if (diff === 2) {
+                    // 対面から鳴いた場合：横牌は中央に配置
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[0]], froms: [ownedFroms[0]] });
+                    slots.push({ type: 'horizontal', tiles: [tiles[claimedIdx]], froms: [donor] });
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[1]], froms: [ownedFroms[1]] });
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[2]], froms: [ownedFroms[2]] });
+                } else {
+                    // 下家から鳴いた場合：横牌は右端に配置
+                    ownedTiles.forEach((t, i) => slots.push({ type: 'vertical', tiles: [t], froms: [ownedFroms[i]] }));
+                    slots.push({ type: 'horizontal', tiles: [tiles[claimedIdx]], froms: [donor] });
+                }
+                return slots;
+            } else if (type === 'kankan') {
+                // 加槓：元々ポンで横向きに置いてあった位置に、追加した自摸牌を「縦積み」で重ねる
+                // 元々のポンの位置（3スロット構成）を維持し、該当スロットに2枚格納して stacked に分類する
+                const addedTile = ownedTiles.pop();
+                const addedFrom = ownedFroms.pop();
+
+                const slots = [];
+                if (diff === 3) {
+                    // 上家から鳴いたポンに加槓：横牌（積み重ね）は右端（上家側）に配置
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[0]], froms: [ownedFroms[0]] });
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[1]], froms: [ownedFroms[1]] });
+                    slots.push({ type: 'stacked', tiles: [tiles[claimedIdx], addedTile], froms: [donor, addedFrom] });
+                } else if (diff === 2) {
+                    // 対面から鳴いたポンに加槓：横牌（積み重ね）は中央に配置
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[0]], froms: [ownedFroms[0]] });
+                    slots.push({ type: 'stacked', tiles: [tiles[claimedIdx], addedTile], froms: [donor, addedFrom] });
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[1]], froms: [ownedFroms[1]] });
+                } else {
+                    // 下家から鳴いたポンに加槓：横牌（積み重ね）は左端（下家側）に配置
+                    slots.push({ type: 'stacked', tiles: [tiles[claimedIdx], addedTile], froms: [donor, addedFrom] });
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[0]], froms: [ownedFroms[0]] });
+                    slots.push({ type: 'vertical', tiles: [ownedTiles[1]], froms: [ownedFroms[1]] });
+                }
+                return slots;
+            } else {
+                // ポン・チー：3スロット構成
+                // チーの場合、鳴き牌以外の2枚は昇順にソートする（理牌の習慣に合わせる意図）
+                const zipped = ownedTiles.map((t, idx) => ({ tile: t, from: ownedFroms[idx] }));
+                zipped.sort((a, b) => compareTiles(a.tile, b.tile));
+                const sortedOwnedTiles = zipped.map(z => z.tile);
+                const sortedOwnedFroms = zipped.map(z => z.from);
+
+                const slots = [];
+                // 常にbottom視点で配置：横牌は上家（左端）に配置
+                if (diff === 3) {
+                    // 上家から鳴いた場合：横牌は左端に配置
+                    slots.push({ type: 'horizontal', tiles: [tiles[claimedIdx]], froms: [donor] });
+                    slots.push({ type: 'vertical', tiles: [sortedOwnedTiles[0]], froms: [sortedOwnedFroms[0]] });
+                    slots.push({ type: 'vertical', tiles: [sortedOwnedTiles[1]], froms: [sortedOwnedFroms[1]] });
+                } else if (diff === 2) {
+                    // 対面から鳴いた場合：横牌は中央に配置
+                    slots.push({ type: 'vertical', tiles: [sortedOwnedTiles[0]], froms: [sortedOwnedFroms[0]] });
+                    slots.push({ type: 'horizontal', tiles: [tiles[claimedIdx]], froms: [donor] });
+                    slots.push({ type: 'vertical', tiles: [sortedOwnedTiles[1]], froms: [sortedOwnedFroms[1]] });
+                } else {
+                    // 下家から鳴いた場合：横牌は右端に配置
+                    slots.push({ type: 'vertical', tiles: [sortedOwnedTiles[0]], froms: [sortedOwnedFroms[0]] });
+                    slots.push({ type: 'vertical', tiles: [sortedOwnedTiles[1]], froms: [sortedOwnedFroms[1]] });
+                    slots.push({ type: 'horizontal', tiles: [tiles[claimedIdx]], froms: [donor] });
+                }
+                return slots;
+            }
+        }
+
+        // 麻雀シミュレータエンジンクラス
+        class MahjongEngine {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.roundName = '東1局';
+                this.ben = 0;
+                this.leftTileCount = 69;
+                this.liqibang = 0;
+                this.doras = [];
+                this.hands = [[], [], [], []];
+                this.discards = [[], [], [], []];
+                this.melds = [[], [], [], []];
+                this.scores = [25000, 25000, 25000, 25000];
+                this.activeSeat = -1;
+                this.lastTsumo = [null, null, null, null];
+            }
+
+            initRound(data) {
+                const windNames = ['東', '南', '西', '北'];
+                const roundName = windNames[data.chang] + (data.ju + 1) + '局';
+                
+                this.roundName = roundName;
+                this.ben = data.ben || 0;
+                this.liqibang = data.liqibang || 0;
+                this.leftTileCount = data.leftTileCount !== undefined ? data.leftTileCount : 69;
+                this.doras = data.doras ? [...data.doras] : [];
+                this.scores = data.scores ? [...data.scores] : [25000, 25000, 25000, 25000];
+                
+                // 配牌を設定し、理牌（ソート）を適用
+                this.hands[0] = data.tiles0 ? [...data.tiles0].sort(compareTiles) : [];
+                this.hands[1] = data.tiles1 ? [...data.tiles1].sort(compareTiles) : [];
+                this.hands[2] = data.tiles2 ? [...data.tiles2].sort(compareTiles) : [];
+                this.hands[3] = data.tiles3 ? [...data.tiles3].sort(compareTiles) : [];
+
+                this.discards = [[], [], [], []];
+                this.melds = [[], [], [], []];
+                this.lastTsumo = [null, null, null, null];
+                this.activeSeat = data.operation ? data.operation.seat : 0;
+            }
+
+            applyAction(action) {
+                if (!action || !action.result) return;
+                const type = action.result.class_name;
+                const data = action.result.data;
+                if (!data) return;
+
+                switch (type) {
+                    case 'RecordNewRound':
+                        this.initRound(data);
+                        break;
+
+                    case 'RecordDiscardTile': {
+                        const seat = data.seat;
+                        this.activeSeat = seat;
+                        const tile = data.tile;
+
+                        const hand = this.hands[seat];
+                        let tileIdx = hand.indexOf(tile);
+                        if (tileIdx === -1 && tile === '0m') tileIdx = hand.indexOf('5m');
+                        if (tileIdx === -1 && tile === '5m') tileIdx = hand.indexOf('0m');
+                        if (tileIdx === -1 && tile === '0p') tileIdx = hand.indexOf('5p');
+                        if (tileIdx === -1 && tile === '5p') tileIdx = hand.indexOf('0p');
+                        if (tileIdx === -1 && tile === '0s') tileIdx = hand.indexOf('5s');
+                        if (tileIdx === -1 && tile === '5s') tileIdx = hand.indexOf('0s');
+
+                        if (tileIdx !== -1) {
+                            hand.splice(tileIdx, 1);
+                        }
+                        hand.sort(compareTiles);
+                        this.lastTsumo[seat] = null;
+
+                        this.discards[seat].push({
+                            tile: tile,
+                            isLiqi: data.isLiqi || false,
+                            moqie: data.moqie || false,
+                            claimed: false
+                        });
+                        break;
+                    }
+
+                    case 'RecordDealTile': {
+                        const seat = data.seat;
+                        this.activeSeat = seat;
+                        this.leftTileCount = data.leftTileCount !== undefined ? data.leftTileCount : this.leftTileCount - 1;
+                        this.hands[seat].push(data.tile);
+                        this.lastTsumo[seat] = data.tile;
+                        break;
+                    }
+
+                    case 'RecordChiPengGang': {
+                        const seat = data.seat;
+                        this.activeSeat = seat;
+                        const tiles = data.tiles;
+                        const froms = data.froms;
+
+                        let targetSeat = -1;
+                        let targetTile = null;
+                        for (let i = 0; i < froms.length; i++) {
+                            if (froms[i] !== seat) {
+                                targetSeat = froms[i];
+                                targetTile = tiles[i];
+                                break;
+                            }
+                        }
+
+                        if (targetSeat !== -1 && targetTile) {
+                            const disc = this.discards[targetSeat];
+                            for (let i = disc.length - 1; i >= 0; i--) {
+                                if ((disc[i].tile === targetTile || (targetTile.startsWith('5') && disc[i].tile.startsWith('0')) || (targetTile.startsWith('0') && disc[i].tile.startsWith('5'))) && !disc[i].claimed) {
+                                    disc[i].claimed = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        const hand = this.hands[seat];
+                        tiles.forEach((t, i) => {
+                            if (froms[i] === seat) {
+                                let idx = hand.indexOf(t);
+                                if (idx === -1 && t === '0m') idx = hand.indexOf('5m');
+                                if (idx === -1 && t === '5m') idx = hand.indexOf('0m');
+                                if (idx === -1 && t === '0p') idx = hand.indexOf('5p');
+                                if (idx === -1 && t === '5p') idx = hand.indexOf('0p');
+                                if (idx === -1 && t === '0s') idx = hand.indexOf('5s');
+                                if (idx === -1 && t === '5s') idx = hand.indexOf('0s');
+
+                                if (idx !== -1) hand.splice(idx, 1);
+                            }
+                        });
+
+                        this.melds[seat].push({
+                            type: data.type === 2 ? 'minggang' : (tiles.length === 4 ? 'minggang' : 'cpg'),
+                            tiles: [...tiles],
+                            froms: [...froms]
+                        });
+                        
+                        this.lastTsumo[seat] = null;
+                        break;
+                    }
+
+                    case 'RecordAnGangAddGang': {
+                        const seat = data.seat;
+                        this.activeSeat = seat;
+                        const tile = data.tiles;
+                        const type = data.type;
+
+                        const hand = this.hands[seat];
+
+                        if (type === 3) {
+                            // 暗槓
+                            for (let i = 0; i < 4; i++) {
+                                let idx = hand.indexOf(tile);
+                                if (idx === -1 && tile === '5m') idx = hand.indexOf('0m');
+                                if (idx === -1 && tile === '0m') idx = hand.indexOf('5m');
+                                if (idx === -1 && tile === '5p') idx = hand.indexOf('0p');
+                                if (idx === -1 && tile === '0p') idx = hand.indexOf('5p');
+                                if (idx === -1 && tile === '5s') idx = hand.indexOf('0s');
+                                if (idx === -1 && tile === '0s') idx = hand.indexOf('5s');
+
+                                if (idx !== -1) hand.splice(idx, 1);
+                            }
+                            this.melds[seat].push({
+                                type: 'ankan',
+                                tiles: [tile, tile, tile, tile],
+                                froms: [seat, seat, seat, seat]
+                            });
+                        } else {
+                            // 加槓
+                            let idx = hand.indexOf(tile);
+                            if (idx === -1 && tile === '5m') idx = hand.indexOf('0m');
+                            if (idx === -1 && tile === '0m') idx = hand.indexOf('5m');
+                            if (idx === -1 && tile === '5p') idx = hand.indexOf('0p');
+                            if (idx === -1 && tile === '0p') idx = hand.indexOf('5p');
+                            if (idx === -1 && tile === '5s') idx = hand.indexOf('0s');
+                            if (idx === -1 && tile === '0s') idx = hand.indexOf('5s');
+                            if (idx !== -1) hand.splice(idx, 1);
+
+                            const seatMelds = this.melds[seat];
+                            let upgraded = false;
+                            for (let i = 0; i < seatMelds.length; i++) {
+                                const m = seatMelds[i];
+                                const isMatch = m.tiles.every(t => t.slice(1) === tile.slice(1) || (t.startsWith('0') && tile.slice(1) === 'm') || (t.startsWith('0') && tile.slice(1) === 'p') || (t.startsWith('0') && tile.slice(1) === 's'));
+                                if (isMatch && m.tiles.length === 3) {
+                                    m.tiles.push(tile);
+                                    m.froms.push(seat);
+                                    m.type = 'kankan';
+                                    upgraded = true;
+                                    break;
+                                }
+                            }
+                            if (!upgraded) {
+                                this.melds[seat].push({
+                                    type: 'kankan',
+                                    tiles: [tile, tile, tile, tile],
+                                    froms: [seat, seat, seat, seat]
+                                });
+                            }
+                        }
+                        this.lastTsumo[seat] = null;
+                        break;
+                    }
+
+                    case 'RecordHule':
+                    case 'RecordNoTile':
+                        if (data.scores && data.scores.length > 0) {
+                            const scoreData = data.scores[0];
+                            if (scoreData.scores) {
+                                this.scores = [...scoreData.scores];
+                            } else if (data.scores) {
+                                this.scores = [...data.scores];
+                            }
+                        }
+                        break;
+                }
+            }
+        }
+
+        const engine = new MahjongEngine();
+
+        async function loadGame() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const uuid = urlParams.get('uuid');
+            if (!uuid) {
+                alert('UUIDが指定されていません');
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/record?uuid=${uuid}`);
+                if (!response.ok) throw new Error('牌譜データの読み込みに失敗しました');
+                
+                gameData = await response.json();
+                
+                document.querySelector('h1').innerText = `雀魂 牌譜シミュレーター (UUID: ${uuid.slice(0, 8)})`;
+
+                if (gameData.head && gameData.head.accounts) {
+                    gameData.head.accounts.forEach(acc => {
+                        const nameEl = document.querySelector(`#seatInfo${acc.seat} .seat-name`);
+                        if (nameEl) nameEl.innerText = acc.nickname;
+                        const radioLabel = document.querySelector(`label[for="pers${acc.seat}"]`);
+                        if (radioLabel) radioLabel.innerText = acc.nickname;
+                    });
+                }
+
+                // タイムラインアクション
+                const allActions = gameData.detail_records.actions || [];
+                const validClassNames = [
+                    'RecordNewRound', 
+                    'RecordDiscardTile', 
+                    'RecordDealTile', 
+                    'RecordChiPengGang', 
+                    'RecordAnGangAddGang', 
+                    'RecordHule', 
+                    'RecordNoTile'
+                ];
+                
+                // 生アクションリスト（打牌を含む）を全抽出
+                rawActionsList = allActions.filter(act => {
+                    return act.result && validClassNames.includes(act.result.class_name);
+                });
+
+                // 打牌(RecordDiscardTile)を除外した、手番移動・配牌・鳴き・アガリ等の停止タイミングを抽出
+                timelineSteps = [];
+                rawActionsList.forEach((act, idx) => {
+                    if (act.result.class_name !== 'RecordDiscardTile') {
+                        timelineSteps.push(idx);
+                    }
+                });
+
+                // 局ジャンプの選択肢設定
+                const roundSelect = document.getElementById('roundSelect');
+                roundSelect.innerHTML = '';
+                
+                timelineSteps.forEach((rawIdx, stepIdx) => {
+                    const act = rawActionsList[rawIdx];
+                    if (act.result && act.result.class_name === 'RecordNewRound') {
+                        const data = act.result.data;
+                        const windNames = ['東', '南', '西', '北'];
+                        const roundLabel = `${windNames[data.chang]}${data.ju + 1}局 ${data.ben}本場`;
+                        const opt = document.createElement('option');
+                        opt.value = stepIdx;
+                        opt.innerText = roundLabel;
+                        roundSelect.appendChild(opt);
+                    }
+                });
+
+                const slider = document.getElementById('actionSlider');
+                slider.max = timelineSteps.length - 1;
+                document.getElementById('timelineEnd').innerText = `最大: ${timelineSteps.length - 1}`;
+
+                // 初期状態の描画
+                jumpToAction(0);
+
+            } catch (err) {
+                console.error(err);
+                alert(`初期化エラー: ${err.message}`);
+            }
+        }
+
+        /**
+         * @title タイムライン特定位置ジャンプ関数
+         * @description 指定されたタイムラインのステップまでゲームを巻き戻し/進め、その局状態（打牌選択前の手牌14枚などの状態）を再現して再描画します。
+         * @param {number} targetStepIndex - ジャンプ先のタイムラインステップのインデックス
+         * @returns {void}
+         */
+        function jumpToAction(targetStepIndex) {
+            if (targetStepIndex < 0 || targetStepIndex >= timelineSteps.length) return;
+            
+            isPlaying = false;
+            document.getElementById('btnPlay').innerText = '自動再生';
+            if (playInterval) clearInterval(playInterval);
+
+            currentActionIndex = targetStepIndex;
+            
+            document.getElementById('actionSlider').value = targetStepIndex;
+            document.getElementById('timelineCurrent').innerText = `手番: ${targetStepIndex}`;
+
+            engine.reset();
+            
+            // タイムラインステップに対応する生アクションの最終インデックスを取得
+            const maxRawIdx = timelineSteps[targetStepIndex];
+            for (let i = 0; i <= maxRawIdx; i++) {
+                engine.applyAction(rawActionsList[i]);
+            }
+
+            renderBoard();
+            updatePromptPreview();
+        }
+
+        /**
+         * @title 局ジャンプ補助関数
+         * @description プルダウンで選択された局開始位置（インデックス）へタイムラインをジャンプさせます。
+         * @param {string} actionIndexStr - タイムラインのステップインデックス（文字列型）
+         * @returns {void}
+         */
+        function jumpToRoundStart(actionIndexStr) {
+            if (!actionIndexStr) return;
+            jumpToAction(parseInt(actionIndexStr));
+        }
+
+        /**
+         * @title タイムラインステップ移動関数
+         * @description タイムラインを1手進める、または1手戻す処理を行います。
+         * @param {number} direction - 進む方向（1: 進む, -1: 戻る）
+         * @returns {void}
+         */
+        function step(direction) {
+            const nextIdx = currentActionIndex + direction;
+            if (nextIdx >= 0 && nextIdx < timelineSteps.length) {
+                jumpToAction(nextIdx);
+            }
+        }
+
+        /**
+         * @title 自動再生切り替え関数
+         * @description シミュレーターの自動再生（1秒間隔で1手進める）を開始または一時停止します。
+         * @returns {void}
+         */
+        function togglePlay() {
+            const btn = document.getElementById('btnPlay');
+            if (isPlaying) {
+                isPlaying = false;
+                btn.innerText = '自動再生';
+                clearInterval(playInterval);
+            } else {
+                isPlaying = true;
+                btn.innerText = '一時停止';
+                playInterval = setInterval(() => {
+                    if (currentActionIndex < timelineSteps.length - 1) {
+                        step(1);
+                    } else {
+                        togglePlay();
+                    }
+                }, 1000); // 1秒間隔（1000ms）で自動再生を進めるためのハードコード設定値
+            }
+        }
+
+        function changePerspective(seat) {
+            perspectiveSeat = seat;
+            renderBoard();
+            updatePromptPreview();
+        }
+
+        function getTileClass(tile) {
+            if (!tile) return '';
+            if (tile.startsWith('0')) return 'tile-aka';
+            const suite = tile.slice(1);
+            return `tile-${suite}`;
+        }
+
+        function getTileText(tile) {
+            if (!tile) return '';
+            return TILE_NAMES[tile] || tile;
+        }
+
+        /**
+         * @title 卓面レンダリング関数
+         * @description 現在の局状態（engine）に合わせて、HTMLの各プレイヤーのエリア（手牌、河、副露、席情報）、および卓中央の表示（ドラ、局名、残り枚数）を最新の状態に更新・描画します。
+         * @returns {void}
+         */
+        function renderBoard() {
+            document.getElementById('displayRound').innerText = engine.roundName;
+            document.getElementById('displayBen').innerText = `${engine.ben}本場`;
+            document.getElementById('displayLeftTiles').innerText = engine.leftTileCount;
+
+            const doraContainer = document.getElementById('displayDoras');
+            doraContainer.innerHTML = '';
+            engine.doras.forEach(d => {
+                const tileEl = document.createElement('div');
+                tileEl.className = `tile ${getTileClass(d)}`;
+                tileEl.innerText = getTileText(d);
+                doraContainer.appendChild(tileEl);
+            });
+            // ドラ表示牌は最大で5枚まで開示されるため、空きスロットを裏向きの牌(5枚分)で埋める
+            for (let i = engine.doras.length; i < 5; i++) {
+                const emptyTile = document.createElement('div');
+                emptyTile.className = 'tile tile-back';
+                doraContainer.appendChild(emptyTile);
+            }
+
+            const relativeSeats = [];
+            // 麻雀の対局プレイヤーは4人（0〜3）であるため、4人分の相対的な着座位置を計算する
+            for (let i = 0; i < 4; i++) {
+                relativeSeats.push((perspectiveSeat + i) % 4);
+            }
+            const positions = ['bottom', 'right', 'top', 'left'];
+
+            positions.forEach((pos, idx) => {
+                const realSeat = relativeSeats[idx];
+                
+                const seatInfoEl = document.getElementById(`seatInfo${realSeat}`);
+                seatInfoEl.className = `seat-info ${pos}`;
+                if (engine.activeSeat === realSeat) {
+                    seatInfoEl.classList.add('active');
+                }
+
+                let ju = 0;
+                const match = engine.roundName.match(/\d/);
+                if (match) {
+                    ju = parseInt(match[0]) - 1;
+                }
+                const playerWindIdx = (realSeat - ju + 4) % 4;
+                seatInfoEl.querySelector('.seat-wind').innerText = WIND_NAMES[playerWindIdx];
+                seatInfoEl.querySelector('.seat-score').innerText = engine.scores[realSeat];
+
+                // プレイヤーエリアの設定
+                const areaEl = document.getElementById(`area${realSeat}`);
+                areaEl.setAttribute('data-pos', pos);
+                areaEl.className = 'player-area';
+                
+                // 手牌の描画
+                const handEl = document.getElementById(`hand${realSeat}`);
+                handEl.innerHTML = '';
+                handEl.style.display = 'flex';
+                handEl.style.gap = '2px';
+                // 常にrow（bottom視点で描画）
+                handEl.style.flexDirection = 'row';
+
+                const hand = [...engine.hands[realSeat]];
+                const lastTsumo = engine.lastTsumo[realSeat];
+
+                if (lastTsumo) {
+                    const tsumoIdx = hand.indexOf(lastTsumo);
+                    if (tsumoIdx !== -1) hand.splice(tsumoIdx, 1);
+                }
+
+                // 手牌を描画（自分は表向き、他家は裏向き）
+                if (pos === 'bottom') {
+                    hand.forEach(t => {
+                        const tileEl = document.createElement('div');
+                        tileEl.className = `tile ${getTileClass(t)}`;
+                        tileEl.innerText = getTileText(t);
+                        handEl.appendChild(tileEl);
+                    });
+
+                    if (lastTsumo) {
+                        const gap = document.createElement('div');
+                        gap.className = 'tsumo-gap';
+                        handEl.appendChild(gap);
+
+                        const tsumoEl = document.createElement('div');
+                        tsumoEl.className = `tile ${getTileClass(lastTsumo)}`;
+                        tsumoEl.innerText = getTileText(lastTsumo);
+                        handEl.appendChild(tsumoEl);
+                    }
+                } else {
+                    hand.forEach(t => {
+                        const tileEl = document.createElement('div');
+                        tileEl.className = 'tile tile-back';
+                        handEl.appendChild(tileEl);
+                    });
+
+                    if (lastTsumo) {
+                        const gap = document.createElement('div');
+                        gap.className = 'tsumo-gap';
+                        handEl.appendChild(gap);
+
+                        const tsumoEl = document.createElement('div');
+                        tsumoEl.className = 'tile tile-back';
+                        handEl.appendChild(tsumoEl);
+                    }
+                }
+
+                // 河の描画
+                const riverEl = document.getElementById(`river${realSeat}`);
+                riverEl.className = `river-${pos}`;
+                riverEl.innerHTML = '';
+
+                const discards = engine.discards[realSeat];
+                discards.forEach((d, k) => {
+                    const tileEl = document.createElement('div');
+                    tileEl.className = `tile ${getTileClass(d.tile)}`;
+                    if (d.claimed) tileEl.classList.add('tile-claimed');
+                    
+                    // 麻雀の河は6枚で1行（列）折り返す。行インデックス（0~2）と列インデックス（0~5）を算出。
+                    // 6枚の制限は麻雀の一般的な河の規則に基づく数値。
+                    // 18枚を超えた場合は4行目を作るのではなく、3行目の端にそのまま伸ばして配置する（オーバーフロー対応）。
+                    let rowIdx = 0;
+                    let colIdx = 0;
+                    if (k < 18) {
+                        rowIdx = Math.floor(k / 6); // 18枚未満は6枚毎に改行（最大3行）
+                        colIdx = k % 6;
+                    } else {
+                        rowIdx = 2; // 18枚以上は3行目に固定
+                        colIdx = k - 12; // 3行目の13枚目を起点に右（奥）方向へ伸ばす
+                    }
+
+                    // 各着座位置における捨て牌の並び方向と列の増大方向を制御
+                    if (pos === 'bottom') {
+                        tileEl.style.gridRow = `${rowIdx + 1}`;
+                        tileEl.style.gridColumn = `${colIdx + 1}`;
+                    } else if (pos === 'top') {
+                        tileEl.style.gridRow = `${3 - rowIdx}`;
+                        tileEl.style.gridColumn = `${12 - colIdx}`;
+                    } else if (pos === 'left') {
+                        tileEl.style.gridRow = `${colIdx + 1}`;
+                        tileEl.style.gridColumn = `${3 - rowIdx}`;
+                    } else if (pos === 'right') {
+                        tileEl.style.gridRow = `${12 - colIdx}`;
+                        tileEl.style.gridColumn = `${rowIdx + 1}`;
+                    }
+
+                    if (d.isLiqi) {
+                        if (pos === 'bottom' || pos === 'top') {
+                            tileEl.classList.add('tile-horizontal');
+                        } else if (pos === 'right') {
+                            tileEl.style.transform = 'rotate(180deg)';
+                        } else if (pos === 'left') {
+                            tileEl.style.transform = 'rotate(0deg)';
+                        }
+                    } else {
+                        if (pos === 'right') {
+                            tileEl.classList.add('tile-rotated-right');
+                        } else if (pos === 'left') {
+                            tileEl.classList.add('tile-rotated-left');
+                        } else if (pos === 'top') {
+                            tileEl.classList.add('tile-rotated-top');
+                        }
+                    }
+                    
+                    tileEl.innerText = getTileText(d.tile);
+                    riverEl.appendChild(tileEl);
+                });
+
+                // 副露（鳴き牌）
+                const meldsEl = document.getElementById(`melds${realSeat}`);
+                meldsEl.innerHTML = '';
+                meldsEl.style.display = 'flex';
+                meldsEl.style.gap = '8px';
+                // 常にrow（bottom視点で描画）
+                meldsEl.style.flexDirection = 'row';
+
+                // 各座席の基本回転角度（度数法）
+                const baseRotationsDeg = {
+                    'bottom': 0,
+                    'right': -90,
+                    'top': 180,
+                    'left': 90
+                };
+
+                const melds = engine.melds[realSeat];
+                melds.forEach(m => {
+                    const meldBlock = document.createElement('div');
+                    meldBlock.style.display = 'flex';
+                    meldBlock.style.gap = '2px';
+                    // 常にrow（bottom視点で描画）
+                    meldBlock.style.flexDirection = 'row';
+                    meldBlock.style.alignItems = 'flex-end';
+                    
+                    const slots = getMeldSlots(m, realSeat);
+                    
+                    slots.forEach(slot => {
+                        const slotEl = document.createElement('div');
+                        
+                        if (slot.type === 'stacked') {
+                            slotEl.style.display = 'flex';
+                            slotEl.style.gap = '2px';
+                            // 常にcolumn（bottom視点で描画）
+                            slotEl.style.flexDirection = 'column';
+                        }
+                        
+                        slot.tiles.forEach((t, tileIdx) => {
+                            const tileEl = document.createElement('div');
+                            
+                            if (slot.type === 'back') {
+                                tileEl.className = 'tile tile-back';
+                            } else {
+                                tileEl.className = `tile ${getTileClass(t)}`;
+                                tileEl.innerText = getTileText(t);
+                            }
+                            
+                            let isVerticalOnScreen = (slot.type === 'vertical' || slot.type === 'back');
+                            
+                            if (isVerticalOnScreen) {
+                                tileEl.style.width = '32px';
+                                tileEl.style.height = '44px';
+                            } else {
+                                tileEl.style.width = '44px';
+                                tileEl.style.height = '32px';
+                            }
+                            
+                            tileEl.style.transform = 'rotate(0deg)';
+                            slotEl.appendChild(tileEl);
+                        });
+                        
+                        meldBlock.appendChild(slotEl);
+                    });
+                    
+                    meldsEl.appendChild(meldBlock);
+                });
+            });
+        }
+
+        /**
+         * @title Gemini相談用プロンプト生成関数
+         * @description 現在の卓上の状態（自風、手牌、ツモ牌、副露、他家の副露、全員の河、点数状況、残り山牌数など）から、Geminiに「何切る」相談をするための詳細なMarkdownプロンプトテキストを動的に生成します。
+         * @returns {string} Gemini送信用プロンプトのMarkdownテキスト
+         */
+        function generatePromptText() {
+            // 麻雀の対局プレイヤーは4人（0〜3）であるため、4人分のデフォルト席名を定義する
+            const names = ['席0', '席1', '席2', '席3'];
+            if (gameData && gameData.head && gameData.head.accounts) {
+                gameData.head.accounts.forEach(acc => {
+                    names[acc.seat] = acc.nickname;
+                });
+            }
+
+            let ju = 0;
+            const match = engine.roundName.match(/\d/);
+            if (match) {
+                // 局数（1〜4局）を0始まりのインデックスに変換するため、1を減算する
+                ju = parseInt(match[0]) - 1;
+            }
+            // 親の風（東）を基準とした席の風（東・南・西・北の4種類）を計算する。4の剰余算を使用。
+            const myWind = WIND_NAMES[(perspectiveSeat - ju + 4) % 4];
+            const changWind = engine.roundName.charAt(0);
+
+            const hand = [...engine.hands[perspectiveSeat]];
+            const lastTsumo = engine.lastTsumo[perspectiveSeat];
+            
+            if (lastTsumo) {
+                const tsumoIdx = hand.indexOf(lastTsumo);
+                if (tsumoIdx !== -1) hand.splice(tsumoIdx, 1);
+            }
+            hand.sort(compareTiles);
+
+            let handStr = hand.map(t => getTileText(t)).join(' ');
+            let tsumoStr = lastTsumo ? getTileText(lastTsumo) : 'なし';
+
+            let meldsStr = 'なし';
+            const melds = engine.melds[perspectiveSeat];
+            if (melds.length > 0) {
+                meldsStr = melds.map(m => {
+                    const tiles = m.tiles.map(t => getTileText(t)).join(', ');
+                    const fromName = m.froms.some(f => f !== perspectiveSeat) ? '鳴き' : '暗槓';
+                    return `[${tiles}] (${fromName})`;
+                }).join(' / ');
+            }
+
+            let otherMeldsStr = '';
+            // 自分以外の3名のプレイヤーの副露状況を順に走査し、テキスト化する（4人打ちのため4回のループ）
+            for (let i = 0; i < 4; i++) {
+                if (i === perspectiveSeat) continue;
+                const oMelds = engine.melds[i];
+                if (oMelds.length > 0) {
+                    const oMeldText = oMelds.map(m => `[${m.tiles.map(t => getTileText(t)).join(', ')}]`).join(' ');
+                    otherMeldsStr += `* ${names[i]} (${WIND_NAMES[(i - ju + 4) % 4]}家): ${oMeldText}\n`;
+                }
+            }
+            if (!otherMeldsStr) otherMeldsStr = '* なし\n';
+
+            let riversStr = '';
+            // 4人全員の河（捨て牌履歴）を順に走査し、テキスト化する（4人打ちのため4回のループ）
+            for (let i = 0; i < 4; i++) {
+                const discards = engine.discards[i];
+                const discText = discards.map(d => {
+                    let t = getTileText(d.tile);
+                    if (d.isLiqi) t += '(立直)';
+                    if (d.claimed) t += '(鳴かれ)';
+                    return t;
+                }).join(' -> ');
+                const label = i === perspectiveSeat ? `${names[i]} (自分 / ${WIND_NAMES[(i - ju + 4) % 4]}家)` : `${names[i]} (${WIND_NAMES[(i - ju + 4) % 4]}家)`;
+                riversStr += `* ${label}の河: ${discText || 'なし'}\n`;
+            }
+
+            // 巡目（捨て牌の枚数に、現在ツモ牌がある場合は1を加算）を算出する
+            const myTurnCount = engine.discards[perspectiveSeat].length + (lastTsumo ? 1 : 0);
+
+            let prompt = `### 麻雀 局面検討プロンプト
+
+現在の状況において、何を切るのが最適か、牌効率や点数状況、他家の副露状況などを考慮した上で、思考プロセスを含めて詳細に検討してください。
+
+#### 1. 基本情報
+* 局情報: ${engine.roundName} ${engine.ben}本場
+* 積み棒: ${engine.ben}本 (供託立直棒: ${engine.liqibang}本)
+* 残り山牌数: ${engine.leftTileCount}枚
+* ドラ表示牌: ${engine.doras.map(d => getTileText(d)).join(', ')}
+* 現在の巡目: ${myTurnCount}巡目
+
+#### 2. 自風・点数状況
+* 場風: ${changWind}
+* 自風: ${myWind}
+* 席状況と点数:
+`;
+
+            // 4人全員の点数と自風の対応関係を出力する
+            for (let i = 0; i < 4; i++) {
+                const wind = WIND_NAMES[(i - ju + 4) % 4];
+                const isMe = i === perspectiveSeat ? ' (自分)' : '';
+                prompt += `  * ${wind}家: ${names[i]}${isMe} / ${engine.scores[i]}点\n`;
+            }
+
+            prompt += `
+#### 3. 自分の手牌
+* 手牌 (13枚): ${hand.map(t => getTileText(t)).join(' ')}
+* ツモ牌: ${tsumoStr}
+* 副露 (フーロ): ${meldsStr}
+
+#### 4. 他家の副露 (フーロ) 状況
+${otherMeldsStr}
+#### 5. 全員の河 (捨て牌履歴)
+${riversStr}
+#### 6. 検討依頼
+この手番で何を切るべきですか？
+* 最もテンパイに近い打牌候補
+* 安全牌を考慮した守備的な打牌候補
+それぞれについてメリット・デメリットを整理して回答してください。
+`;
+            return prompt;
+        }
+
+        function updatePromptPreview() {
+            if (!gameData) return;
+            const prompt = generatePromptText();
+            document.getElementById('promptPreview').innerText = prompt;
+        }
+
+        function copyGeminiPrompt() {
+            const prompt = generatePromptText();
+            navigator.clipboard.writeText(prompt).then(() => {
+                const toast = document.getElementById('copyToast');
+                toast.classList.add('show');
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            }).catch(err => {
+                alert('コピーに失敗しました: ' + err);
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', loadGame);
+    </script>
+</body>
+</html>
