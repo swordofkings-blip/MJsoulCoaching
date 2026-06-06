@@ -378,6 +378,232 @@
             opacity: 0.25;
         }
 
+        /* 推奨打牌：緑色のパルス発光（Rich Aesthetics） */
+        @keyframes recommended-pulse {
+            0%   { box-shadow: 0 0 4px 1px rgba(16, 185, 129, 0.55), 0 0 12px 2px rgba(16, 185, 129, 0.45); transform: translateY(0); }
+            50%  { box-shadow: 0 0 8px 3px rgba(16, 185, 129, 0.95), 0 0 22px 6px rgba(16, 185, 129, 0.75); transform: translateY(-3px); }
+            100% { box-shadow: 0 0 4px 1px rgba(16, 185, 129, 0.55), 0 0 12px 2px rgba(16, 185, 129, 0.45); transform: translateY(0); }
+        }
+        .tile-recommended {
+            border: 2px solid #10b981 !important;
+            border-radius: 6px;
+            animation: recommended-pulse 1.4s ease-in-out infinite;
+            z-index: 5;
+            position: relative;
+        }
+
+        /* BOTコーチング・パネル専用スタイル */
+        .bot-coach-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        .bot-coach-status {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .bot-coach-push {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .bot-coach-push-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .bot-coach-push-bar {
+            position: relative;
+            height: 8px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .bot-coach-push-fill {
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            background: linear-gradient(to right, #10b981, #fbbf24, #ef4444);
+            transition: width 0.3s ease;
+        }
+        .bot-coach-recommend {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            background: rgba(16, 185, 129, 0.10);
+            border: 1px solid rgba(16, 185, 129, 0.55);
+            border-radius: 8px;
+        }
+        .bot-coach-recommend-tile {
+            width: 38px; height: 50px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.95rem;
+            background: var(--tile-bg);
+            border: 1px solid var(--tile-border);
+            border-radius: 4px;
+        }
+        .bot-coach-recommend-text {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+        .bot-coach-recommend-text strong {
+            color: var(--accent-green);
+        }
+        .bot-coach-eval-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .bot-coach-eval-row {
+            display: grid;
+            grid-template-columns: 38px 1fr 60px;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 6px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid transparent;
+            border-radius: 6px;
+            font-size: 0.75rem;
+        }
+        .bot-coach-eval-row.is-recommended {
+            border-color: rgba(16, 185, 129, 0.6);
+            background: rgba(16, 185, 129, 0.08);
+        }
+        .bot-coach-eval-tile {
+            width: 32px; height: 42px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700;
+            background: var(--tile-bg);
+            border: 1px solid var(--tile-border);
+            border-radius: 4px;
+        }
+        .bot-coach-eval-tile.is-m { color: #1e3a8a; }
+        .bot-coach-eval-tile.is-p { color: #065f46; }
+        .bot-coach-eval-tile.is-s { color: #b45309; }
+        .bot-coach-eval-tile.is-z { color: #991b1b; }
+        .bot-coach-eval-tile.is-aka { color: #dc2626 !important; }
+        .bot-coach-eval-bar {
+            position: relative;
+            height: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .bot-coach-eval-bar-fill {
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            background: linear-gradient(to right, #3b82f6, #10b981);
+        }
+        .bot-coach-eval-score {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-main);
+        }
+        .bot-coach-wait {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 6px;
+        }
+        .bot-coach-strategy {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 8px 10px;
+            background: rgba(139, 92, 246, 0.08);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            border-radius: 8px;
+        }
+        .bot-coach-strategy-title {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+            margin-bottom: 2px;
+        }
+        .bot-coach-strategy-mode {
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: var(--accent-purple);
+        }
+        .bot-coach-strategy-params {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            font-size: 0.7rem;
+            color: var(--text-main);
+        }
+        .bot-coach-strategy-param {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(255,255,255,0.04);
+            border-radius: 4px;
+            padding: 3px 2px;
+        }
+        .bot-coach-strategy-param-label {
+            font-size: 0.62rem;
+            color: var(--text-muted);
+        }
+        .bot-coach-strategy-param-value {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .bot-coach-strategy-threat {
+            font-size: 0.7rem;
+            color: var(--text-main);
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 4px;
+            padding: 4px 6px;
+            line-height: 1.35;
+            margin-top: 2px;
+        }
+        .bot-coach-reason {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 8px 10px;
+            background: rgba(251, 191, 36, 0.07);
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            border-radius: 8px;
+        }
+        .bot-coach-reason-title {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+        .bot-coach-reason-text {
+            font-size: 0.78rem;
+            line-height: 1.4;
+            color: var(--text-main);
+        }
+        .bot-coach-eval-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            font-size: 0.66rem;
+            color: var(--text-muted);
+            line-height: 1.25;
+        }
+        .bot-coach-eval-row:hover {
+            background: rgba(139, 92, 246, 0.10);
+            border-color: rgba(139, 92, 246, 0.45);
+            cursor: pointer;
+        }
+        .bot-coach-eval-row.is-active {
+            background: rgba(139, 92, 246, 0.18);
+            border-color: rgba(139, 92, 246, 0.7);
+        }
+        .bot-coach-eval-row.is-recommended.is-active {
+            background: rgba(16, 185, 129, 0.18);
+            border-color: rgba(16, 185, 129, 0.8);
+        }
+
         /* コントロール・設定エリア */
         .control-section {
             margin-bottom: 1.5rem;
@@ -695,6 +921,39 @@
                 </button>
                 <div class="prompt-preview" id="promptPreview">
                     プロンプトのプレビューがここに表示されます...
+                </div>
+            </div>
+
+            <!-- ローカルBOTコーチング -->
+            <div class="control-section">
+                <div class="section-title">🤖 ローカルBOTコーチング</div>
+                <div class="bot-coach-panel" id="botCoachPanel">
+                    <div class="bot-coach-wait" id="botCoachWait">※手番ではありません</div>
+                    <div class="bot-coach-status" id="botCoachStatus"></div>
+                    <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
+                        <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
+                        <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
+                    </div>
+                    <div class="bot-coach-push" id="botCoachPush" style="display:none;">
+                        <div class="bot-coach-push-label">
+                            <span>押し (攻め)</span>
+                            <span id="botCoachPushValue">0.00</span>
+                        </div>
+                        <div class="bot-coach-push-bar">
+                            <div class="bot-coach-push-fill" id="botCoachPushFill" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
+                        <div class="bot-coach-strategy-title">戦略モードの内訳</div>
+                        <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
+                        <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
+                        <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
+                    </div>
+                    <div class="bot-coach-reason" id="botCoachReason" style="display:none;">
+                        <div class="bot-coach-reason-title">推奨打牌の決定理由</div>
+                        <div class="bot-coach-reason-text" id="botCoachReasonText">--</div>
+                    </div>
+                    <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
                 </div>
             </div>
 
@@ -1264,6 +1523,28 @@
             }
         }
 
+        /**
+         * @title キーボードショートカット
+         * @description 矢印キーでタイムラインを前後に移動。select / input フォーカス中は誤動作防止のため無視する。
+         * @param {KeyboardEvent} event - keydown イベント
+         * @returns {void}
+         */
+        document.addEventListener('keydown', function (event) {
+            // Why: ユーザーがドロップダウンを操作中に矢印キーが奪われると、select の値変更が効かなくなる。
+            // Why: input/textarea 編集中のカーソル移動も尊重する必要がある。
+            const tag = (event.target && event.target.tagName) || '';
+            if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') {
+                return;
+            }
+            if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                step(-1);
+            } else if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                step(1);
+            }
+        });
+
         function changePerspective(seat) {
             perspectiveSeat = seat;
             renderBoard();
@@ -1514,10 +1795,15 @@
                         
                         meldBlock.appendChild(slotEl);
                     });
-                    
                     meldsEl.appendChild(meldBlock);
                 });
             });
+
+            // 描画完了後、推奨打牌をBOTコーチAPIに問い合わせる
+            // (手番中のみ。視点プレイヤーの手牌が14枚のとき)
+            if (typeof requestBotCoachEvaluation === 'function') {
+                requestBotCoachEvaluation();
+            }
         }
 
         /**
@@ -1658,6 +1944,310 @@ ${riversStr}
         }
 
         window.addEventListener('DOMContentLoaded', loadGame);
+
+        // Why: キーボードの左右キーだけで直感的に手番タイムラインを前後に操作できるよう、
+        // Why: selectやinputなどの入力欄にフォーカスしていない時に限り、ArrowLeft/ArrowRightでstep()を呼び出す。
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement && (
+                document.activeElement.tagName === 'INPUT' ||
+                document.activeElement.tagName === 'SELECT' ||
+                document.activeElement.tagName === 'TEXTAREA' ||
+                document.activeElement.isContentEditable
+            )) {
+                return;
+            }
+            if (e.key === 'ArrowLeft') {
+                step(-1);
+            } else if (e.key === 'ArrowRight') {
+                step(1);
+            }
+        });
+    </script>
+
+    <script>
+        /**
+         * @title BOTコーチング用状態ビルダー
+         * @description 現在の engine / perspectiveSeat から POST /api/evaluate のリクエストボディを組み立てる。
+         * @returns {object|null} リクエストボディ。組み立て不可なら null。
+         */
+        function buildCoachPayload() {
+            if (!engine) return null;
+            const mySeat = perspectiveSeat;
+            const hand = [...engine.hands[mySeat]];
+            const tsumo = engine.lastTsumo[mySeat];
+            const tsumoCount = engine.discards[mySeat].length + (tsumo ? 1 : 0);
+
+            if (tsumo) {
+                const idx = hand.indexOf(tsumo);
+                if (idx !== -1) hand.splice(idx, 1);
+                hand.push(tsumo);
+            }
+
+            const river = [[], [], [], []];
+            const river_moqie = [[], [], [], []];
+            for (let i = 0; i < 4; i++) {
+                river[i] = engine.discards[i].map(d => d.tile);
+                river_moqie[i] = engine.discards[i].map(d => !!(d && d.moqie));
+            }
+
+            const melds = [[], [], [], []];
+            for (let i = 0; i < 4; i++) {
+                melds[i] = engine.melds[i].map(m => ({
+                    type: m.type,
+                    tiles: m.tiles,
+                    froms: m.froms,
+                    tile_states: m.tile_states || []
+                }));
+            }
+
+            const reach_states = [];
+            for (let i = 0; i < 4; i++) {
+                const seatDiscards = engine.discards[i] || [];
+                let isReach = false;
+                let reachTurn = -1;
+                let totalPrior = 0;
+                for (let k = 0; k < seatDiscards.length; k++) {
+                    if (seatDiscards[k].isLiqi) {
+                        isReach = true;
+                        reachTurn = totalPrior;
+                        break;
+                    }
+                    totalPrior += 1;
+                }
+                reach_states.push({
+                    is_reach: isReach,
+                    reach_turn: reachTurn,
+                    is_ippatsu: false
+                });
+            }
+
+            let ju = 0;
+            const match = engine.roundName.match(/\d/);
+            if (match) ju = parseInt(match[0]) - 1;
+            const chang = Math.floor(ju / 4);
+
+            return {
+                my_seat: mySeat,
+                hand: hand,
+                melds: melds,
+                river: river,
+                river_moqie: river_moqie,
+                scores: engine.scores,
+                doras: engine.doras,
+                tsumo_count: tsumoCount,
+                chang: chang,
+                ju: ju % 4,
+                ben: engine.ben,
+                liqibang: engine.liqibang,
+                left_tile_count: engine.leftTileCount,
+                reach_states: reach_states
+            };
+        }
+
+        /**
+         * @title BOTコーチUIクリア
+         * @description BOTコーチング・パネルを非表示状態（手番待ち）に戻す。
+         */
+        function clearBotCoachUI() {
+            document.getElementById('botCoachWait').style.display = 'block';
+            document.getElementById('botCoachStatus').innerText = '※手番ではありません';
+            document.getElementById('botCoachRecommend').style.display = 'none';
+            document.getElementById('botCoachPush').style.display = 'none';
+            document.getElementById('botCoachStrategy').style.display = 'none';
+            document.getElementById('botCoachReason').style.display = 'none';
+            document.getElementById('botCoachEvalList').innerHTML = '';
+        }
+
+        /**
+         * @title 戦略モード内訳描画
+         * @description サーバから返ったstrategy_detailsオブジェクトを、紫色の専用パネルに整形して表示する。
+         * 脅威度の根拠テキスト（threat_reason）も下部に表示する。
+         * @param {object|null} details - 戦略パラメータ辞書
+         */
+        function renderStrategyDetails(details) {
+            const box = document.getElementById('botCoachStrategy');
+            const modeEl = document.getElementById('botCoachStrategyMode');
+            const paramsEl = document.getElementById('botCoachStrategyParams');
+            const threatEl = document.getElementById('botCoachStrategyThreat');
+            if (!details) {
+                box.style.display = 'none';
+                return;
+            }
+            box.style.display = 'flex';
+            modeEl.innerText = details.mode || '--';
+            const params = [
+                { label: '攻撃度', value: (details.base_attack || 0).toFixed(2) },
+                { label: '脅威度', value: (details.max_threat || 0).toFixed(2) },
+                { label: '押し度', value: (details.push_score || 0).toFixed(2) }
+            ];
+            paramsEl.innerHTML = params.map(p =>
+                `<div class="bot-coach-strategy-param"><span class="bot-coach-strategy-param-label">${p.label}</span><span class="bot-coach-strategy-param-value">${p.value}</span></div>`
+            ).join('');
+            threatEl.innerText = '⚠ 脅威度根拠: ' + (details.threat_reason || '--');
+        }
+
+        /**
+         * @title 推奨理由の反映
+         * @description サーバ生成の日本語理由テキストを黄色パネルに表示する。行が選択されたら内容を差し替える。
+         * @param {string} text - 表示テキスト
+         */
+        function renderReasonForTile(text) {
+            const box = document.getElementById('botCoachReason');
+            const txt = document.getElementById('botCoachReasonText');
+            if (!text) {
+                box.style.display = 'none';
+                return;
+            }
+            box.style.display = 'flex';
+            txt.innerText = text;
+        }
+
+        /**
+         * @title 評価リスト行ホバー／クリックハンドラ
+         * @description 特定の牌が選択された時、推奨理由パネルとアクティブ表示を差し替える。
+         * @param {HTMLElement} row - 選択された行要素
+         * @param {object} ev - evaluations配列の要素
+         * @param {string} recommendedTile - 推奨牌
+         */
+        function selectEvalRow(row, ev, recommendedTile) {
+            const list = document.getElementById('botCoachEvalList');
+            Array.from(list.children).forEach(c => c.classList.remove('is-active'));
+            row.classList.add('is-active');
+            const reason = (ev.tile === recommendedTile)
+                ? ev.reason
+                : `「${ev.tile}」を打牌した場合: ${ev.safety_desc} / ${ev.attack_desc} (評価値 ${ev.score.toFixed(0)})`;
+            renderReasonForTile(reason);
+        }
+
+        /**
+         * @title BOTコーチUI描画
+         * @description /api/evaluate のレスポンスを右側パネルに描画する。戦略モード内訳・推奨理由パネル・評価リスト行のホバー／クリック連携を含む。
+         * @param {object} data - レスポンスJSON
+         */
+        function renderBotCoachUI(data) {
+            if (!data || data.status === 'not_your_turn') {
+                clearBotCoachUI();
+                return;
+            }
+            document.getElementById('botCoachWait').style.display = 'none';
+            document.getElementById('botCoachStatus').innerText = `手番: ${data.summary ? data.summary.tsumo_count : 0} / 推奨: <strong>${data.recommended || '-'}</strong>`;
+
+            const recBox = document.getElementById('botCoachRecommend');
+            recBox.style.display = 'flex';
+            const recTile = document.getElementById('botCoachRecommendTile');
+            recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
+            recTile.innerText = getTileText(data.recommended);
+            document.getElementById('botCoachRecommendText').innerHTML =
+                `<strong>${data.recommended}</strong> を切るのが最も評価値が高いと算出されました。`;
+
+            const pushBox = document.getElementById('botCoachPush');
+            pushBox.style.display = 'flex';
+            const push = Math.max(0, Math.min(1, data.push_score || 0));
+            document.getElementById('botCoachPushValue').innerText = push.toFixed(2);
+            document.getElementById('botCoachPushFill').style.width = (push * 100).toFixed(1) + '%';
+
+            renderStrategyDetails(data.strategy_details);
+
+            const list = document.getElementById('botCoachEvalList');
+            list.innerHTML = '';
+            const evals = data.evaluations || [];
+            const maxAbs = Math.max(1, ...evals.map(e => Math.abs(e.score)));
+            evals.forEach(ev => {
+                const row = document.createElement('div');
+                row.className = 'bot-coach-eval-row' + (ev.tile === data.recommended ? ' is-recommended' : '');
+                row.dataset.tile = ev.tile;
+
+                const tileEl = document.createElement('div');
+                tileEl.className = 'bot-coach-eval-tile ' + getTileClass(ev.tile);
+                tileEl.innerText = getTileText(ev.tile);
+
+                const bar = document.createElement('div');
+                bar.className = 'bot-coach-eval-bar';
+                const fill = document.createElement('div');
+                fill.className = 'bot-coach-eval-bar-fill';
+                const pct = Math.max(0, Math.min(100, (Math.abs(ev.score) / maxAbs) * 100));
+                fill.style.width = pct.toFixed(1) + '%';
+                bar.appendChild(fill);
+
+                const score = document.createElement('div');
+                score.className = 'bot-coach-eval-score';
+                const shanten = ev.shanten;
+                let shantenLabel;
+                if (shanten <= -1) shantenLabel = '和了';
+                else if (shanten === 0) shantenLabel = '聴牌';
+                else shantenLabel = `${shanten}向`;
+                score.innerText = `${ev.score.toFixed(0)} (${shantenLabel})`;
+
+                const meta = document.createElement('div');
+                meta.className = 'bot-coach-eval-meta';
+                meta.innerHTML = `<div>${ev.safety_desc || ''}</div><div>${ev.attack_desc || ''}</div>`;
+
+                row.appendChild(tileEl);
+                row.appendChild(bar);
+                row.appendChild(score);
+                row.appendChild(meta);
+
+                row.addEventListener('mouseenter', () => selectEvalRow(row, ev, data.recommended));
+                row.addEventListener('click', () => selectEvalRow(row, ev, data.recommended));
+                list.appendChild(row);
+            });
+
+            const recEntry = evals.find(e => e.tile === data.recommended);
+            if (recEntry) {
+                const recRow = list.querySelector(`.bot-coach-eval-row[data-tile="${data.recommended}"]`);
+                if (recRow) {
+                    recRow.classList.add('is-active');
+                    renderReasonForTile(recEntry.reason || `「${data.recommended}」推奨 (総合スコア最高)。`);
+                }
+            }
+        }
+
+        /**
+         * @title BOTコーチAPI呼び出し
+         * @description /api/evaluate に現在の局面をPOST送信し、レスポンスでUIを更新する。
+         */
+        function requestBotCoachEvaluation() {
+            const payload = buildCoachPayload();
+            if (!payload) {
+                clearBotCoachUI();
+                return;
+            }
+            if (payload.hand.length !== 14) {
+                clearBotCoachUI();
+                return;
+            }
+            fetch('/api/evaluate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                renderBotCoachUI(data);
+                window.__lastCoachRecommended = data.recommended || null;
+                highlightRecommendedTile(data.recommended || null);
+            })
+            .catch(err => {
+                console.warn('coach api error', err);
+            });
+        }
+
+        /**
+         * @title 推奨牌の手牌ハイライト
+         * @description 現在の手牌描画のうち、推奨牌に .tile-recommended クラスを付与する。
+         * @param {string|null} tile - 推奨牌文字列
+         */
+        function highlightRecommendedTile(tile) {
+            const handEl = document.getElementById('hand' + perspectiveSeat);
+            if (!handEl) return;
+            handEl.querySelectorAll('.tile-recommended').forEach(el => el.classList.remove('tile-recommended'));
+            if (!tile) return;
+            handEl.querySelectorAll('.tile').forEach(el => {
+                if (!el.classList.contains('tile-back') && el.innerText === getTileText(tile) && !el.classList.contains('tsumo-gap')) {
+                    el.classList.add('tile-recommended');
+                }
+            });
+        }
     </script>
 </body>
 </html>

@@ -1,0 +1,542 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+from functools import lru_cache
+from typing import List, Tuple
+
+from game_state import GameState, Meld
+from str_converter import (
+    hand_to_counts,
+    is_red_five,
+    tile_to_id,
+)
+
+
+class ShantenCalculator:
+    @staticmethod
+    def calculate_closed(hand_counts: List[int]) -> int:
+        std = ShantenCalculator._standard_shanten(hand_counts)
+        chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
+        kokushi = ShantenCalculator._kokushi_shanten(hand_counts)
+        return min(std, chiitoi, kokushi)
+
+    @staticmethod
+    def calculate_open(hand_counts: List[int], open_meld_count: int) -> int:
+        return ShantenCalculator._open_shanten(hand_counts, open_meld_count)
+
+    @staticmethod
+    def _standard_shanten(counts: List[int]) -> int:
+        best = 8
+        for head in range(34):
+            if counts[head] < 2:
+                continue
+            tmp = list(counts)
+            tmp[head] -= 2
+            melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
+            s = 8 - 2 * melds - 1
+            if s < best:
+                best = s
+        melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
+        s = 8 - 2 * melds
+        if s < best:
+            best = s
+        return best
+
+    @staticmethod
+    def _open_shanten(counts: List[int], open_meld_count: int) -> int:
+        if open_meld_count >= 4:
+            return -1
+        best = 8
+        for head in range(34):
+            if counts[head] < 2:
+                continue
+            tmp = list(counts)
+            tmp[head] -= 2
+            melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
+            s = (4 - open_meld_count) * 2 - 2 * melds - 1
+            if s < best:
+                best = s
+        melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
+        s = (4 - open_meld_count) * 2 - 2 * melds
+        if s < best:
+            best = s
+        return best
+
+    @staticmethod
+    def _max_meld_z(counts7: List[int]) -> int:
+        return sum(c // 3 for c in counts7)
+
+    @staticmethod
+    @lru_cache(maxsize=None)
+    def _max_meld_mps(counts9: Tuple[int, ...]) -> int:
+        c = list(counts9)
+        return ShantenCalculator._solve_mps(c)
+
+    @staticmethod
+    def _solve_mps(c: List[int]) -> int:
+        best = 0
+        first = None
+        for i in range(9):
+            if c[i] > 0:
+                first = i
+                break
+        if first is None:
+            return 0
+        if c[first] >= 3:
+            c2 = list(c)
+            c2[first] -= 3
+            v = 1 + ShantenCalculator._solve_mps(c2)
+            if v > best:
+                best = v
+        if first <= 6 and c[first + 1] > 0 and c[first + 2] > 0:
+            c2 = list(c)
+            c2[first] -= 1
+            c2[first + 1] -= 1
+            c2[first + 2] -= 1
+            v = 1 + ShantenCalculator._solve_mps(c2)
+            if v > best:
+                best = v
+        c2 = list(c)
+        c2[first] -= 1
+        v = ShantenCalculator._solve_mps(c2)
+        if v > best:
+            best = v
+        return best
+
+    @staticmethod
+    @lru_cache(maxsize=None)
+    def _solve_blocks_mps(counts9: Tuple[int, ...]) -> int:
+        """
+        @title 数牌スートの最大ブロック数算出
+        @description 面子(3枚)、対子(2枚)、ターツ(2枚:リャンメン/ペンチャン/カンチャン)に分割した場合の最大ブロック数を再帰的に求める。
+        @param {Tuple[int,...]} counts9 - 1色9種のカウント
+        @returns {int} 最大ブロック数
+        """
+        c = list(counts9)
+        return ShantenCalculator._blocks_recursive(c)
+
+    @staticmethod
+    def _blocks_recursive(c: List[int]) -> int:
+        """
+        @title ブロック数再帰探索（内部）
+        @description 各選択肢（3枚組・対子・順子・リャンメン/ペンチャン・カンチャン・スキップ）を試し、最大ブロック数を返す。
+        """
+        best = 0
+        first = None
+        for i in range(9):
+            if c[i] > 0:
+                first = i
+                break
+        if first is None:
+            return 0
+        if c[first] >= 3:
+            c2 = list(c)
+            c2[first] -= 3
+            best = max(best, 1 + ShantenCalculator._solve_blocks_mps(tuple(c2)))
+        if c[first] >= 2:
+            c2 = list(c)
+            c2[first] -= 2
+            best = max(best, 1 + ShantenCalculator._solve_blocks_mps(tuple(c2)))
+        if first <= 6 and c[first+1] > 0 and c[first+2] > 0:
+            c2 = list(c)
+            c2[first] -= 1
+            c2[first+1] -= 1
+            c2[first+2] -= 1
+            best = max(best, 1 + ShantenCalculator._solve_blocks_mps(tuple(c2)))
+        if first <= 7 and c[first+1] > 0:
+            c2 = list(c)
+            c2[first] -= 1
+            c2[first+1] -= 1
+            best = max(best, 1 + ShantenCalculator._solve_blocks_mps(tuple(c2)))
+        if first <= 6 and c[first+2] > 0:
+            c2 = list(c)
+            c2[first] -= 1
+            c2[first+2] -= 1
+            best = max(best, 1 + ShantenCalculator._solve_blocks_mps(tuple(c2)))
+        c2 = list(c)
+        c2[first] -= 1
+        best = max(best, ShantenCalculator._solve_blocks_mps(tuple(c2)))
+        return best
+
+    @staticmethod
+    def calculate_blocks(hand_counts: List[int], open_meld_count: int = 0) -> int:
+        """
+        @title 手牌全体のブロック数算出
+        @description 萬子・筒子・索子の各スートの最大ブロック数 ＋ 字牌の対子/刻子数 ＋ 副露数を合計する。
+        @param {List[int]} hand_counts - 34種牌カウント
+        @param {int} open_meld_count - 副露数
+        @returns {int} 手牌全体のブロック数
+        """
+        m_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[0:9]))
+        p_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[9:18]))
+        s_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[18:27]))
+        z_blocks = sum(1 for c in hand_counts[27:34] if c >= 2)
+        return m_blocks + p_blocks + s_blocks + z_blocks + open_meld_count
+
+    @staticmethod
+    def calculate_closed_effective(hand_counts: List[int]) -> int:
+        """
+        @title 有効シャンテン数の算出（チートイツ・国士の条件付き）
+        @description 標準手シャンテンをベースに、対子数が4組以上の場合のみチートイツ、ヤオ九牌が9種類以上の場合のみ国士無双を計算対象とする。
+        これにより、対子不足の段階で面子を壊してチートイツに逃げる悪手を正しくペナルティ対象にする。
+        @param {List[int]} hand_counts - 34種牌のカウントリスト
+        @returns {int} 有効シャンテン数
+        """
+        std = ShantenCalculator._standard_shanten(hand_counts)
+        pairs = sum(1 for c in hand_counts if c >= 2)
+        yaochu_indices = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        yaochu_types = sum(1 for i in yaochu_indices if hand_counts[i] >= 1)
+        best = std
+        if pairs >= 4:
+            chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
+            if chiitoi < best:
+                best = chiitoi
+        if yaochu_types >= 9:
+            kokushi = ShantenCalculator._kokushi_shanten(hand_counts)
+            if kokushi < best:
+                best = kokushi
+        return best
+
+    @staticmethod
+    def _chiitoitsu_shanten(counts: List[int]) -> int:
+        pairs = sum(1 for c in counts if c >= 2)
+        kinds = sum(1 for c in counts if c >= 1)
+        if kinds < 7:
+            return 6 - kinds
+        if pairs == 7:
+            return -1
+        return 6 - pairs
+
+    @staticmethod
+    def _kokushi_shanten(counts: List[int]) -> int:
+        yao = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        unique = sum(1 for i in yao if counts[i] >= 1)
+        has_pair = any(counts[i] >= 2 for i in yao)
+        if unique == 13 and has_pair:
+            return -1
+        return 13 - unique - (1 if has_pair else 0)
+
+
+class StrategyManager:
+    """
+    @title 戦略判定
+    @description 対局状態（自家手牌・他家捨牌・副露状況）から、押し引きと攻撃度の指標を算出する。
+    """
+    REACH_THREAT = 1.0
+    OPEN_BASE_BY_COUNT = {0: 0.0, 1: 0.15, 2: 0.40, 3: 0.75, 4: 0.95}
+    YAKUHAI_DORA_MELD_BONUS = 0.15
+    LATE_TEDASHI_MIDDLE_BONUS_OPEN = 0.10
+    LATE_TEDASHI_MIDDLE_BONUS_CLOSED = 0.08
+    LATE_THRESHOLD = 10
+    CLOSED_TSUMO_10_14 = 0.05
+    CLOSED_TSUMO_15_PLUS = 0.15
+    BASE_THREAT = 0.0
+
+    SEAT_NAMES = ['自家', '下家', '対面', '上家']
+
+    def __init__(self, state: GameState, params: dict = None):
+        self.state = state
+        self.params = params or {}
+
+    def compute_opponent_threat(self) -> float:
+        """
+        @title 最大脅威度の算出
+        @description 各他家のリーチ・副露数・捨牌の手出し中張牌・ドラ/役牌の鳴き状況から脅威度を算出し、その最大値を返す。
+        @returns {float} 最大脅威度 0.0〜1.0
+        """
+        max_threat, _ = self._max_threat_with_reason()
+        return max_threat
+
+    def _max_threat_with_reason(self) -> Tuple[float, str]:
+        """
+        @title 脅威度と理由テキストの同時算出
+        @description 各他家の脅威度を計算し、最も高い脅威を持つ他家の脅威値と日本語理由テキストを返す。
+        @returns {Tuple[float, str]} (最大脅威度, 理由テキスト)
+        """
+        best_value = self.BASE_THREAT
+        best_reason = '他家に脅威なし'
+        for i in range(4):
+            if i == self.state.my_seat:
+                continue
+            value, reason = self._opponent_threat_for_seat(i)
+            if value > best_value:
+                best_value = value
+                best_reason = reason
+        return best_value, best_reason
+
+    def _opponent_threat_for_seat(self, seat: int) -> Tuple[float, str]:
+        """
+        @title 個別他家の脅威度算出
+        @description 1家分のリーチ・副露・手出し中張牌から脅威度とその根拠を算出する。
+        @param {int} seat - 対象他家の seat 番号
+        @returns {Tuple[float, str]} (脅威度, 理由テキスト)
+        """
+        seat_name = self.SEAT_NAMES[seat] if 0 <= seat < 4 else f'Player {seat}'
+        if self.state.reach_states[seat].is_reach:
+            return self.REACH_THREAT, f'{seat_name}: リーチ済（=テンパイ確定、脅威度 1.0）'
+        open_melds = [m for m in self.state.melds[seat] if m.is_open]
+        n_open = len(open_melds)
+        if n_open > 0:
+            return self._threat_open_player(seat, seat_name, n_open, open_melds)
+        return self._threat_closed_player(seat, seat_name)
+
+    def _threat_open_player(self, seat: int, seat_name: str, n_open: int, open_melds: List[Meld]) -> Tuple[float, str]:
+        """
+        @title 副露者の脅威度算出
+        @description 副露数に応じた基礎値に、ドラ/役牌ポン・後半手出し中張牌のボーナス加算を適用する。
+        @param {int} seat - 対象 seat
+        @param {str} seat_name - プレイヤー名
+        @param {int} n_open - 副露数
+        @param {List[Meld]} open_melds - 副露一覧
+        @returns {Tuple[float, str]} (脅威度, 理由テキスト)
+        """
+        base = self.OPEN_BASE_BY_COUNT.get(n_open, 0.95)
+        bonuses: List[Tuple[str, float]] = []
+        if self._has_yakuhai_or_dora_meld(open_melds):
+            bonuses.append(('役牌・ドラポン', self.YAKUHAI_DORA_MELD_BONUS))
+        if self.state.tsumo_count >= self.LATE_THRESHOLD and self._has_late_tedashi_middle(seat):
+            bonuses.append(('後半手出し中張牌', self.LATE_TEDASHI_MIDDLE_BONUS_OPEN))
+        value = min(1.0, base + sum(b[1] for b in bonuses))
+        reason = f'{seat_name}: {n_open}副露 (基礎 {base:.2f})'
+        for label, b in bonuses:
+            reason += f' + {label} (+{b:.2f})'
+        reason += f' = {value:.2f}'
+        return value, reason
+
+    def _threat_closed_player(self, seat: int, seat_name: str) -> Tuple[float, str]:
+        """
+        @title 門前者の脅威度算出
+        @description 巡目と手出し中張牌履歴からダマテン接近の脅威度を算出する。
+        @param {int} seat - 対象 seat
+        @param {str} seat_name - プレイヤー名
+        @returns {Tuple[float, str]} (脅威度, 理由テキスト)
+        """
+        bonuses: List[Tuple[str, float]] = []
+        base = 0.0
+        tsumo = self.state.tsumo_count
+        if 10 <= tsumo <= 14:
+            base = self.CLOSED_TSUMO_10_14
+        elif tsumo >= 15:
+            base = self.CLOSED_TSUMO_15_PLUS
+        if base <= 0:
+            return 0.0, f'{seat_name}: 序盤（{tsumo}巡）で脅威低'
+        if tsumo >= self.LATE_THRESHOLD and self._has_late_tedashi_middle(seat):
+            bonuses.append(('後半手出し中張牌', self.LATE_TEDASHI_MIDDLE_BONUS_CLOSED))
+        value = min(1.0, base + sum(b[1] for b in bonuses))
+        reason = f'{seat_name}: 門前 (基礎 {base:.2f}, {tsumo}巡)'
+        for label, b in bonuses:
+            reason += f' + {label} (+{b:.2f})'
+        reason += f' = {value:.2f}'
+        return value, reason
+
+    def _has_yakuhai_or_dora_meld(self, open_melds: List[Meld]) -> bool:
+        """
+        @title 役牌・ドラポン検出
+        @description 副露牌の中に三元牌・自風牌・場風牌・ドラが含まれるかを判定する。
+        @param {List[Meld]} open_melds - 副露一覧
+        @returns {bool} 役牌またはドラのポン/大明槓を含むなら True
+        """
+        from str_converter import tile_to_id
+        dora_ids = {tile_to_id(d) for d in self.state.doras}
+        chang_id = 27 + (self.state.chang - 1) if 0 <= self.state.chang - 1 < 4 else -1
+        bakaze_id = 27 + (self.state.ju - 1) if 0 <= self.state.ju - 1 < 4 else -1
+        honor_target_ids = set(range(27, 31)) | {27, 28, 29, 30} | {bakaze_id, chang_id}
+        for m in open_melds:
+            for t in m.tiles:
+                try:
+                    tid = tile_to_id(t)
+                except Exception:
+                    continue
+                if tid in dora_ids:
+                    return True
+                if tid >= 27 and tid in honor_target_ids:
+                    return True
+        return False
+
+    def _has_late_tedashi_middle(self, seat: int) -> bool:
+        """
+        @title 後半手出し中張牌の検出
+        @description 該当他家の河に「ツモ切りではない」中張牌（3〜7）が含まれているか判定する。
+        @param {int} seat - 対象 seat
+        @returns {bool} 該当牌があれば True
+        """
+        from str_converter import tile_to_id
+        river_tiles = self.state.river[seat]
+        moqie_flags = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        for idx, t in enumerate(river_tiles):
+            try:
+                tid = tile_to_id(t)
+            except Exception:
+                continue
+            if tid >= 27:
+                continue
+            offset = tid % 9
+            if 2 <= offset <= 6:
+                is_moqie = moqie_flags[idx] if idx < len(moqie_flags) else False
+                if not is_moqie:
+                    return True
+        return False
+
+    def _is_dora_heavy_or_color_drain(self, seat: int) -> bool:
+        if not self.state.doras:
+            return False
+        from str_converter import tile_to_id
+        dora_id = tile_to_id(self.state.doras[0])
+        seat_visible = 0
+        for t in self.state.river[seat]:
+            if tile_to_id(t) == dora_id:
+                seat_visible += 1
+        for m in self.state.melds[seat]:
+            for t in m.tiles:
+                if tile_to_id(t) == dora_id:
+                    seat_visible += 1
+        if seat_visible >= 2:
+            return True
+        seat_visible_counts = [0] * 34
+        for t in self.state.river[seat]:
+            seat_visible_counts[tile_to_id(t)] += 1
+        for m in self.state.melds[seat]:
+            for t in m.tiles:
+                seat_visible_counts[tile_to_id(t)] += 1
+        for i in range(3):
+            color_start = i * 9
+            color_tiles = sum(seat_visible_counts[color_start:color_start + 9])
+            if color_tiles >= 8:
+                return True
+        return False
+
+    def _is_dora_heavy_or_color_drain(self, seat: int) -> bool:
+        if not self.state.doras:
+            return False
+        from str_converter import tile_to_id
+        dora_id = tile_to_id(self.state.doras[0])
+        seat_visible = 0
+        for t in self.state.river[seat]:
+            if tile_to_id(t) == dora_id:
+                seat_visible += 1
+        for m in self.state.melds[seat]:
+            for t in m.tiles:
+                if tile_to_id(t) == dora_id:
+                    seat_visible += 1
+        if seat_visible >= 2:
+            return True
+        seat_visible_counts = [0] * 34
+        for t in self.state.river[seat]:
+            seat_visible_counts[tile_to_id(t)] += 1
+        for m in self.state.melds[seat]:
+            for t in m.tiles:
+                seat_visible_counts[tile_to_id(t)] += 1
+        for i in range(3):
+            color_start = i * 9
+            color_tiles = sum(seat_visible_counts[color_start:color_start + 9])
+            if color_tiles >= 8:
+                return True
+        return False
+
+    def compute_base_attack(self) -> float:
+        hand_counts = self.state.my_hand_counts()
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+        if shanten <= -1:
+            han = self._estimate_han()
+            if han >= 5:
+                return 1.0
+            else:
+                return 0.7
+        if shanten == 0:
+            return 0.7
+        if shanten == 1:
+            return 0.4
+        return 0.0
+
+    def _estimate_han(self) -> int:
+        han = 1
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            han += 1
+        for dora in self.state.doras:
+            for t in self.state.my_hand:
+                if t == dora or (is_red_five(t) and tile_to_id(t) == tile_to_id(dora)):
+                    han += 1
+        if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
+            han += 1
+        return han
+
+    def compute_push_score(self) -> float:
+        """
+        @title 押し引き度の算出
+        @description 自家の攻撃度（手牌進行）と他家の最大脅威度から、現在の押し（攻め）度合いを 0.0–1.0 で返す。
+        他家からの脅威が一切ない場合（t_max = 0.0）は、手牌のシャンテン数に関わらず無条件に 1.0（全ツモ手効率優先）を返す。
+        @returns {float} 押し度 0.0 (ベタオリ) 〜 1.0 (全力押)
+        """
+        a_base = self.compute_base_attack()
+        t_max = self.compute_opponent_threat()
+        # Why: 序盤で他家に立直や副露が一つもない局面では、テンパイ到達や高打点の手役完成に向けて
+        # Why: 純粋な手効率（攻撃評価）を最大優先すべき。現物の影響を受けないよう無条件で全押しとする。
+        if t_max <= 0.0:
+            return 1.0
+        push_score = a_base * (1.0 - t_max)
+        push_score = self._apply_position_override(push_score)
+        return max(0.0, min(1.0, push_score))
+
+    def _apply_position_override(self, push_score: float) -> float:
+        if not self.state.is_last_round():
+            return push_score
+        rank = self.state.my_score_rank()
+        if rank == 0:
+            return min(push_score, 0.2)
+        if rank == 3 and self.state.ju >= 1:
+            return max(push_score, 0.85)
+        return push_score
+
+    def is_orya_ori_mode(self) -> bool:
+        return self.compute_push_score() <= 0.05
+
+    def is_zenchi_mode(self) -> bool:
+        if not self.state.is_last_round():
+            return False
+        return self.state.my_score_rank() == 3
+
+    def is_meld_open_allowed(self) -> bool:
+        return self.is_orya_ori_mode()
+
+    def get_strategy_mode(self) -> str:
+        """
+        @title 現在の戦略モード判定
+        @description 押し引き度・順位状況・シャンテン数の組み合わせから、現在の思考モード名（日本語ラベル）を返す。
+        @returns {str} 戦略モードの人間可読ラベル
+        """
+        # Why: オーラス特殊ルール（ゼンツ・トップ維持）は最優先で上書きする
+        if self.is_zenchi_mode():
+            return "ゼンツ (オーラス・ラス目)"
+        push = self.compute_push_score()
+        if push <= 0.05:
+            return "ベタオリ (完全防御)"
+        a_base = self.compute_base_attack()
+        if a_base >= 1.0:
+            return "高打点押し (満貫以上)"
+        if a_base >= 0.7:
+            return "テンパイ (低打点含)"
+        if a_base >= 0.4:
+            return "1シャンテン (押せる手)"
+        if self._estimate_han() >= 3 and a_base <= 0.0:
+            return "手役不足 (構想中)"
+        return "通常プレイ (押引き判断中)"
+
+    def get_strategy_details(self) -> dict:
+        """
+        @title 戦略パラメータ開示
+        @description UIで可視化するために、戦略計算の中間パラメータを辞書形式で返す。最大脅威度と脅威理由テキストも含む。
+        @returns {dict} base_attack, max_threat, push_score, mode, threat_reason などを含む辞書
+        """
+        a_base = self.compute_base_attack()
+        t_max, threat_reason = self._max_threat_with_reason()
+        push = self.compute_push_score()
+        return {
+            "base_attack": round(a_base, 3),
+            "max_threat": round(t_max, 3),
+            "push_score": round(push, 3),
+            "mode": self.get_strategy_mode(),
+            "threat_reason": threat_reason,
+            "is_last_round": self.state.is_last_round(),
+            "my_rank": self.state.my_score_rank(),
+        }

@@ -264,3 +264,4 @@ replay/
 # Majsoul record data and temporary dump files
 record_*.json
 ws_dump.pkl
+*.zip
