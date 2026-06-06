@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+import json
+import os
 import time
 from typing import List, Optional
 
@@ -17,10 +19,14 @@ except Exception:
 
 
 class MyBot(MajsoulHandler):
-    def __init__(self, gui: Optional[object] = None, think_time_sec: float = 0.5):
+    def __init__(self, gui: Optional[object] = None, think_time_sec: float = 0.5, params: dict = None):
         super().__init__()
         self.state = GameState()
-        self.evaluator = Evaluator(self.state)
+        if params is not None:
+            self.params = params
+        else:
+            self.params = self._load_default_params()
+        self.evaluator = Evaluator(self.state, params=self.params)
         self.gui = gui
         self.think_time_sec = think_time_sec
         self._pending_op_list: List[dict] = []
@@ -32,7 +38,7 @@ class MyBot(MajsoulHandler):
         self._auto_discard_enabled = enabled
 
     def _update_evaluator(self):
-        self.evaluator = Evaluator(self.state)
+        self.evaluator = Evaluator(self.state, params=self.params)
 
     def _safe_print_eval(self, hand: List[str]):
         try:
@@ -110,6 +116,12 @@ class MyBot(MajsoulHandler):
 
     def _handle_self_operations(self, seat: int, tile: str, op_list: List[dict]):
         can_actions = {op['type']: op for op in op_list}
+
+        if self.evaluator.should_go_kokushi_13():
+            print('[MyBot] kokushi 13-sided wait selected, skipping tsumo')
+            self._decide_and_discard()
+            return
+
         if can_actions.get(Operation.Zimo.value):
             self.actionZimo()
             return
@@ -159,7 +171,14 @@ class MyBot(MajsoulHandler):
         hand = list(self.state.my_hand)
         if len(hand) % 3 != 2:
             return
-        tile, _ = self._safe_print_eval(hand)
+
+        pair = self.evaluator._kokushi_pair_tile()
+        if pair is not None:
+            tile = pair
+            print(f'[MyBot] kokushi 13-sided: discarding pair {tile}')
+        else:
+            tile, _ = self._safe_print_eval(hand)
+
         if tile is None:
             return
         if tile not in all_tiles:
@@ -245,6 +264,29 @@ class MyBot(MajsoulHandler):
             self.gui.actionChiPengGang(type, tiles)
         except Exception as e:
             print(f'[MyBot] gui chiPengGang error: {e}')
+
+
+    @staticmethod
+    def _load_default_params() -> dict:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config_parameters.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    print(f'[MyBot] config_parameters.json loaded from {config_path}')
+                    return json.load(f)
+            except Exception as e:
+                print(f'[MyBot] config_parameters.json load error: {e}')
+        return {}
+
+    @staticmethod
+    def load_params_from_file(path: str) -> dict:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f'[MyBot] load_params error: {e}')
+        return {}
 
 
 def run_bot_with_replay(filename: str = 'ws_dump.pkl'):

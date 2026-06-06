@@ -210,6 +210,7 @@ def evaluate_state(payload: dict) -> dict:
     @returns {dict} レスポンスJSON (recommended, strategy_details, evaluations, summary)
     """
     state = _restore_game_state(payload)
+    params = payload.get("params", None)
 
     my_seat = state.my_seat
     hand = list(state.my_hand)
@@ -224,7 +225,7 @@ def evaluate_state(payload: dict) -> dict:
             "summary": {"hand_size": len(hand), "tsumo_count": state.tsumo_count}
         }
 
-    evaluator = Evaluator(state)
+    evaluator = Evaluator(state, params=params)
     strategy_details = evaluator.strategy.get_strategy_details()
     push_score = float(evaluator.strategy.compute_push_score())
 
@@ -304,12 +305,16 @@ def _safety_description(defense: float, evaluator: 'Evaluator') -> str:
     @param {Evaluator} evaluator - Evaluatorインスタンス（戦略モード参照用）
     @returns {str} 安全度分類の日本語ラベル
     """
-    from evaluator import SCORE_GENBUTSU, SCORE_SUJI, SCORE_HONOR, SCORE_MUSUJI
-    if defense >= SCORE_GENBUTSU:
+    p = evaluator.params
+    from evaluator import SCORE_GENBUTSU, SCORE_SUJI, SCORE_HONOR
+    score_genbutsu = p.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+    score_suji = p.get('SCORE_SUJI', SCORE_SUJI)
+    score_honor = p.get('SCORE_HONOR', SCORE_HONOR)
+    if defense >= score_genbutsu:
         return "現物 (安全度: 極高)"
-    if defense >= SCORE_SUJI:
+    if defense >= score_suji:
         return "スジ (安全度: 高)"
-    if defense >= SCORE_HONOR:
+    if defense >= score_honor:
         return "字牌/生牌 (安全度: 中)"
     if defense > 0:
         return "準安全 (安全度: 低)"

@@ -143,15 +143,13 @@ class DefenseEvaluator:
         tile_id = tile_to_id(tile)
         reach_seats = self._active_reach_seats()
         if not reach_seats:
-            # Why: 序盤でリーチ者がいない場合、捨牌中の牌は「手出し」であり将来の現物とは限らない。
-            # Why: ここで現物加点すると完成メンツや良形打牌を捨ててベタオリする自滅バグになるため、評価自体を無効化する。
-            return SCORE_MUSUJI
+            return self.params.get('SCORE_MUSUJI', SCORE_MUSUJI)
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:
-            return SCORE_GENBUTSU
+            return self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
         suji_ids = self._reach_suji_ids(reach_seats)
         if tile_id in suji_ids:
-            return SCORE_SUJI
+            return self.params.get('SCORE_SUJI', SCORE_SUJI)
         for seat in reach_seats:
             for t in self.state.river[seat]:
                 try:
@@ -159,12 +157,12 @@ class DefenseEvaluator:
                 except Exception:
                     continue
                 if is_honor(tid) and tid == tile_id:
-                    return SCORE_HONOR
+                    return self.params.get('SCORE_HONOR', SCORE_HONOR)
         if is_honor(tile_id):
             visible = self.state.all_visible_counts()
             if visible[tile_id] == 0:
-                return SCORE_HONOR
-        return SCORE_MUSUJI
+                return self.params.get('SCORE_HONOR', SCORE_HONOR)
+        return self.params.get('SCORE_MUSUJI', SCORE_MUSUJI)
 
     def _collect_suji_from_river(self, seat: int) -> List[int]:
         result = set()
@@ -284,16 +282,18 @@ class AttackEvaluator:
         """
         ukeire_total, _ = self.ukeire_for_discard(tile)
         shanten = self.shanten_after_discard(tile)
-        # Why: 完成面子（例: 678m）を崩すとシャンテン数が大きく後退し、有効牌枚数だけでは損失を補えない。
-        # Why: 特別な狙いがない限りシャンテン後退は最悪の選択肢であり、ukeire拡大の加点より遥かに大きい罰を科す。
-        # Why: チートイツ条件（対子4組以上）を満たさない局面での面子崩しペナルティとして十分な値。
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
         best_shanten = self.best_shanten_after_single_discard()
         if shanten > best_shanten:
             return SHANTEN_BACKTRACK_PENALTY
-        # 重み: 有効牌1枚 = +10点、シャンテン1改善 = +100点
-        # シャンテン改善の寄与を大きくし、手の進行度を最優先で評価する設計
-        score = ukeire_total * 10 - shanten * 100
+        ukeire_mult = self.params.get('UKEIRE_MULTIPLIER', 10)
+        shanten_mult = self.params.get('SHANTEN_MULTIPLIER', 100)
+        score = ukeire_total * ukeire_mult - shanten * shanten_mult
+        # Why: 打牌後にテンパイする場合、自河にある牌が和了牌に含まれているとロン和了できない（永久フリテン）。
+        # Why: ただしツモ和了は常に可能なため、一律禁止ではなくフリテン和了牌の比率に応じた軽度なペナルティとする。
+        # Why: ダマテンフリテン両面や国士十三面待ちなど戦術的にフリテンを選ぶケースを許容するため、最大でも300点の減点に留める。
+        if shanten <= 0:
+            score -= self._compute_furiten_penalty(tile)
         # Why: 3向聴以下で6ブロック以上を維持する打牌は、受入が狭まるだけでなくテンパイ時に余剰な危険牌を切り出す原因になる。
         # Why: ペナルティを適用して最も弱いターツを切らせ、5ブロックへスリム化させる。
         if shanten <= 3:
@@ -308,6 +308,51 @@ class AttackEvaluator:
                 penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                 score -= penalty
         return score
+
+    def _get_furiten_tile_ids(self) -> set:
+        my_river_ids = set()
+        for t in self.state.river[self.state.my_seat]:
+            try:
+                my_river_ids.add(tile_to_id(t))
+            except Exception:
+                continue
+        return my_river_ids
+
+    def _compute_furiten_penalty(self, discard_tile: str) -> int:
+        furiten_ids = self._get_furiten_tile_ids()
+        if not furiten_ids:
+            return 0
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(discard_tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            current_shanten = ShantenCalculator.calculate_closed_effective(new_counts)
+        else:
+            current_shanten = ShantenCalculator.calculate_open(new_counts, open_meld_count)
+        if current_shanten > 0:
+            return 0
+        furiten_wait = 0
+        total_wait = 0
+        for tile_id in range(34):
+            if new_counts[tile_id] >= 4:
+                continue
+            test = list(new_counts)
+            test[tile_id] += 1
+            if open_meld_count == 0:
+                test_shanten = ShantenCalculator.calculate_closed_effective(test)
+            else:
+                test_shanten = ShantenCalculator.calculate_open(test, open_meld_count)
+            if test_shanten < current_shanten:
+                total_wait += 1
+                if tile_id in furiten_ids:
+                    furiten_wait += 1
+        if total_wait == 0:
+            return 0
+        ratio = furiten_wait / total_wait
+        max_penalty = self.params.get('FURITEN_PENALTY', 300)
+        return int(ratio * max_penalty)
 
 
 class Evaluator:
@@ -328,38 +373,61 @@ class Evaluator:
         tsumo = self.state.tsumo_count
         if 15 <= tsumo <= 17:
             shanten_after = self.attack.shanten_after_discard(tile)
-            # テンパイ（shanten_after <= 0）でも和了扱いとして加点する
             if shanten_after <= 0:
-                return KEITEN_BONUS_15_17
+                return self.params.get('KEITEN_BONUS_15_17', KEITEN_BONUS_15_17)
         elif tsumo >= 18:
             shanten_after = self.attack.shanten_after_discard(tile)
-            # 18巡目以降の形テンはさらに価値が高く、激しく押し返す
             if shanten_after <= 0:
-                return KEITEN_BONUS_18
+                return self.params.get('KEITEN_BONUS_18', KEITEN_BONUS_18)
         return 0
+
+    @staticmethod
+    def _any_opponent_has_open_meld(state: GameState) -> bool:
+        for seat in range(4):
+            if seat == state.my_seat:
+                continue
+            for m in state.melds[seat]:
+                if m.is_open:
+                    return True
+        return False
 
     def evaluate_tile(self, tile: str) -> float:
         """
         @title 牌の総合評価
         @description 攻撃評価と防御評価を押し引き度 (PushScore) で重み付きブレンドし、終盤の形テンボーナスを加算する。
+        誰もリーチしておらず他家に副露もない場合、防御評価が意味を持たないため攻撃評価を100%使う。
         @param tile 評価対象の牌 (例: "5m")
         @returns float 総合評価値
         """
         v_attack = self.attack.attack_score_for_tile(tile)
         v_defense = self.defense.defense_score_for_tile(tile)
         push_score = self.strategy.compute_push_score()
-        v = push_score * v_attack + (1.0 - push_score) * v_defense
+        if not self.state.is_any_opponent_reach() and not self._any_opponent_has_open_meld(self.state):
+            v = float(v_attack)
+        else:
+            v = push_score * v_attack + (1.0 - push_score) * v_defense
         v += self._get_keiten_bonus(tile)
         return v
+
+    def _hand_is_winning(self) -> bool:
+        counts = self.state.my_hand_counts()
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            return ShantenCalculator.calculate_closed_effective(counts) <= -1
+        else:
+            return ShantenCalculator.calculate_open(counts, open_meld_count) <= -1
 
     def best_discard(self, hand: List[str]) -> Optional[str]:
         """
         @title 最良打牌の選択
         @description 手牌の各牌タイプを評価し、最も評価値の高い牌を返す。
+        手牌が既に和了形の場合は None を返す（和了を選択すべき）。
         @param hand 自家手牌のリスト
-        @returns Optional[str] 最良打牌の文字列。handが空なら None。
+        @returns Optional[str] 最良打牌の文字列。handが空または和了形なら None。
         """
         if not hand:
+            return None
+        if self._hand_is_winning():
             return None
         unique_tiles = list(dict.fromkeys(hand))
         scored = [(self.evaluate_tile(t), t) for t in unique_tiles]
@@ -369,10 +437,56 @@ class Evaluator:
     def best_discard_with_score(self, hand: List[str]) -> Tuple[Optional[str], float]:
         if not hand:
             return None, float('-inf')
+        if self._hand_is_winning():
+            return None, float('inf')
         unique_tiles = list(dict.fromkeys(hand))
         scored = [(self.evaluate_tile(t), t) for t in unique_tiles]
         scored.sort(key=lambda x: (-x[0], x[1]))
         return scored[0][1], scored[0][0]
+
+    _YAOCHU_INDICES = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+
+    def _kokushi_pair_tile(self) -> Optional[str]:
+        counts = self.state.my_hand_counts()
+        yaochu_types = sum(1 for i in self._YAOCHU_INDICES if counts[i] >= 1)
+        if yaochu_types != 13:
+            return None
+        for i in self._YAOCHU_INDICES:
+            if counts[i] >= 2:
+                for t in self.state.my_hand:
+                    if tile_to_id(t) == i:
+                        return t
+        return None
+
+    def _kokushi_13_benefit_score(self) -> float:
+        counts = self.state.my_hand_counts()
+        yaochu_types = sum(1 for i in self._YAOCHU_INDICES if counts[i] >= 1)
+        if yaochu_types != 13:
+            return 0.0
+        visible = self.state.all_visible_counts()
+        total_remaining = sum(max(0, 4 - visible[i]) for i in self._YAOCHU_INDICES)
+        remaining_ratio = total_remaining / (13 * 4)
+        tsumo = self.state.tsumo_count
+        turn_factor = max(0.0, 1.0 - tsumo / 18.0)
+
+        my_score = self.state.scores[self.state.my_seat]
+        rank = self.state.my_score_rank()
+        if rank == 0:
+            score_necessity = 0.0
+        else:
+            above_score = sorted(self.state.scores, reverse=True)[rank - 1]
+            gap = above_score - my_score
+            score_necessity = min(1.0, max(0.0, gap / 32000))
+
+        benefit = remaining_ratio * 0.15 + turn_factor * 0.15 + score_necessity * 0.70
+        return max(0.0, min(1.0, benefit))
+
+    def should_go_kokushi_13(self) -> bool:
+        if self._kokushi_pair_tile() is None:
+            return False
+        benefit = self._kokushi_13_benefit_score()
+        threshold = self.params.get('KOKUSHI_13_THRESHOLD', 0.5)
+        return benefit >= threshold
 
     def should_kan(self) -> bool:
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)

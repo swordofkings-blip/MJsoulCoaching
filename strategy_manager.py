@@ -252,7 +252,7 @@ class StrategyManager:
         @description 各他家の脅威度を計算し、最も高い脅威を持つ他家の脅威値と日本語理由テキストを返す。
         @returns {Tuple[float, str]} (最大脅威度, 理由テキスト)
         """
-        best_value = self.BASE_THREAT
+        best_value = self.params.get('BASE_THREAT', 0.0)
         best_reason = '他家に脅威なし'
         for i in range(4):
             if i == self.state.my_seat:
@@ -272,7 +272,8 @@ class StrategyManager:
         """
         seat_name = self.SEAT_NAMES[seat] if 0 <= seat < 4 else f'Player {seat}'
         if self.state.reach_states[seat].is_reach:
-            return self.REACH_THREAT, f'{seat_name}: リーチ済（=テンパイ確定、脅威度 1.0）'
+            reach_threat = self.params.get('REACH_THREAT', 1.0)
+            return reach_threat, f'{seat_name}: リーチ済（=テンパイ確定、脅威度 {reach_threat:.2f}）'
         open_melds = [m for m in self.state.melds[seat] if m.is_open]
         n_open = len(open_melds)
         if n_open > 0:
@@ -289,12 +290,19 @@ class StrategyManager:
         @param {List[Meld]} open_melds - 副露一覧
         @returns {Tuple[float, str]} (脅威度, 理由テキスト)
         """
-        base = self.OPEN_BASE_BY_COUNT.get(n_open, 0.95)
+        open_base_map = {
+            0: 0.0,
+            1: self.params.get('OPEN_BASE_BY_COUNT_1', 0.15),
+            2: self.params.get('OPEN_BASE_BY_COUNT_2', 0.40),
+            3: self.params.get('OPEN_BASE_BY_COUNT_3', 0.75),
+            4: self.params.get('OPEN_BASE_BY_COUNT_4', 0.95),
+        }
+        base = open_base_map.get(n_open, 0.95)
         bonuses: List[Tuple[str, float]] = []
         if self._has_yakuhai_or_dora_meld(open_melds):
-            bonuses.append(('役牌・ドラポン', self.YAKUHAI_DORA_MELD_BONUS))
-        if self.state.tsumo_count >= self.LATE_THRESHOLD and self._has_late_tedashi_middle(seat):
-            bonuses.append(('後半手出し中張牌', self.LATE_TEDASHI_MIDDLE_BONUS_OPEN))
+            bonuses.append(('役牌・ドラポン', self.params.get('YAKUHAI_DORA_MELD_BONUS', 0.15)))
+        if self.state.tsumo_count >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
+            bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_OPEN', 0.10)))
         value = min(1.0, base + sum(b[1] for b in bonuses))
         reason = f'{seat_name}: {n_open}副露 (基礎 {base:.2f})'
         for label, b in bonuses:
@@ -314,13 +322,13 @@ class StrategyManager:
         base = 0.0
         tsumo = self.state.tsumo_count
         if 10 <= tsumo <= 14:
-            base = self.CLOSED_TSUMO_10_14
+            base = self.params.get('CLOSED_TSUMO_10_14', 0.05)
         elif tsumo >= 15:
-            base = self.CLOSED_TSUMO_15_PLUS
+            base = self.params.get('CLOSED_TSUMO_15_PLUS', 0.15)
         if base <= 0:
             return 0.0, f'{seat_name}: 序盤（{tsumo}巡）で脅威低'
-        if tsumo >= self.LATE_THRESHOLD and self._has_late_tedashi_middle(seat):
-            bonuses.append(('後半手出し中張牌', self.LATE_TEDASHI_MIDDLE_BONUS_CLOSED))
+        if tsumo >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
+            bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_CLOSED', 0.08)))
         value = min(1.0, base + sum(b[1] for b in bonuses))
         reason = f'{seat_name}: 門前 (基礎 {base:.2f}, {tsumo}巡)'
         for label, b in bonuses:
@@ -439,13 +447,13 @@ class StrategyManager:
         if shanten <= -1:
             han = self._estimate_han()
             if han >= 5:
-                return 1.0
+                return self.params.get('BASE_ATTACK_TENPAI_HIGH', 1.0)
             else:
-                return 0.7
+                return self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
         if shanten == 0:
-            return 0.7
+            return self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
         if shanten == 1:
-            return 0.4
+            return self.params.get('BASE_ATTACK_1SHANTEN', 0.4)
         return 0.0
 
     def _estimate_han(self) -> int:
@@ -483,9 +491,9 @@ class StrategyManager:
             return push_score
         rank = self.state.my_score_rank()
         if rank == 0:
-            return min(push_score, 0.2)
+            return min(push_score, self.params.get('LAST_ROUND_RANK0_PUSH_LIMIT', 0.2))
         if rank == 3 and self.state.ju >= 1:
-            return max(push_score, 0.85)
+            return max(push_score, self.params.get('LAST_ROUND_RANK3_PUSH_MIN', 0.85))
         return push_score
 
     def is_orya_ori_mode(self) -> bool:
