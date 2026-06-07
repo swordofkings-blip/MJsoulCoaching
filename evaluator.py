@@ -612,7 +612,7 @@ class AttackEvaluator:
                 base = (tid // 9) * 9
                 has_l = off > 0 and new_counts[base + off - 1] > 0
                 has_r = off < 8 and new_counts[base + off + 1] > 0
-                if (has_l or has_r) or new_counts[tid] >= 2:
+                if has_l and has_r:
                     n_good += remaining
                 else:
                     n_bad += remaining
