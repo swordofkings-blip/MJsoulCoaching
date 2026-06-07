@@ -237,6 +237,33 @@ def evaluate_state(payload: dict) -> dict:
     strategy_details = evaluator.strategy.get_strategy_details()
     push_score = float(evaluator.strategy.compute_push_score())
 
+    is_riichi_active = state.reach_states[my_seat].is_reach
+
+    # リーチ中・暗槓判断の処理
+    can_kan = False
+    should_kan = False
+    kan_tile = None
+    kan_reason = ""
+    
+    if is_riichi_active:
+        hand_counts = state.my_hand_counts()
+        for idx, count in enumerate(hand_counts):
+            if count == 4:
+                from str_converter import id_to_tile
+                kan_tile = id_to_tile(idx)
+                can_kan = True
+                should_kan = evaluator.should_kan()
+                if should_kan:
+                    kan_reason = f"手牌に暗槓可能な牌（{kan_tile}）があります。押し値 ({push_score:.2f}) が高いため、暗槓を推奨します。"
+                else:
+                    kan_reason = f"手牌に暗槓可能な牌（{kan_tile}）がありますが、状況的（押し値 {push_score:.2f}）に暗槓せずツモ切りを推奨します。"
+                break
+        if not can_kan:
+            kan_reason = "リーチ中です。暗槓可能な牌はありません。ツモ切り推奨です。"
+        
+        # リーチ中の推奨は基本ツモ切り (last_self_drawn)
+        recommended = state.last_self_drawn
+    
     unique_tiles = list(dict.fromkeys(hand))
     evaluations = []
     for tile in unique_tiles:
@@ -244,18 +271,45 @@ def evaluate_state(payload: dict) -> dict:
         evaluations.append(ev_entry)
 
     evaluations.sort(key=lambda x: (-x["score"], x["tile"]))
-    recommended = evaluations[0]["tile"] if evaluations else None
+    
+    if not is_riichi_active:
+        recommended = evaluations[0]["tile"] if evaluations else None
 
-    best_score = evaluations[0]["score"] if evaluations else 0
+    # テンパイ時の立直ダマ判定
+    should_riichi = None
+    riichi_reason = ""
+    if not is_riichi_active and recommended:
+        rec_shanten = evaluations[0]["shanten"] if evaluations else 99
+        open_meld_count = sum(1 for m in state.my_melds if m.is_open)
+        if rec_shanten == 0 and open_meld_count == 0:
+            riichi_details = evaluator.get_riichi_decision_details()
+            should_riichi = riichi_details["should_riichi"]
+            riichi_reason = riichi_details["reason"]
+
+    all_scores = [ev["score"] for ev in evaluations]
+    max_score = max(all_scores) if all_scores else 0.0
+    min_score = min(all_scores) if all_scores else 0.0
     near_tiles = []
+    rating_threshold = params.get('MATCH_RATING_THRESHOLD', 90.0)
+    min_range = params.get('MATCH_MIN_RANGE', 400.0)
+
+    # 推奨牌のシャンテン数と防御スコアを取得
+    rec_shanten = evaluations[0]["shanten"] if evaluations else 99
+    rec_defense = evaluations[0]["defense"] if evaluations else -9999.0
+
     for ev in evaluations:
-            ev["blunder_score"] = round(best_score - ev["score"], 2)
-            ev["is_blunder"] = ev["blunder_score"] > 200
-            ev["reason"] = _build_decision_reason(ev, strategy_details, evaluator, is_best=(ev["tile"] == recommended))
-            if ev["tile"] != recommended:
-                diff_ratio = abs(best_score - ev["score"]) / max(abs(best_score), 1)
-                if diff_ratio <= params.get('MATCH_TOLERANCE', 0.05):
-                    near_tiles.append(ev["tile"])
+        score_range = max(max_score - min_score, min_range)
+        diff = max(0.0, max_score - ev["score"])
+        ratio = max(0.0, 1.0 - diff / score_range)
+        ev["rating"] = round(100.0 * (ratio ** 2), 1)
+        ev["blunder_score"] = round(diff, 2)
+        ev["is_blunder"] = ev["blunder_score"] > 200
+        ev["reason"] = _build_decision_reason(ev, strategy_details, evaluator, is_best=(ev["tile"] == recommended))
+        if ev["tile"] != recommended:
+            if ev["rating"] >= rating_threshold:
+                if ev["defense"] <= rec_defense and ev["shanten"] > rec_shanten:
+                    continue
+                near_tiles.append(ev["tile"])
 
     return {
         "status": "ok",
@@ -264,6 +318,13 @@ def evaluate_state(payload: dict) -> dict:
         "push_score": round(push_score, 3),
         "strategy_details": strategy_details,
         "evaluations": evaluations,
+        "is_riichi_active": is_riichi_active,
+        "can_kan": can_kan,
+        "should_kan": should_kan,
+        "kan_tile": kan_tile,
+        "kan_reason": kan_reason,
+        "should_riichi": should_riichi,
+        "riichi_reason": riichi_reason,
         "summary": {
             "hand_size": len(hand),
             "tsumo_count": state.tsumo_count,
@@ -297,6 +358,10 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
     keiten_bonus = int(evaluator._get_keiten_bonus(tile))
     safety_desc = _safety_description(defense, evaluator)
     attack_desc = _attack_description(shanten, ukeire)
+    try:
+        hvb = int(evaluator.attack._hand_value_bonus(tile))
+    except:
+        hvb = 0
 
     return {
         "tile": tile,
@@ -308,6 +373,7 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         "safety_desc": safety_desc,
         "attack_desc": attack_desc,
         "keiten_bonus": keiten_bonus,
+        "hvb": hvb,
         "reason": "",
     }
 
@@ -370,32 +436,57 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     attack = entry["attack"]
     safety_desc = entry["safety_desc"]
     attack_desc = entry["attack_desc"]
+    hvb = entry.get("hvb", 0)
+
+    parts = [f"「{tile}」"]
+    parts.append(f"{mode}モード")
+    if push > 0.7:
+        parts.append("積極的に攻めます")
+    elif push < 0.1:
+        parts.append("降り気味です")
+    else:
+        parts.append("様子見です")
+
+    if shanten <= -1:
+        parts.append("打牌後和了形です")
+    elif shanten == 0:
+        parts.append("打牌後テンパイです")
+    elif shanten <= 2:
+        parts.append(f"{shanten}向聴")
+    else:
+        parts.append(f"{shanten}向聴と少し遠いです")
+
+    if "危険" in safety_desc and defense < 0:
+        parts.append("非常に危険な牌です")
+    elif "危険" in safety_desc:
+        parts.append("無筋なので危険です")
+    elif "安全" in safety_desc or "現物" in safety_desc:
+        parts.append("安全な牌です")
+    elif "スジ" in safety_desc:
+        parts.append("スジなのでやや安全です")
+
+    parts.append(f"有効牌{ukeire}枚")
+
+    detail_parts = []
+    detail_parts.append(f"Attack:{attack:.0f}")
+    detail_parts.append(f"Defense:{defense:.0f}")
+    keiten = entry.get("keiten_bonus", 0)
+    if keiten:
+        detail_parts.append(f"形テン+{keiten}")
+    if hvb:
+        detail_parts.append(f"手役+{hvb}")
 
     if is_best:
-        parts = [f"「{tile}」を推奨（総合スコア最高）"]
-        if push >= 0.5:
-            parts.append(f"押し気味(Push={push:.2f})、{attack_desc}")
-        else:
-            parts.append(f"モード「{mode}」、{attack_desc}と{safety_desc}を総合評価")
-        if shanten <= 0:
-            parts.append(f"打牌後{'和了' if shanten<0 else 'テンパイ'}")
-        return "。".join(parts)
-
-    blunder = entry.get("blunder_score", 0)
-    parts = [f"「{tile}」"]
-    if blunder > 200:
-        parts.append(f"推奨手より{blunder:.0f}点低い悪手")
-        if defense < 0:
-            parts.append(f"危険牌で放銃リスク大")
-        elif shanten > 0:
-            parts.append(f"手が後退するため非推奨")
+        text = "。".join(parts)
     else:
-        parts.append(f"打牌後{shanten}向聴の{attack_desc}、{safety_desc}")
-    return "。".join(parts)
+        blunder = entry.get("blunder_score", 0)
+        if blunder > 200:
+            text = f"「{tile}」は推奨手より{blunder:.0f}点低い悪手です"
+        else:
+            text = "。".join(parts)
 
-    if keiten_bonus > 0:
-        parts.append(f"終盤の形テンボーナス +{keiten_bonus} 点を加算。")
-    return "".join(parts)
+    text += f" 【{', '.join(detail_parts)}】"
+    return text
 
 
 def _restore_game_state(payload: dict) -> GameState:
