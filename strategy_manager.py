@@ -51,9 +51,6 @@ class ShantenCalculator:
             tmp[head] -= 2
             melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
             s = 8 - 2 * melds - 1
-            pairs_after = sum(1 for c in tmp if c >= 2)
-            if pairs_after >= 1 and melds >= 2:
-                s -= 1
             if s < best:
                 best = s
         melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
@@ -74,9 +71,6 @@ class ShantenCalculator:
             tmp[head] -= 2
             melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
             s = (4 - open_meld_count) * 2 - 2 * melds - 1
-            pairs_after = sum(1 for c in tmp if c >= 2)
-            if pairs_after >= 1 and melds >= 2:
-                s -= 1
             if s < best:
                 best = s
         melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
