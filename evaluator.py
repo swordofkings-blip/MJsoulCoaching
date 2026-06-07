@@ -547,11 +547,14 @@ class AttackEvaluator:
                     bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
             bakaze = 27 + (self.state.chang % 4)
             jikaze = 27 + (self.state.my_seat % 4)
+            is_double_wind = (bakaze == jikaze) and (discard_id == bakaze)
             if discard_id == bakaze:
                 if is_pair:
                     bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+                elif is_double_wind:
+                    pass
             if discard_id == jikaze:
-                if not is_pair:
+                if not is_pair and not is_double_wind:
                     bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
