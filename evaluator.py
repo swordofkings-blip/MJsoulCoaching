@@ -341,7 +341,9 @@ class AttackEvaluator:
         ukeire_total, _ = self.ukeire_for_discard(tile)
         shanten = self.shanten_after_discard(tile)
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
-        best_shanten = self.best_shanten_after_single_discard()
+        if not hasattr(self, '_best_shanten_cache'):
+            self._best_shanten_cache = self.best_shanten_after_single_discard()
+        best_shanten = self._best_shanten_cache
         if shanten > best_shanten:
             return SHANTEN_BACKTRACK_PENALTY
         USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
@@ -733,6 +735,8 @@ class Evaluator:
             return None
         if self._hand_is_winning():
             return None
+        if hasattr(self.attack, '_best_shanten_cache'):
+            del self.attack._best_shanten_cache
         unique_tiles = list(dict.fromkeys(hand))
         scored = [(self.evaluate_tile(t), t) for t in unique_tiles]
         scored.sort(key=lambda x: (-x[0], x[1]))

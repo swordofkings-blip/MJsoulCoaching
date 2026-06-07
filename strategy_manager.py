@@ -1,12 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from functools import lru_cache
-from typing import List, Tuple, Optional, Callable
-
-try:
-    import numpy as np
-except ImportError:
-    np = None
+from typing import List, Tuple
 
 from game_state import GameState, Meld
 from str_converter import (
@@ -14,88 +9,6 @@ from str_converter import (
     is_red_five,
     tile_to_id,
 )
-
-
-def _build_numba_jit():
-    try:
-        from numba import njit
-    except ImportError:
-        return None, None
-
-    @njit
-    def _solve_mps_jit(c):
-        best = 0
-        first = -1
-        for i in range(9):
-            if c[i] > 0:
-                first = i
-                break
-        if first == -1:
-            return 0
-        if c[first] >= 3:
-            c2 = c.copy()
-            c2[first] -= 3
-            v = 1 + _solve_mps_jit(c2)
-            if v > best:
-                best = v
-        if first <= 6 and c[first + 1] > 0 and c[first + 2] > 0:
-            c2 = c.copy()
-            c2[first] -= 1
-            c2[first + 1] -= 1
-            c2[first + 2] -= 1
-            v = 1 + _solve_mps_jit(c2)
-            if v > best:
-                best = v
-        c2 = c.copy()
-        c2[first] -= 1
-        v = _solve_mps_jit(c2)
-        if v > best:
-            best = v
-        return best
-
-    @njit
-    def _blocks_jit(c):
-        best = 0
-        first = -1
-        for i in range(9):
-            if c[i] > 0:
-                first = i
-                break
-        if first == -1:
-            return 0
-        if c[first] >= 3:
-            c2 = c.copy()
-            c2[first] -= 3
-            best = max(best, 1 + _blocks_jit(c2))
-        if c[first] >= 2:
-            c2 = c.copy()
-            c2[first] -= 2
-            best = max(best, 1 + _blocks_jit(c2))
-        if first <= 6 and c[first+1] > 0 and c[first+2] > 0:
-            c2 = c.copy()
-            c2[first] -= 1
-            c2[first+1] -= 1
-            c2[first+2] -= 1
-            best = max(best, 1 + _blocks_jit(c2))
-        if first <= 7 and c[first+1] > 0:
-            c2 = c.copy()
-            c2[first] -= 1
-            c2[first+1] -= 1
-            best = max(best, 1 + _blocks_jit(c2))
-        if first <= 6 and c[first+2] > 0:
-            c2 = c.copy()
-            c2[first] -= 1
-            c2[first+2] -= 1
-            best = max(best, 1 + _blocks_jit(c2))
-        c2 = c.copy()
-        c2[first] -= 1
-        best = max(best, _blocks_jit(c2))
-        return best
-
-    return _solve_mps_jit, _blocks_jit
-
-
-_NUMBA_SOLVE, _NUMBA_BLOCKS = _build_numba_jit()
 
 
 class ShantenCalculator:
@@ -169,17 +82,11 @@ class ShantenCalculator:
     @staticmethod
     @lru_cache(maxsize=None)
     def _max_meld_mps(counts9: Tuple[int, ...]) -> int:
-        if _NUMBA_SOLVE is not None:
-            arr = np.array(counts9, dtype=np.int64)
-            return int(_NUMBA_SOLVE(arr))
         c = list(counts9)
         return ShantenCalculator._solve_mps(c)
 
     @staticmethod
     def _solve_mps(c: List[int]) -> int:
-        if _NUMBA_SOLVE is not None:
-            arr = np.array(c, dtype=np.int64)
-            return int(_NUMBA_SOLVE(arr))
         best = 0
         first = None
         for i in range(9):
@@ -212,17 +119,11 @@ class ShantenCalculator:
     @staticmethod
     @lru_cache(maxsize=None)
     def _solve_blocks_mps(counts9: Tuple[int, ...]) -> int:
-        if _NUMBA_BLOCKS is not None:
-            arr = np.array(counts9, dtype=np.int64)
-            return int(_NUMBA_BLOCKS(arr))
         c = list(counts9)
         return ShantenCalculator._blocks_recursive(c)
 
     @staticmethod
     def _blocks_recursive(c: List[int]) -> int:
-        if _NUMBA_BLOCKS is not None:
-            arr = np.array(c, dtype=np.int64)
-            return int(_NUMBA_BLOCKS(arr))
         best = 0
         first = None
         for i in range(9):
