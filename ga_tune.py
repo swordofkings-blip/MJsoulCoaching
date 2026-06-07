@@ -92,8 +92,8 @@ def main():
         except:
             pass
     start_gen = 0
-    pop_size = 8
-    keep = 2
+    pop_size = 24
+    keep = 4
     generations = 30 + extra_gens
     train_records = all_records[:2]
 
@@ -140,11 +140,12 @@ def main():
                     print(f'  {k}={best_p.get(k, "?")}', end='  ')
                 print()
 
-            rate = max(0.05, 0.35 * (1 - (gen - start_gen) / 100))
-            size = max(0.05, 0.18 * (1 - (gen - start_gen) / 100))
+            progress = (gen - start_gen) / generations
+            rate = max(0.05, 0.35 * (1 - progress))
+            size = max(0.05, 0.18 * (1 - progress))
             nxt = pop[:keep]
             while len(nxt) < pop_size:
-                nxt.append((0.0, mutate(random.choice(pop[:3])[1], rate, size)))
+                nxt.append((0.0, mutate(random.choice(pop[:keep])[1], rate, size)))
             pop = nxt
 
         save_state(pop, start_gen + generations, log)
