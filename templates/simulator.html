@@ -101,19 +101,25 @@
             position: relative;
         }
 
-        /* 右側：コントロール & Geminiプロンプトパネル */
-        .control-pane {
-            width: 500px;
-            background: rgba(13, 15, 23, 0.95);
-            border-left: 1px solid var(--card-border);
-            display: flex;
-            flex-direction: column;
-            padding: 1.5rem;
-            overflow-y: auto;
-            z-index: 5;
-        }
+        /* 左列（盤面 + 下部コントロール） */
+        .left-column { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
-        /* 麻雀卓 - 960px x 740px へ拡張。高さを少し潰して縦方向のゆとりを確保しつつ被りを排除 */
+        /* 下部コントロールバー */
+        .bottom-controls { display: flex; flex-direction: row; gap: 24px; padding: 10px 20px; background: rgba(13,15,23,0.95); border-top: 1px solid var(--card-border); align-items: center; flex-wrap: wrap; }
+        .bottom-controls .control-section { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+        .bottom-controls .section-title { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+        .bottom-controls .btn-group { display: flex; gap: 4px; }
+        .bottom-controls .btn { padding: 4px 10px; font-size: 0.75rem; }
+        .bottom-controls select { width: auto; min-width: 120px; }
+        .bottom-controls .slider-wrapper { min-width: 200px; }
+        .bottom-controls .slider-labels { font-size: 0.65rem; }
+        .bottom-controls .radio-group { display: flex; gap: 4px; }
+        .bottom-controls .radio-label { padding: 2px 8px; font-size: 0.75rem; }
+
+        /* BOTコーチングパネル */
+        .coach-pane { width: 500px; background: rgba(13,15,23,0.95); border-left: 1px solid var(--card-border); display: flex; flex-direction: column; padding: 1.5rem; overflow-y: auto; z-index: 5; }
+
+        /* 麻雀卓 - 960px x 740px へ拡張 */
         .mahjong-table {
             width: 960px;
             height: 740px;
@@ -851,8 +857,10 @@
     </header>
 
     <div class="app-container">
-        <!-- 左側：シミュレーター盤面 -->
-        <div class="simulator-pane">
+        <!-- 左列：盤面 + 下部コントロール -->
+        <div class="left-column">
+            <!-- シミュレーター盤面 -->
+            <div class="simulator-pane">
             <div class="mahjong-table">
                 <!-- 中央情報表示 -->
                 <div class="table-center">
@@ -921,17 +929,14 @@
             </div>
         </div>
 
-        <!-- 右側：コントロール & Geminiプロンプトパネル -->
-        <div class="control-pane">
-            <!-- 局ジャンプ -->
+        <!-- 下部コントロールバー -->
+        <div class="bottom-controls">
             <div class="control-section">
                 <div class="section-title">局の選択</div>
                 <select id="roundSelect" onchange="jumpToRoundStart(this.value)">
                     <option value="">データをロード中...</option>
                 </select>
             </div>
-
-            <!-- アクションタイムライン -->
             <div class="control-section">
                 <div class="section-title">手番タイムライン</div>
                 <div class="slider-wrapper">
@@ -948,24 +953,24 @@
                     <button class="btn" id="btnNext" onclick="step(1)">1手進む ▶</button>
                 </div>
             </div>
-
-            <!-- 視点選択 -->
             <div class="control-section">
                 <div class="section-title">相談プレイヤー視点</div>
                 <div class="radio-group" id="viewPerspectiveGroup">
                     <input type="radio" name="perspective" id="pers0" value="0" checked onchange="changePerspective(0)">
                     <label class="radio-label" for="pers0">席 0</label>
-                    
                     <input type="radio" name="perspective" id="pers1" value="1" onchange="changePerspective(1)">
                     <label class="radio-label" for="pers1">席 1</label>
-                    
                     <input type="radio" name="perspective" id="pers2" value="2" onchange="changePerspective(2)">
                     <label class="radio-label" for="pers2">席 2</label>
-                    
                     <input type="radio" name="perspective" id="pers3" value="3" onchange="changePerspective(3)">
                     <label class="radio-label" for="pers3">席 3</label>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 右側：BOTコーチングパネル -->
+    <div class="coach-pane">
 
             <!-- タブ切り替え -->
             <div class="tab-header">
