@@ -2648,8 +2648,8 @@ ${riversStr}
                     const recRow = list.querySelector(`.bot-coach-eval-row[data-tile="${data.recommended}"]`);
                     if (recRow) {
                         recRow.classList.add('is-active');
-                        renderReasonForTile(recEntry.reason || `「${data.recommended}」推奨 (総合スコア最高)。`);
-                    }
+            renderReasonForTile(recEntry.reason || `「${getTileText(data.recommended)}」推奨 (総合スコア最高)。`);
+                }
                 }
             } else {
                 if (data.can_kan) {

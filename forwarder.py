@@ -425,11 +425,16 @@ def _attack_description(shanten: int, ukeire: int) -> str:
     return f"{shanten}向聴 (有効牌: {ukeire}枚)"
 
 
+HONOR_NAMES = {'1z':'東','2z':'南','3z':'西','4z':'北','5z':'白','6z':'發','7z':'中'}
+
+def _fmt_tile(t):
+    return HONOR_NAMES.get(t, t)
+
 def _build_decision_reason(entry: dict, strategy_details: dict,
                             evaluator: 'Evaluator', is_best: bool = False) -> str:
     mode = strategy_details.get("mode", "")
     push = strategy_details.get("push_score", 0.0)
-    tile = entry["tile"]
+    tile = _fmt_tile(entry["tile"])
     shanten = entry["shanten"]
     ukeire = entry["ukeire"]
     defense = entry["defense"]
