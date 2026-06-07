@@ -457,13 +457,9 @@ class Evaluator:
         return False
 
     def evaluate_tile(self, tile: str) -> float:
-        """
-        @title 牌の総合評価
-        @description 攻撃評価と防御評価を押し引き度 (PushScore) で重み付きブレンドし、終盤の形テンボーナスを加算する。
-        誰もリーチしておらず他家に副露もない場合、防御評価が意味を持たないため攻撃評価を100%使う。
-        @param tile 評価対象の牌 (例: "5m")
-        @returns float 総合評価値
-        """
+        use_ev = self.params.get('USE_EV_FRAMEWORK', False)
+        if use_ev:
+            return self._evaluate_tile_ev(tile)
         v_attack = self.attack.attack_score_for_tile(tile)
         v_defense = self.defense.defense_score_for_tile(tile)
         push_score = self.strategy.compute_push_score()
@@ -473,6 +469,115 @@ class Evaluator:
             v = push_score * v_attack + (1.0 - push_score) * v_defense
         v += self._get_keiten_bonus(tile)
         return v
+
+    def _evaluate_tile_ev(self, tile: str) -> float:
+        p_win = self._estimate_win_p(tile)
+        p_deal_in = self._estimate_deal_in_p(tile)
+        win_score = self._estimate_win_score()
+        deal_loss = self._estimate_deal_loss(tile)
+        ev_hand = p_win * win_score - p_deal_in * deal_loss
+        pos_val = self._positional_ev()
+        return float(ev_hand + pos_val)
+
+    def _estimate_win_p(self, tile: str) -> float:
+        ukeire_total, _ = self.attack.ukeire_for_discard(tile)
+        if ukeire_total <= 0:
+            return 0.0
+        shanten = self.attack.shanten_after_discard(tile)
+        remaining = self.state.left_tile_count
+        if remaining <= 0:
+            return 0.0
+        draw_chance = ukeire_total / max(1, remaining)
+        if shanten <= -1:
+            return min(0.9, draw_chance * 4)
+        elif shanten == 0:
+            return min(0.7, draw_chance * 3)
+        elif shanten == 1:
+            return min(0.3, draw_chance * 2)
+        else:
+            return min(0.1, draw_chance * 0.5)
+
+    def _estimate_deal_in_p(self, tile: str) -> float:
+        n_reach = len(self.defense._active_reach_seats())
+        if n_reach == 0:
+            return 0.0
+        tile_id = tile_to_id(tile)
+        if self.defense.is_genbutsu(tile_id):
+            return 0.0
+        reach_seats = self.defense._active_reach_seats()
+        if tile_id in self.defense._common_genbutsu_ids(reach_seats):
+            return 0.0
+        if tile_id in self.defense._wall_suji_ids():
+            return 0.01
+        if tile_id in self.defense._no_chance_ids() and not is_honor(tile_id):
+            return 0.02
+        if tile_id in self.defense._reach_suji_ids(reach_seats):
+            return 0.03 * n_reach
+        if tile_id in self.defense._one_chance_ids() and not is_honor(tile_id):
+            return 0.05 * n_reach
+        matagi = self.defense._matagi_danger_ids(reach_seats)
+        danger = 0.06
+        danger += n_reach * 0.05
+        if tile_id in matagi:
+            danger += 0.05
+        return min(0.5, danger)
+
+    def _estimate_win_score(self) -> int:
+        from scoring import estimate_han
+        hand = self.state.my_hand
+        melds = self.state.my_melds
+        open_melds = [m for m in melds if m.is_open]
+        is_open = len(open_melds) > 0
+        han = estimate_han(hand, melds, self.state.doras, is_open,
+                           is_tsumo=False, has_reach=False, is_ippatsu=False)
+        if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
+            han += 1
+        is_dealer = (self.state.my_seat % 4) == 0
+        if han >= 5:
+            if han >= 13:
+                base = 32000
+            elif han >= 11:
+                base = 24000
+            elif han >= 8:
+                base = 16000
+            elif han >= 6:
+                base = 12000
+            else:
+                base = 8000
+        else:
+            base = 30 * 4 * (2 ** (2 + han))
+            base = ((base + 99) // 100) * 100
+        if is_dealer:
+            base = int(base * 1.5)
+        return base
+
+    def _estimate_deal_loss(self, tile: str) -> int:
+        n_reach = len(self.defense._active_reach_seats())
+        if n_reach == 0:
+            return 0
+        base_loss = 3000
+        for seat in range(4):
+            if seat == self.state.my_seat:
+                continue
+            if self.state.reach_states[seat].is_reach:
+                base_loss += 1000
+        for seat in range(4):
+            if seat == self.state.my_seat:
+                continue
+            for m in self.state.melds[seat]:
+                if m.is_open:
+                    for t in m.tiles:
+                        for d in self.state.doras:
+                            if tile_to_id(t) == tile_to_id(d):
+                                base_loss += 1000
+        return base_loss
+
+    def _positional_ev(self) -> float:
+        rank = self.state.my_score_rank()
+        my_score = self.state.scores[self.state.my_seat]
+        scores = sorted(self.state.scores, reverse=True)
+        rank_bonus = {0: 10, 1: 0, 2: -10, 3: -20}.get(rank, 0)
+        return float(rank_bonus)
 
     def _hand_is_winning(self) -> bool:
         counts = self.state.my_hand_counts()
