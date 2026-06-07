@@ -572,10 +572,11 @@ class AttackEvaluator:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
 
             turn = self.state.tsumo_count
+            threat = self.strategy.compute_opponent_threat()
             if is_honor(discard_id) and not is_pair:
-                turn_scale = max(0.1, 1.0 - turn / 18.0)
+                threat_factor = max(0.0, 1.0 - threat * 2.5)
                 effective_bonus = self.params.get('HONOR_DISCARD_BONUS', 20)
-                bonus_add = int(effective_bonus * (turn_scale - 0.5))
+                bonus_add = int(effective_bonus * (threat_factor - 0.5))
                 if bonus_add > 0:
                     bonus += bonus_add
                 elif bonus_add < 0:
