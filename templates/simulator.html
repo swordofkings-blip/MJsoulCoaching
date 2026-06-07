@@ -103,7 +103,7 @@
 
         /* 右側：コントロール & Geminiプロンプトパネル */
         .control-pane {
-            width: 420px;
+            width: 500px;
             background: rgba(13, 15, 23, 0.95);
             border-left: 1px solid var(--card-border);
             display: flex;
@@ -259,25 +259,27 @@
         }
 
 
-        /* プレイヤー席情報表示 - 卓の「外側」の左右スペースに逃がすことで、卓内のいかなる牌とも絶対に被らないように配置 */
+        /* プレイヤー席情報表示 - 卓内4隅に横一列で配置 */
         .seat-info {
             position: absolute;
             background: rgba(22, 26, 37, 0.9);
             border: 1px solid var(--card-border);
             border-radius: 8px;
-            padding: 6px 10px;
-            font-size: 0.8rem;
+            padding: 4px 10px;
+            font-size: 0.75rem;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
+            gap: 8px;
             z-index: 4;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            min-width: 110px; /* 席情報の横幅。プレイヤー名と点数がしっかり収まる110px */
+            min-width: 160px; /* 点差表示も含めた横幅 */
+            white-space: nowrap;
         }
-        .seat-info.bottom { bottom: 20px; left: -130px; } /* 卓の左外側下。手牌や副露の邪魔をしない左端-130px */
-        .seat-info.right { bottom: 20px; right: -130px; } /* 卓の右外側下。右端-130px */
-        .seat-info.top { top: 20px; right: -130px; } /* 卓の右外側上。右端-130px */
-        .seat-info.left { top: 20px; left: -130px; }
+        .seat-info.bottom { bottom: 16px; left: 16px; }
+        .seat-info.right { bottom: 16px; right: 16px; }
+        .seat-info.top { top: 16px; right: 16px; }
+        .seat-info.left { top: 16px; left: 16px; }
 
         .seat-info.active {
             border-color: var(--accent-green);
@@ -288,13 +290,24 @@
         .seat-wind {
             font-weight: bold;
             color: var(--accent-yellow);
+            margin-right: 4px;
         }
 
         .seat-score {
             font-family: monospace;
             font-weight: bold;
-            margin-top: 2px;
         }
+
+        .seat-diffs {
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-left: 4px;
+            display: inline-flex;
+            gap: 6px;
+        }
+        .seat-diff-plus { color: #10b981; }
+        .seat-diff-minus { color: #ef4444; }
 
         /* 麻雀牌のデザイン */
         .tile {
@@ -760,11 +773,38 @@
             font-family: monospace;
             font-size: 0.75rem;
             color: var(--text-muted);
-            max-height: 180px;
+            max-height: 250px;
             overflow-y: auto;
             white-space: pre-wrap;
             margin-top: 0.8rem;
         }
+
+        /* タブ切り替え */
+        .tab-header {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 0.6rem;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 4px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 6px 6px 0 0;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .tab-btn.active {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: flex; flex-direction: column; }
 
         /* トースト */
         .toast {
@@ -837,6 +877,7 @@
                     <span class="seat-wind">東</span>
                     <span class="seat-name">Player 0</span>
                     <span class="seat-score">25000</span>
+                    <span class="seat-diffs" id="seatDiffs0"></span>
                 </div>
 
                 <!-- プレイヤー1のエリア (右) -->
@@ -849,6 +890,7 @@
                     <span class="seat-wind">南</span>
                     <span class="seat-name">Player 1</span>
                     <span class="seat-score">25000</span>
+                    <span class="seat-diffs" id="seatDiffs1"></span>
                 </div>
 
                 <!-- プレイヤー2のエリア (奥) -->
@@ -861,6 +903,7 @@
                     <span class="seat-wind">西</span>
                     <span class="seat-name">Player 2</span>
                     <span class="seat-score">25000</span>
+                    <span class="seat-diffs" id="seatDiffs2"></span>
                 </div>
 
                 <!-- プレイヤー3のエリア (左) -->
@@ -873,6 +916,7 @@
                     <span class="seat-wind">北</span>
                     <span class="seat-name">Player 3</span>
                     <span class="seat-score">25000</span>
+                    <span class="seat-diffs" id="seatDiffs3"></span>
                 </div>
             </div>
         </div>
@@ -923,51 +967,75 @@
                 </div>
             </div>
 
-            <!-- Geminiプロンプト生成 -->
-            <div class="control-section" style="flex: 1; display: flex; flex-direction: column; margin-bottom: 0;">
-                <div class="section-title" style="margin-bottom: 0.4rem;">Gemini 相談用プロンプト</div>
-                <button class="btn btn-primary" onclick="copyGeminiPrompt()">
-                    📋 プロンプトをコピーする
-                </button>
-                <div class="prompt-preview" id="promptPreview">
-                    プロンプトのプレビューがここに表示されます...
+            <!-- タブ切り替え -->
+            <div class="tab-header">
+                <button class="tab-btn active" onclick="switchTab('coach')">🤖 BOTコーチング</button>
+                <button class="tab-btn" onclick="switchTab('prompt')">💬 Gemini相談</button>
+            </div>
+
+            <!-- Gemini相談プロンプト（タブ） -->
+            <div class="tab-content active" id="contentCoach">
+                <!-- ローカルBOTコーチング -->
+                <div class="control-section" style="flex:1; display:flex; flex-direction:column;">
+                    <div class="bot-coach-panel" id="botCoachPanel" style="flex:1; display:flex; flex-direction:column;">
+                        <div class="bot-coach-wait" id="botCoachWait">※手番ではありません</div>
+                        <div class="bot-coach-status" id="botCoachStatus"></div>
+                        <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
+                            <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
+                            <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
+                            <div class="bot-coach-near" id="botCoachNear" style="margin-top:6px;font-size:0.7rem;color:rgba(255,255,255,0.6);">
+                                <span id="botCoachNearLabel"></span>
+                                <span id="botCoachNearTiles"></span>
+                            </div>
+                        </div>
+                        <div class="bot-coach-riichi-panel" id="botCoachRiichiPanel" style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(52, 152, 219, 0.15); border: 1px solid #3498db; flex-direction: column; gap: 4px; border-left: 4px solid #3498db;">
+                            <div style="font-weight: bold; color: #3498db; display: flex; align-items: center; gap: 6px;">
+                                <span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.75rem;">立直判断</span>
+                                <span id="botCoachRiichiDecision">--</span>
+                            </div>
+                            <div id="botCoachRiichiReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--</div>
+                        </div>
+                        <div class="bot-coach-kan-panel" id="botCoachKanPanel" style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; flex-direction: column; gap: 4px; border-left: 4px solid #2ecc71;">
+                            <div style="font-weight: bold; color: #2ecc71; display: flex; align-items: center; gap: 6px;">
+                                <span style="background:#2ecc71; color:white; padding:2px 6px; border-radius:4px; font-size:0.75rem;">暗槓判断</span>
+                                <span id="botCoachKanDecision">--</span>
+                            </div>
+                            <div id="botCoachKanReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--</div>
+                        </div>
+                        <div class="bot-coach-push" id="botCoachPush" style="display:none;">
+                            <div class="bot-coach-push-label">
+                                <span>押し (攻め)</span>
+                                <span id="botCoachPushValue">0.00</span>
+                            </div>
+                            <div class="bot-coach-push-bar">
+                                <div class="bot-coach-push-fill" id="botCoachPushFill" style="width:0%"></div>
+                            </div>
+                        </div>
+                        <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
+                            <div class="bot-coach-strategy-title">戦略モードの内訳</div>
+                            <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
+                            <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
+                            <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
+                        </div>
+                        <div class="bot-coach-reason" id="botCoachReason" style="display:none;">
+                            <div class="bot-coach-reason-title">推奨打牌の決定理由</div>
+                            <div class="bot-coach-reason-text" id="botCoachReasonText">--</div>
+                        </div>
+                        <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- ローカルBOTコーチング -->
-            <div class="control-section">
-                <div class="section-title">🤖 ローカルBOTコーチング</div>
-                <div class="bot-coach-panel" id="botCoachPanel">
-                    <div class="bot-coach-wait" id="botCoachWait">※手番ではありません</div>
-                    <div class="bot-coach-status" id="botCoachStatus"></div>
-                    <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
-                        <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
-                        <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
-                        <div class="bot-coach-near" id="botCoachNear" style="margin-top:6px;font-size:0.7rem;color:rgba(255,255,255,0.6);">
-                            <span id="botCoachNearLabel"></span>
-                            <span id="botCoachNearTiles"></span>
-                        </div>
+            <!-- Gemini相談（タブ） -->
+            <div class="tab-content" id="contentPrompt">
+                <div class="control-section" style="flex: 1; display: flex; flex-direction: column; margin-bottom: 0;">
+                    <div class="section-title" style="margin-bottom: 0.4rem;">Gemini 相談用プロンプト</div>
+                    <button class="btn btn-primary" onclick="copyGeminiPrompt()">
+                        📋 プロンプトをコピーする
+                    </button>
+                    <div class="prompt-preview" id="promptPreview">
+                        プロンプトのプレビューがここに表示されます...
                     </div>
-                    <div class="bot-coach-push" id="botCoachPush" style="display:none;">
-                        <div class="bot-coach-push-label">
-                            <span>押し (攻め)</span>
-                            <span id="botCoachPushValue">0.00</span>
-                        </div>
-                        <div class="bot-coach-push-bar">
-                            <div class="bot-coach-push-fill" id="botCoachPushFill" style="width:0%"></div>
-                        </div>
-                    </div>
-                    <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
-                        <div class="bot-coach-strategy-title">戦略モードの内訳</div>
-                        <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
-                        <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
-                        <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
-                    </div>
-                    <div class="bot-coach-reason" id="botCoachReason" style="display:none;">
-                        <div class="bot-coach-reason-title">推奨打牌の決定理由</div>
-                        <div class="bot-coach-reason-text" id="botCoachReasonText">--</div>
-                    </div>
-                    <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
                 </div>
             </div>
 
@@ -1565,6 +1633,19 @@
             updatePromptPreview();
         }
 
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            if (tab === 'coach') {
+                document.querySelector('.tab-btn:first-child').classList.add('active');
+                document.getElementById('contentCoach').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                document.getElementById('contentPrompt').classList.add('active');
+                updatePromptPreview();
+            }
+        }
+
         function getTileClass(tile) {
             if (!tile) return '';
             if (tile.startsWith('0')) return 'tile-aka';
@@ -1631,6 +1712,28 @@
                 const areaEl = document.getElementById(`area${realSeat}`);
                 areaEl.setAttribute('data-pos', pos);
                 areaEl.className = 'player-area';
+                
+                // 下側プレイヤー（自家）の点差表示を更新
+                const diffsEl = document.getElementById(`seatDiffs${realSeat}`);
+                if (pos === 'bottom') {
+                    const myScore = engine.scores[realSeat];
+                    const otherSeats = relativeSeats.filter((_, i) => i !== 0);
+                    const dirLabels = ['右', '対', '左'];
+                    const dirMap = {};
+                    otherSeats.forEach((s, i) => { dirMap[s] = i; });
+                    const diffs = otherSeats.map(s => {
+                        const diff = engine.scores[s] - myScore;
+                        return diff;
+                    });
+                    diffsEl.style.display = 'inline-flex';
+                    diffsEl.innerHTML = diffs.map((d, i) => {
+                        const cls = d >= 0 ? 'seat-diff-plus' : 'seat-diff-minus';
+                        const sign = d >= 0 ? '+' : '';
+                        return `<span class="${cls}">${dirLabels[i]}:${sign}${d}</span>`;
+                    }).join('');
+                } else {
+                    diffsEl.style.display = 'none';
+                }
                 
                 // 手牌の描画
                 const handEl = document.getElementById(`hand${realSeat}`);
@@ -2048,6 +2151,8 @@ ${riversStr}
             document.getElementById('botCoachWait').style.display = 'block';
             document.getElementById('botCoachStatus').innerText = '※手番ではありません';
             document.getElementById('botCoachRecommend').style.display = 'none';
+            document.getElementById('botCoachRiichiPanel').style.display = 'none';
+            document.getElementById('botCoachKanPanel').style.display = 'none';
             document.getElementById('botCoachPush').style.display = 'none';
             document.getElementById('botCoachStrategy').style.display = 'none';
             document.getElementById('botCoachReason').style.display = 'none';
@@ -2123,88 +2228,172 @@ ${riversStr}
                 return;
             }
             document.getElementById('botCoachWait').style.display = 'none';
-            document.getElementById('botCoachStatus').innerText = `手番: ${data.summary ? data.summary.tsumo_count : 0} / 推奨: <strong>${data.recommended || '-'}</strong>`;
 
-            const recBox = document.getElementById('botCoachRecommend');
-            recBox.style.display = 'flex';
-            const recTile = document.getElementById('botCoachRecommendTile');
-            recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
-            recTile.innerText = getTileText(data.recommended);
-            document.getElementById('botCoachRecommendText').innerHTML =
-                `<strong>${data.recommended}</strong> を切るのが最も評価値が高いと算出されました。`;
-
-            if (data.near_tiles && data.near_tiles.length > 0) {
-                document.getElementById('botCoachNear').style.display = 'block';
-                document.getElementById('botCoachNearLabel').innerText = '同等候補: ';
-                document.getElementById('botCoachNearTiles').innerHTML = data.near_tiles.map(t =>
-                    `<span class="tile ${getTileClass(t)}" style="display:inline-block;padding:2px 6px;margin:1px;border-radius:4px;font-size:0.75rem;">${getTileText(t)}</span>`
-                ).join('');
-            } else {
+            const isRiichi = data.is_riichi_active || false;
+            
+            // 1. リーチ状態に応じた基本情報の表示切り替え
+            if (isRiichi) {
+                document.getElementById('botCoachStatus').innerHTML = `手番: ${data.summary ? data.summary.tsumo_count : 0} / <strong>リーチ中</strong>`;
+                
+                const recBox = document.getElementById('botCoachRecommend');
+                recBox.style.display = 'flex';
+                const recTile = document.getElementById('botCoachRecommendTile');
+                
+                if (data.can_kan) {
+                    recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.kan_tile);
+                    recTile.innerText = getTileText(data.kan_tile);
+                    document.getElementById('botCoachRecommendText').innerHTML =
+                        `<strong>暗槓可能牌があります</strong>`;
+                } else {
+                    recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
+                    recTile.innerText = getTileText(data.recommended);
+                    document.getElementById('botCoachRecommendText').innerHTML =
+                        `<strong>ツモ切りを推奨します</strong>`;
+                }
+                
                 document.getElementById('botCoachNear').style.display = 'none';
+                document.getElementById('botCoachPush').style.display = 'none';
+                document.getElementById('botCoachStrategy').style.display = 'none';
+                document.getElementById('botCoachEvalList').innerHTML = '';
+            } else {
+                document.getElementById('botCoachStatus').innerHTML = `手番: ${data.summary ? data.summary.tsumo_count : 0} / 推奨: <strong>${data.recommended || '-'}</strong>`;
+                
+                const recBox = document.getElementById('botCoachRecommend');
+                recBox.style.display = 'flex';
+                const recTile = document.getElementById('botCoachRecommendTile');
+                recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
+                recTile.innerText = getTileText(data.recommended);
+                document.getElementById('botCoachRecommendText').innerHTML =
+                    `<strong>${data.recommended}</strong> を切るのが最も評価値が高いと算出されました。`;
+
+                if (data.near_tiles && data.near_tiles.length > 0) {
+                    document.getElementById('botCoachNear').style.display = 'block';
+                    document.getElementById('botCoachNearLabel').innerText = '同等候補: ';
+                    document.getElementById('botCoachNearTiles').innerHTML = data.near_tiles.map(t =>
+                        `<span class="tile ${getTileClass(t)}" style="display:inline-block;padding:2px 6px;margin:1px;border-radius:4px;font-size:0.75rem;">${getTileText(t)}</span>`
+                    ).join('');
+                } else {
+                    document.getElementById('botCoachNear').style.display = 'none';
+                }
+
+                const pushBox = document.getElementById('botCoachPush');
+                pushBox.style.display = 'flex';
+                const push = Math.max(0, Math.min(1, data.push_score || 0));
+                document.getElementById('botCoachPushValue').innerText = push.toFixed(2);
+                document.getElementById('botCoachPushFill').style.width = (push * 100).toFixed(1) + '%';
+
+                renderStrategyDetails(data.strategy_details);
             }
 
-            const pushBox = document.getElementById('botCoachPush');
-            pushBox.style.display = 'flex';
-            const push = Math.max(0, Math.min(1, data.push_score || 0));
-            document.getElementById('botCoachPushValue').innerText = push.toFixed(2);
-            document.getElementById('botCoachPushFill').style.width = (push * 100).toFixed(1) + '%';
-
-            renderStrategyDetails(data.strategy_details);
-
-            const list = document.getElementById('botCoachEvalList');
-            list.innerHTML = '';
-            const evals = data.evaluations || [];
-            const maxAbs = Math.max(1, ...evals.map(e => Math.abs(e.score)));
-            evals.forEach(ev => {
-                const row = document.createElement('div');
-                row.className = 'bot-coach-eval-row' + (ev.tile === data.recommended ? ' is-recommended' : '') + (ev.is_blunder ? ' is-blunder' : '');
-                row.dataset.tile = ev.tile;
-
-                const tileEl = document.createElement('div');
-                tileEl.className = 'bot-coach-eval-tile ' + getTileClass(ev.tile);
-                tileEl.innerText = getTileText(ev.tile);
-
-                const bar = document.createElement('div');
-                bar.className = 'bot-coach-eval-bar';
-                const fill = document.createElement('div');
-                fill.className = 'bot-coach-eval-bar-fill';
-                const pct = Math.max(0, Math.min(100, (Math.abs(ev.score) / maxAbs) * 100));
-                fill.style.width = pct.toFixed(1) + '%';
-                bar.appendChild(fill);
-
-                const score = document.createElement('div');
-                score.className = 'bot-coach-eval-score';
-                const shanten = ev.shanten;
-                let shantenLabel;
-                if (shanten <= -1) shantenLabel = '和了';
-                else if (shanten === 0) shantenLabel = '聴牌';
-                else shantenLabel = `${shanten}向`;
-                score.innerText = `${ev.score.toFixed(0)} (${shantenLabel})`;
-
-                const meta = document.createElement('div');
-                meta.className = 'bot-coach-eval-meta';
-                let metaHtml = `<div>${ev.safety_desc || ''}</div><div>${ev.attack_desc || ''}</div>`;
-                if (ev.is_blunder) {
-                    metaHtml += `<div style="color:#e74c3c;font-weight:bold;">⚠ 悪手 (-${ev.blunder_score})</div>`;
+            // 2. 立直判断パネルの描画
+            const riichiPanel = document.getElementById('botCoachRiichiPanel');
+            if (!isRiichi && data.should_riichi !== null && data.should_riichi !== undefined) {
+                riichiPanel.style.display = 'flex';
+                const decisionEl = document.getElementById('botCoachRiichiDecision');
+                const reasonEl = document.getElementById('botCoachRiichiReason');
+                if (data.should_riichi) {
+                    decisionEl.innerText = '立直推奨';
+                    decisionEl.style.color = '#3498db';
+                    riichiPanel.style.background = 'rgba(52, 152, 219, 0.15)';
+                    riichiPanel.style.borderColor = '#3498db';
+                } else {
+                    decisionEl.innerText = '黙聴 (ダマテン) 推奨';
+                    decisionEl.style.color = '#e67e22';
+                    riichiPanel.style.background = 'rgba(230, 126, 34, 0.15)';
+                    riichiPanel.style.borderColor = '#e67e22';
+                    riichiPanel.style.borderLeftColor = '#e67e22';
                 }
-                meta.innerHTML = metaHtml;
+                reasonEl.innerText = data.riichi_reason || '';
+            } else {
+                riichiPanel.style.display = 'none';
+            }
 
-                row.appendChild(tileEl);
-                row.appendChild(bar);
-                row.appendChild(score);
-                row.appendChild(meta);
+            // 3. 暗槓判断パネルの描画
+            const kanPanel = document.getElementById('botCoachKanPanel');
+            if (isRiichi && data.can_kan) {
+                kanPanel.style.display = 'flex';
+                const decisionEl = document.getElementById('botCoachKanDecision');
+                const reasonEl = document.getElementById('botCoachKanReason');
+                if (data.should_kan) {
+                    decisionEl.innerText = '暗槓推奨';
+                    decisionEl.style.color = '#2ecc71';
+                    kanPanel.style.background = 'rgba(46, 204, 113, 0.15)';
+                    kanPanel.style.borderColor = '#2ecc71';
+                } else {
+                    decisionEl.innerText = '暗槓せずツモ切り推奨';
+                    decisionEl.style.color = '#95a5a6';
+                    kanPanel.style.background = 'rgba(149, 165, 166, 0.15)';
+                    kanPanel.style.borderColor = '#95a5a6';
+                    kanPanel.style.borderLeftColor = '#95a5a6';
+                }
+                reasonEl.innerText = data.kan_reason || '';
+            } else {
+                kanPanel.style.display = 'none';
+            }
 
-                row.addEventListener('mouseenter', () => selectEvalRow(row, ev, data.recommended));
-                row.addEventListener('click', () => selectEvalRow(row, ev, data.recommended));
-                list.appendChild(row);
-            });
+            // 4. 評価候補リスト（リーチ中でない場合のみ描画）
+            const list = document.getElementById('botCoachEvalList');
+            if (!isRiichi) {
+                list.innerHTML = '';
+                const evals = data.evaluations || [];
+                const maxAbs = Math.max(1, ...evals.map(e => Math.abs(e.score)));
+                evals.forEach(ev => {
+                    const row = document.createElement('div');
+                    row.className = 'bot-coach-eval-row' + (ev.tile === data.recommended ? ' is-recommended' : '') + (ev.is_blunder ? ' is-blunder' : '');
+                    row.dataset.tile = ev.tile;
 
-            const recEntry = evals.find(e => e.tile === data.recommended);
-            if (recEntry) {
-                const recRow = list.querySelector(`.bot-coach-eval-row[data-tile="${data.recommended}"]`);
-                if (recRow) {
-                    recRow.classList.add('is-active');
-                    renderReasonForTile(recEntry.reason || `「${data.recommended}」推奨 (総合スコア最高)。`);
+                    const tileEl = document.createElement('div');
+                    tileEl.className = 'bot-coach-eval-tile ' + getTileClass(ev.tile);
+                    tileEl.innerText = getTileText(ev.tile);
+
+                    const bar = document.createElement('div');
+                    bar.className = 'bot-coach-eval-bar';
+                    const fill = document.createElement('div');
+                    fill.className = 'bot-coach-eval-bar-fill';
+                    const pct = Math.max(0, Math.min(100, (Math.abs(ev.score) / maxAbs) * 100));
+                    fill.style.width = pct.toFixed(1) + '%';
+                    bar.appendChild(fill);
+
+                    const score = document.createElement('div');
+                    score.className = 'bot-coach-eval-score';
+                    const shanten = ev.shanten;
+                    let shantenLabel;
+                    if (shanten <= -1) shantenLabel = '和了';
+                    else if (shanten === 0) shantenLabel = '聴牌';
+                    else shantenLabel = `${shanten}向`;
+                    score.innerText = `${ev.score.toFixed(0)} (${shantenLabel})`;
+
+                    const meta = document.createElement('div');
+                    meta.className = 'bot-coach-eval-meta';
+                    let metaHtml = `<div>${ev.safety_desc || ''}</div><div>${ev.attack_desc || ''}</div>`;
+                    if (ev.is_blunder) {
+                        metaHtml += `<div style="color:#e74c3c;font-weight:bold;">⚠ 悪手 (-${ev.blunder_score})</div>`;
+                    }
+                    meta.innerHTML = metaHtml;
+
+                    row.appendChild(tileEl);
+                    row.appendChild(bar);
+                    row.appendChild(score);
+                    row.appendChild(meta);
+
+                    row.addEventListener('mouseenter', () => selectEvalRow(row, ev, data.recommended));
+                    row.addEventListener('click', () => selectEvalRow(row, ev, data.recommended));
+                    list.appendChild(row);
+                });
+
+                const recEntry = evals.find(e => e.tile === data.recommended);
+                if (recEntry) {
+                    const recRow = list.querySelector(`.bot-coach-eval-row[data-tile="${data.recommended}"]`);
+                    if (recRow) {
+                        recRow.classList.add('is-active');
+                        renderReasonForTile(recEntry.reason || `「${data.recommended}」推奨 (総合スコア最高)。`);
+                    }
+                }
+            } else {
+                if (data.can_kan) {
+                    renderReasonForTile(data.kan_reason);
+                } else {
+                    renderReasonForTile("リーチ中につき、基本的にはツモ牌をそのまま切ります。");
                 }
             }
         }
