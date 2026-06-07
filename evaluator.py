@@ -536,14 +536,6 @@ class AttackEvaluator:
                 bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
             if off < 8 and counts_after[base + off + 1] >= 1:
                 bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
-            before = counts
-            left = off > 0 and before[base + off - 1] > 0
-            right = off < 8 and before[base + off + 1] > 0
-            if left or right:
-                is_penchan = (off == 0 and right) or (off == 1 and left)
-                is_penchan = is_penchan or (off == 7 and right) or (off == 8 and left)
-                if is_penchan:
-                    bonus -= self.params.get('SHAPE_BREAK_PENALTY', 30)
 
         if is_honor(discard_id):
             is_pair = counts[discard_id] >= 2
