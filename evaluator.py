@@ -363,15 +363,14 @@ class AttackEvaluator:
         if std_shanten > self._best_standard_shanten():
             return SHANTEN_BACKTRACK_PENALTY
         USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
-        ukeire_mult = self.params.get('UKEIRE_MULTIPLIER', 10)
-        shanten_mult = self.params.get('SHANTEN_MULTIPLIER', 100)
         if USE_P2:
             quality = self._ukeire_quality_mult(tile)
             effective_ukeire = int(ukeire_total * quality)
-            score = effective_ukeire * ukeire_mult - shanten * shanten_mult
+            score = effective_ukeire * self.params.get('UKEIRE_MULTIPLIER', 10)
+            score -= shanten * self.params.get('SHANTEN_MULTIPLIER', 500)
             score += self._hand_value_bonus(tile)
         else:
-            score = ukeire_total * ukeire_mult - shanten * shanten_mult
+            score = ukeire_total * 10 - shanten * 500
         if shanten <= 0:
             score -= self._compute_furiten_penalty(tile)
             if shanten <= 3:
