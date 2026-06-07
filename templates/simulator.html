@@ -1727,7 +1727,7 @@
                     const dirMap = {};
                     otherSeats.forEach((s, i) => { dirMap[s] = i; });
                     const diffs = otherSeats.map(s => {
-                        const diff = engine.scores[s] - myScore;
+                        const diff = myScore - engine.scores[s];
                         return diff;
                     });
                     diffsEl.style.display = 'inline-flex';
