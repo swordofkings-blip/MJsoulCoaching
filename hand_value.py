@@ -80,6 +80,23 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
         if c >= 3 or mc >= 1:
             han += 1
 
+    yakuhai_ids = {31, 32, 33}
+    sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(seat)
+    rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(chang % 4)
+    if sw is not None:
+        yakuhai_ids.add(sw)
+    if rw is not None:
+        yakuhai_ids.add(rw)
+    for yid in yakuhai_ids:
+        mc = 0
+        for m in melds:
+            mt = getattr(m, 'tiles', [])
+            if mt and tile_to_id(mt[0]) == yid and getattr(m, 'is_open', True):
+                mc += 1
+        if counts[yid] >= 3 or mc >= 1:
+            if han < 13:
+                han += 1
+
     open_meld_count = sum(1 for m in melds if getattr(m, 'is_open', True))
     if not is_open:
         pairs = sum(1 for c in counts if c >= 2)

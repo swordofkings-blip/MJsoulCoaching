@@ -1729,16 +1729,6 @@ class Evaluator:
                     return False
             return True
 
-        # --- 聴牌 ---
-        if after_shanten <= 0:
-            if expected_han < 1:
-                return False
-            return True
-
-        # --- 既開局 ---
-        if not is_closed:
-            return True
-
         # 大明槓
         if type_ == 2:
             if push > 0.6:
@@ -1751,29 +1741,45 @@ class Evaluator:
                 return True
             return False
 
-        # --- 門前手: 鳴き下がりを考慮した価値比較 ---
+        # --- 鳴き下がりを考慮した価値比較（全ケース共通） ---
         from hand_value import estimate_han_advanced, estimate_win_score
 
+        is_dealer = self.state.my_seat == 0
+        open_score = estimate_win_score(max(expected_han, 1), 30, is_dealer)
+
+        # 門前価値（リーチ価値は向聴が近い場合のみ加算）
         closed_han = estimate_han_advanced(
             self.state.my_hand, self.state.my_melds, self.state.doras,
             is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
             seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
-        is_dealer = self.state.my_seat == 0
-        open_score = estimate_win_score(expected_han, 30, is_dealer)
+        reach_bonus = 2 if before_shanten <= 1 else 0
+        closed_score = estimate_win_score(closed_han + reach_bonus, 30, is_dealer)
 
-        if before_shanten <= 1:
-            closed_score = estimate_win_score(closed_han + 2, 30, is_dealer)
-        else:
-            closed_score = estimate_win_score(closed_han + 1, 30, is_dealer)
+        speed_gain = (before_shanten - after_shanten) * 300
 
-        speed_gain = (before_shanten - after_shanten) * 500
-        if closed_score > open_score + speed_gain + 500:
+        # 門前維持の価値が認められる → 鳴かない
+        # （closed_scoreが明確に上回る場合のみ。同等なら速度優先）
+        if closed_score > open_score + speed_gain + 800:
             return False
 
+        # --- 価値比較を通過したものをさらに絞り込み ---
+
+        # 聴牌: 速度優先
+        if after_shanten <= 0:
+            return True
+
+        # 既開局かつ価値比較通過: 進行許可
+        if not is_closed:
+            return True
+
+        # 門前でも向聴が遠い: 手を進める価値がある
+        if before_shanten >= 3:
+            return True
+
+        # ラス目大差で残牌少: 逆転狙い門前維持
         if my_rank == 3 and self.state.left_tile_count <= 50:
             return False
 
-        return True
-
+        # 門前1-2向聴で価値比較を僅差で通過: 門前維持優先
         return False
 
