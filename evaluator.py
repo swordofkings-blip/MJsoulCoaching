@@ -375,7 +375,40 @@ class AttackEvaluator:
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
-        return 0
+        if shanten < self.params.get('BETAORI_PREP_SHANTEN', 4):
+            return 0
+        tid = tile_to_id(tile)
+        counts = self.state.my_hand_counts()
+        base = (tid // 9) * 9
+        off = tid - base
+        bonus = 0
+
+        suit_counts = [sum(counts[0:9]), sum(counts[9:18]), sum(counts[18:27])]
+        honor_count = sum(counts[27:34])
+        primary_suit_idx = max(range(3), key=lambda i: suit_counts[i] if i != (tid // 9 if tid < 27 else -1) else 0)
+
+        if is_honor(tid):
+            return 0
+
+        if off >= 1 and off <= 7:
+            has_adjacent = (off > 0 and counts[base + off - 1] >= 1) or (off < 8 and counts[base + off + 1] >= 1)
+            if has_adjacent:
+                return 0
+
+        my_suit = suit_counts[tid // 9] if tid < 27 else 0
+        max_suit = max(suit_counts) if suit_counts else 0
+        if max_suit > 0 and my_suit <= max_suit - 3 and my_suit <= honor_count:
+            bonus += self.params.get('BETAORI_HONITSU_BONUS', 20)
+
+        if shanten >= 5 and is_honor(tid) and counts[tid] >= 2:
+            if tid in SANGEN:
+                return 0
+
+        pairs = sum(1 for c in counts if c >= 2)
+        if pairs >= 4 and is_honor(tid):
+            return 0
+
+        return bonus
 
     def _ukeire_quality_mult(self, tile: str) -> float:
         hand_counts = self.state.my_hand_counts()
