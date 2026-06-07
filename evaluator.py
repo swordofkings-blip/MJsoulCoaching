@@ -398,38 +398,45 @@ class AttackEvaluator:
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
-        if shanten < self.params.get('BETAORI_PREP_SHANTEN', 4):
+        turn = self.state.tsumo_count
+        if not (5 <= turn <= 10):
             return 0
+        if shanten < 3:
+            return 0
+        n_reach = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
+        if n_reach > 0:
+            return 0
+
         tid = tile_to_id(tile)
         counts = self.state.my_hand_counts()
-        base = (tid // 9) * 9
-        off = tid - base
         bonus = 0
 
-        suit_counts = [sum(counts[0:9]), sum(counts[9:18]), sum(counts[18:27])]
-        honor_count = sum(counts[27:34])
-        primary_suit_idx = max(range(3), key=lambda i: suit_counts[i] if i != (tid // 9 if tid < 27 else -1) else 0)
-
         if is_honor(tid):
-            return 0
-
-        if off >= 1 and off <= 7:
-            has_adjacent = (off > 0 and counts[base + off - 1] >= 1) or (off < 8 and counts[base + off + 1] >= 1)
-            if has_adjacent:
+            visible = self.state.all_visible_counts()
+            if visible[tid] < 4:
                 return 0
 
-        my_suit = suit_counts[tid // 9] if tid < 27 else 0
-        max_suit = max(suit_counts) if suit_counts else 0
-        if max_suit > 0 and my_suit <= max_suit - 3 and my_suit <= honor_count:
-            bonus += self.params.get('BETAORI_HONITSU_BONUS', 20)
+        remaining = counts[tid]
+        if remaining == 1 and not is_honor(tid):
+            base = (tid // 9) * 9
+            off = tid - base
+            has_l = off > 0 and counts[base + off - 1] > 0
+            has_r = off < 8 and counts[base + off + 1] > 0
+            if not has_l and not has_r:
+                suit_counts = [sum(counts[0:9]), sum(counts[9:18]), sum(counts[18:27])]
+                my_idx = tid // 9 if tid < 27 else -1
+                if my_idx >= 0:
+                    my_suit = suit_counts[my_idx]
+                    max_suit = max(suit_counts) if suit_counts else 0
+                    if my_suit <= max_suit - 3:
+                        bonus += self.params.get('BETAORI_SLIM_BONUS', 40)
 
-        if shanten >= 5 and is_honor(tid) and counts[tid] >= 2:
-            if tid in SANGEN:
+        if remaining >= 2 and not is_honor(tid):
+            base = (tid // 9) * 9
+            off = tid - base
+            has_adj = (off > 0 and counts[base + off - 1] > 0) or (off < 8 and counts[base + off + 1] > 0)
+            if has_adj:
                 return 0
-
-        pairs = sum(1 for c in counts if c >= 2)
-        if pairs >= 4 and is_honor(tid):
-            return 0
 
         return bonus
 

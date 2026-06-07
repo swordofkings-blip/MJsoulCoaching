@@ -18,6 +18,7 @@ GENE_DEFS = {
     'MODE_ZENTSU_THRESHOLD': (0.5, 0.95, float),
     'MODE_BETAORI_THRESHOLD': (0.01, 0.15, float),
     'IPPATSU_PENALTY': (100, 600, int),
+    'BETAORI_SLIM_BONUS': (10, 80, int),
 }
 
 STATE_FILE = 'ga_state.json'
