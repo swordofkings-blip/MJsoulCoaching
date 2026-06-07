@@ -86,14 +86,21 @@ def main():
 
     resume_from = len(sys.argv) > 1 and sys.argv[1] == '--resume'
     extra_gens = 0
-    if len(sys.argv) > 2:
+    pop_size = 24
+    arg_idx = 2
+    if resume_from and len(sys.argv) > arg_idx:
         try:
-            extra_gens = int(sys.argv[2])
+            extra_gens = int(sys.argv[arg_idx])
+            arg_idx += 1
+        except:
+            pass
+    if len(sys.argv) > arg_idx:
+        try:
+            pop_size = int(sys.argv[arg_idx])
         except:
             pass
     start_gen = 0
-    pop_size = 24
-    keep = 4
+    keep = max(2, pop_size // 6)
     generations = 30 + extra_gens
     train_records = all_records[:2]
 
@@ -102,6 +109,10 @@ def main():
     with open(log_file, 'a', encoding='utf-8') as log:
         if resume_from and os.path.exists(STATE_FILE):
             start_gen, pop = load_state()
+            target_size = max(pop_size, len(pop))
+            while len(pop) < target_size:
+                parent = random.choice(pop[:max(1, len(pop)//3)])[1]
+                pop.append((0.0, mutate(parent, 0.4, 0.2)))
             pop_size = len(pop)
             keep = max(2, pop_size // 6)
             log.write(f'Resumed from gen {start_gen}, pop={pop_size}\n')
