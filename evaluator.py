@@ -1705,54 +1705,60 @@ class Evaluator:
             if def_penalty >= cond_th and push < cond_push:
                 return False
 
-        if type_ == 1:  # ポン
-            target_id = tile_to_id(tiles[0])
+        # === 小林理論ベースの副露判断 ===
+        # 「鳴きはツモと同じ」: 速度優先で手を進める
+        # 「愚形打点なしは避ける」: 価値なき鳴きはしない
 
-            # 役牌ポン（三元牌 + 自風 + 場風）
+        is_yakuhai = False
+        if type_ == 1:
+            target_id = tile_to_id(tiles[0])
             seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
             round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
             is_yakuhai = target_id in (31, 32, 33, seat_wind, round_wind)
-            if is_yakuhai:
-                if is_closed:
-                    closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
-                    if closed_shanten <= 0:
-                        return False
-                else:
-                    if after_shanten > 0:
-                        return False
-                return True
 
+        my_rank = self.state.my_score_rank()
 
-            # メンテン維持: 門前で1向聴以内かつリーチ可能なら副露しない
-            if is_closed and before_shanten <= 1:
+        # --- 価値ベース例外処理 ---
+
+        # 役牌ポン: 常に1飜確定、積極的に取る（小林の原則）
+        if is_yakuhai:
+            if is_closed:
                 closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
-                if closed_shanten <= 1:
-                    return False
+                if closed_shanten <= 0:
+                    return False  # テンパイ時はリーチ優先
+            else:
+                if after_shanten > 0:
+                    return False  # 既開局でテンパイにならない役牌ポンは不要
+            return True
 
-            # テンパイ: 常に許可（聴牌価値）
-            if after_shanten <= 0:
-                return True
+        # 聴牌: 速度優先で許可（小林スタイル）
+        # ただし「愚形+打点なし」は例外
+        if after_shanten <= 0:
+            if expected_han < 1:
+                return False  # 0飜テンパイ: 愚形打点なし → decline
+            return True
 
-            # 既に副露済みなら手を進めるため積極的に鳴く
-            if not is_closed:
-                return True
+        # 既開局: コミットしているので積極的に手を進める
+        if not is_closed:
+            return True
 
+        # --- 門前手の判断（小林: 速度 vs 門前価値の比較） ---
+
+        # 向聴が遠い（3以上）: 速度優先で鳴いて手を進める
+        if before_shanten >= 3:
+            return True
+
+        # 向聴が近い（1-2）: リーチ含めた門前価値を考慮
+        # 手の価値が2飜以上なら門前維持を検討
+        if expected_han >= 2:
             return False
 
-        if type_ == 0:  # チー
-            # メンテン維持
-            if is_closed and before_shanten <= 1:
-                closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
-                if closed_shanten <= 1:
-                    return False
-
-            if after_shanten <= 0:
-                return True
-
-            if not is_closed:
-                return True
-
+        # ラス目で大差: 高打点狙いで門前維持
+        if my_rank == 3 and self.state.left_tile_count <= 50:
             return False
+
+        # 上記以外は門前維持
+        return False
 
         if type_ == 2:  # 大明槓
             if push > 0.6:
