@@ -613,25 +613,33 @@ class Evaluator:
                                     is_tsumo=False, is_dealer=is_dealer)
 
     def _estimate_deal_loss(self, tile: str) -> int:
-        n_reach = len(self.defense._active_reach_seats())
-        if n_reach == 0:
-            return 0
-        base_loss = 3000
+        from opponent_model import estimate_opponent_state
+        tile_id = tile_to_id(tile)
+        total_loss = 0
+        n_threats = 0
         for seat in range(4):
             if seat == self.state.my_seat:
                 continue
-            if self.state.reach_states[seat].is_reach:
-                base_loss += 1000
-        for seat in range(4):
-            if seat == self.state.my_seat:
+            opp = estimate_opponent_state(self.state, seat)
+            if not opp['is_tenpai'] and not opp['is_riichi']:
                 continue
-            for m in self.state.melds[seat]:
-                if m.is_open:
-                    for t in m.tiles:
-                        for d in self.state.doras:
-                            if tile_to_id(t) == tile_to_id(d):
-                                base_loss += 1000
-        return base_loss
+            danger = 0.1
+            if opp['is_riichi']:
+                danger = 0.8
+            elif opp['is_tenpai']:
+                danger = 0.5
+            if opp['is_riichi'] or opp['is_tenpai']:
+                from hand_value import estimate_hand_value
+                est_score = estimate_hand_value(
+                    [], self.state.melds[seat], self.state.doras,
+                    is_open=opp['open_meld_count'] > 0,
+                    has_reach=opp['is_riichi'], is_ippatsu=False,
+                    is_tsumo=False, is_dealer=(seat == 0))
+                est_score = max(1000, est_score)
+                seat_loss = int(est_score * danger)
+                total_loss += seat_loss
+                n_threats += 1
+        return max(total_loss, n_threats * 1000)
 
     def _positional_ev(self) -> float:
         scores = self.state.scores
