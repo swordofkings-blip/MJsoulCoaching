@@ -673,18 +673,54 @@ class Evaluator:
         if is_ippatsu_turn:
             tile_id = tile_to_id(tile)
             if not self.defense.is_genbutsu(tile_id):
-                genbutsu_safe = tile_id in self.defense._common_genbutsu_ids(self.defense._active_reach_seats())
+                reach_seats = self.defense._active_reach_seats()
+                genbutsu_safe = tile_id in self.defense._common_genbutsu_ids(reach_seats)
                 if not genbutsu_safe:
-                    ippatsu_penalty = self.params.get('IPPATSU_PENALTY', 300)
-                    v -= ippatsu_penalty * (1.0 - push_score)
-                v = float(v_attack)
-            else:
-                v = push_score * v_attack + (1.0 - push_score) * v_defense
+                    penalty = self.params.get('IPPATSU_PENALTY', 300)
+                    v -= penalty * (1.0 - push_score)
 
         v += self._get_keiten_bonus(tile)
         if self.params.get('USE_POSITIONAL_EV', True):
             v += self._positional_ev()
+            v += self._assist_squeeze_bonus(tile)
         return v
+
+    def _assist_squeeze_bonus(self, tile: str) -> float:
+        bonus = 0.0
+        scores = self.state.scores
+        my_seat = self.state.my_seat
+        my_score = scores[my_seat]
+        sorted_seats = sorted(range(4), key=lambda s: (-scores[s], s))
+        my_rank = sorted_seats.index(my_seat)
+        dealer_seat = self.state.ju % 4
+
+        is_dealer_last = sorted_seats[-1] == dealer_seat
+        is_dealer_winning = dealer_seat == sorted_seats[0]
+
+        if is_dealer_last and my_rank <= 1:
+            ally_target = sorted_seats[1] if my_rank == 0 else sorted_seats[0]
+            tid = tile_to_id(tile)
+            if not is_honor(tid):
+                opp_discards = set()
+                for t in self.state.river[ally_target]:
+                    opp_discards.add(tile_to_id(t))
+                if (tid // 9) in {t // 9 for t in opp_discards}:
+                    bonus += self.params.get('ASSIST_BONUS', 20)
+
+        n_reach = sum(1 for i in range(4) if i != my_seat and self.state.reach_states[i].is_reach)
+        if n_reach > 0:
+            tid = tile_to_id(tile)
+            if not is_honor(tid):
+                base = (tid // 9) * 9
+                off = tid - base
+                counts = self.state.my_hand_counts()
+                if counts[tid] >= 2:
+                    has_l = off > 0 and counts[base + off - 1] > 0
+                    has_r = off < 8 and counts[base + off + 1] > 0
+                    if has_l or has_r:
+                        bonus += self.params.get('SQUEEZE_BONUS', 25)
+
+        return bonus
 
     def _evaluate_tile_ev(self, tile: str) -> float:
         p_win = self._estimate_win_p(tile)
