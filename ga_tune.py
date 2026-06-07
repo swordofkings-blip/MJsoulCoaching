@@ -1,7 +1,16 @@
 # -*- coding: utf-8 -*-
-import json, random, copy, os, time, glob, sys
+import json, random, copy, os, time, glob, sys, multiprocessing
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from evaluate_parameter_fitness import evaluate_all
+
+def _eval_worker(args):
+    params, record_paths = args
+    total = m = 0
+    for rp in record_paths:
+        r = evaluate_all(rp, params)
+        total += r['total_discards']
+        m += r['matches']
+    return m / total if total > 0 else 0.0
 
 GENE_DEFS = {
     'UKEIRE_MULTIPLIER': (5, 20, int),
@@ -100,10 +109,17 @@ def main():
 
         for gen in range(start_gen + 1, start_gen + generations + 1):
             t0 = time.time()
-            for i in range(pop_size):
-                if pop[i][0] == 0.0:
-                    fit = evaluate_fitness(pop[i][1], train_records)
+            need_eval = [i for i in range(pop_size) if pop[i][0] == 0.0]
+            if need_eval and len(need_eval) > 1:
+                args_list = [(pop[i][1], train_records) for i in need_eval]
+                n_workers = min(multiprocessing.cpu_count(), len(need_eval))
+                with multiprocessing.Pool(n_workers) as pool:
+                    results = pool.map(_eval_worker, args_list)
+                for i, fit in zip(need_eval, results):
                     pop[i] = (fit, pop[i][1])
+            else:
+                for i in need_eval:
+                    pop[i] = (_eval_worker((pop[i][1], train_records)), pop[i][1])
             pop.sort(key=lambda x: -x[0])
             msg = f'G{gen}: best={pop[0][0]*100:.2f}% ({time.time()-t0:.0f}s)'
             log.write(msg + '\n')
