@@ -370,7 +370,12 @@ class AttackEvaluator:
             if blocks_before >= 6 and blocks_after >= 6:
                 penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                 score -= penalty
+        if shanten >= self.params.get('BETAORI_PREP_SHANTEN', 4):
+            score += self._betaori_prep_bonus(tile, shanten)
         return score
+
+    def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
+        return 0
 
     def _ukeire_quality_mult(self, tile: str) -> float:
         hand_counts = self.state.my_hand_counts()

@@ -506,6 +506,14 @@ class StrategyManager:
         a_base = self.compute_base_attack()
         t_max = self.compute_opponent_threat()
         if t_max <= 0.0:
+            hand_counts = self.state.my_hand_counts()
+            open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+            if open_meld_count == 0:
+                shanten = ShantenCalculator.calculate_closed_effective(hand_counts)
+            else:
+                shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+            if shanten >= 3:
+                return max(a_base, 0.3)
             return 1.0
         push_score = a_base * (1.0 - t_max)
         push_score = self._apply_position_override(push_score)
