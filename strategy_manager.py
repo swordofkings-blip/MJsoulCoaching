@@ -495,6 +495,13 @@ class StrategyManager:
             return self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
         if shanten == 1:
             return self.params.get('BASE_ATTACK_1SHANTEN', 0.4)
+        if shanten >= 2:
+            blocks = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
+            block_factor = max(0.0, (blocks - 4) / 3.0)
+            if shanten == 2:
+                return min(0.2, 0.10 * block_factor)
+            if shanten == 3:
+                return min(0.1, 0.05 * block_factor)
         return 0.0
 
     def _estimate_han(self) -> int:
