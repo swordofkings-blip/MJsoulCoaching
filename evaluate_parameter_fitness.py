@@ -4,9 +4,8 @@ import argparse
 import glob
 import json
 import os
-import sys
 import time
-from typing import List, Optional, Tuple
+from typing import List
 
 from game_state import GameState
 from evaluator import Evaluator
@@ -34,21 +33,7 @@ def load_params_from_args(args) -> dict:
     return params
 
 
-def auto_select_target(record_data: dict) -> int:
-    accounts = record_data.get('head', {}).get('accounts', [])
-    if not accounts:
-        return 0
-
-    def level_score(acc):
-        lv = acc.get('level', {})
-        return lv.get('id', 0) * 10000 + lv.get('score', 0)
-
-    best = max(accounts, key=level_score)
-    return best.get('seat', 0)
-
-
-def evaluate_record(record_path: str, target_seat: int, params: dict,
-                    verbose: bool = False) -> dict:
+def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
     with open(record_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
@@ -56,55 +41,57 @@ def evaluate_record(record_path: str, target_seat: int, params: dict,
     if not actions:
         return {'error': 'No actions found', 'record': record_path}
 
-    state = GameState()
-    state.my_seat = target_seat
+    # 4人分の状態を個別に管理
+    states = [GameState() for _ in range(4)]
+    for s in range(4):
+        states[s].my_seat = s
 
-    total = 0
-    matches = 0
-    details = []
-    awaiting_discard = False
+    per_seat = {s: {'total': 0, 'matches': 0, 'details': []} for s in range(4)}
+    all_hands = [list() for _ in range(4)]
 
-    start_time = time.time()
+    awaiting_discard = [False] * 4
 
-    for action_idx, action in enumerate(actions):
+    for action in actions:
         if action['type'] != 1:
             continue
-
         result = action['result']
         cls = result['class_name']
         d = result['data']
 
         if 'dora' in d:
-            state.doras = [d['dora']]
+            for s in range(4):
+                states[s].doras = [d['dora']]
         if 'doras' in d:
-            state.doras = list(d['doras'])
+            for s in range(4):
+                states[s].doras = list(d['doras'])
         if 'liqibang' in d:
-            state.liqibang = d['liqibang']
+            for s in range(4):
+                states[s].liqibang = d['liqibang']
 
         if cls == 'RecordNewRound':
-            tiles_key = f'tiles{target_seat}'
-            target_hand = d.get(tiles_key, [])
-            state.on_new_round(
-                chang=d.get('chang', 0),
-                ju=d.get('ju', 0),
-                ben=d.get('ben', 0),
-                liqibang=d.get('liqibang', 0),
-                tiles=target_hand,
-                scores=d.get('scores', [25000] * 4),
-                left_tile_count=d.get('leftTileCount', 70),
-                doras=[d.get('dora', '')] if d.get('dora') else [],
-            )
-            state.my_seat = target_seat
-            awaiting_discard = True
+            for s in range(4):
+                tiles_key = f'tiles{s}'
+                states[s].on_new_round(
+                    chang=d.get('chang', 0),
+                    ju=d.get('ju', 0),
+                    ben=d.get('ben', 0),
+                    liqibang=d.get('liqibang', 0),
+                    tiles=d.get(tiles_key, []),
+                    scores=d.get('scores', [25000] * 4),
+                    left_tile_count=d.get('leftTileCount', 70),
+                    doras=[d.get('dora', '')] if d.get('dora') else [],
+                )
+            awaiting_discard = [True] * 4
 
         elif cls == 'RecordDealTile':
             seat = d['seat']
             tile = d['tile']
-            if seat == target_seat:
-                state.on_self_draw(tile)
-                awaiting_discard = True
-            else:
-                state.on_opponent_draw(seat)
+            for s in range(4):
+                if s == seat:
+                    states[s].on_self_draw(tile)
+                else:
+                    states[s].on_opponent_draw(seat)
+            awaiting_discard[seat] = True
 
         elif cls == 'RecordDiscardTile':
             seat = d['seat']
@@ -112,78 +99,75 @@ def evaluate_record(record_path: str, target_seat: int, params: dict,
             isLiqi = d.get('isLiqi', False)
             moqie = d.get('moqie', False)
 
-            if seat == target_seat and awaiting_discard:
-                hand = list(state.my_hand)
+            if awaiting_discard[seat]:
+                hand = list(states[seat].my_hand)
                 if len(hand) % 3 == 2:
-                    evaluator = Evaluator(state, params=params)
-                    recommended, rec_score = evaluator.best_discard_with_score(hand)
+                    evaluator = Evaluator(states[seat], params=params)
+                    recommended, _ = evaluator.best_discard_with_score(hand)
                     is_match = (recommended == tile)
                     if is_match:
-                        matches += 1
+                        per_seat[seat]['matches'] += 1
                     else:
-                        details.append({
-                            'hand': hand,
-                            'actual': tile,
-                            'recommended': recommended,
-                            'tsumo': state.tsumo_count,
+                        per_seat[seat]['details'].append({
+                            'hand': hand, 'actual': tile, 'recommended': recommended,
+                            'tsumo': states[seat].tsumo_count,
                         })
-                    total += 1
+                    per_seat[seat]['total'] += 1
                     if verbose:
                         mark = 'OK' if is_match else 'XX'
-                        print(f'  [{state.tsumo_count:>2}] {mark} actual={tile} rec={recommended}')
-                awaiting_discard = False
+                        print(f'  [S{seat}:T{states[seat].tsumo_count:>2}] {mark} actual={tile} rec={recommended}')
+                awaiting_discard[seat] = False
 
-            state.on_discard(seat, tile, isLiqi, moqie)
+            for s in range(4):
+                states[s].on_discard(seat, tile, isLiqi, moqie)
 
         elif cls == 'RecordChiPengGang':
-            state.on_chi_peng_gang(
-                d['type'],
-                d['seat'],
-                d['tiles'],
-                d.get('froms', []),
-                d.get('tileStates', []),
-            )
+            for s in range(4):
+                states[s].on_chi_peng_gang(d['type'], d['seat'], d['tiles'],
+                                            d.get('froms', []), d.get('tileStates', []))
 
         elif cls == 'RecordAnGangAddGang':
-            state.on_an_gang_add_gang(d['type'], d['seat'], d['tiles'])
+            for s in range(4):
+                states[s].on_an_gang_add_gang(d['type'], d['seat'], d['tiles'])
 
         elif cls == 'RecordHule':
-            awaiting_discard = False
+            awaiting_discard = [False] * 4
             if 'newScores' in d:
-                state.scores = list(d['newScores'])
+                for s in range(4):
+                    states[s].scores = list(d['newScores'])
 
         elif cls == 'RecordNoTile':
-            awaiting_discard = False
+            awaiting_discard = [False] * 4
             if 'newScores' in d:
-                state.scores = list(d['newScores'])
+                for s in range(4):
+                    states[s].scores = list(d['newScores'])
 
-    elapsed = time.time() - start_time
-    rate = matches / total if total > 0 else 0.0
+    total_all = sum(per_seat[s]['total'] for s in range(4))
+    matches_all = sum(per_seat[s]['matches'] for s in range(4))
+    rate = matches_all / total_all if total_all > 0 else 0.0
 
     return {
         'record': os.path.basename(record_path),
-        'target_seat': target_seat,
-        'total_discards': total,
-        'matches': matches,
+        'per_seat': {
+            str(s): {
+                'total': per_seat[s]['total'],
+                'matches': per_seat[s]['matches'],
+                'rate': round(per_seat[s]['matches'] / per_seat[s]['total'], 4) if per_seat[s]['total'] > 0 else 0.0,
+                'first_mismatches': per_seat[s]['details'][:5],
+            } for s in range(4)
+        },
+        'total_discards': total_all,
+        'matches': matches_all,
         'consistency_rate': round(rate, 4),
-        'detail_count': len(details),
-        'first_mismatches': details[:10],
-        'elapsed_sec': round(elapsed, 3),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='何切る一致率評価スクリプト')
-    parser.add_argument('--records', nargs='*', default=None,
-                        help='評価する牌譜ファイルのパス（省略時は data/record_*_trimmed.json）')
-    parser.add_argument('--target-seat', type=int, default=None,
-                        help='評価対象プレイヤーの座席番号 (0-3)、省略時は最も段位の高いプレイヤーを自動選択')
-    parser.add_argument('--params', default=None,
-                        help='config_parameters.json のパス')
-    parser.add_argument('--override', default=None,
-                        help='個別パラメータ上書き: "PENALTY_6BLOCK_MAINTAIN=120,SCORE_GENBUTSU=900"')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                        help='各打牌の一致結果を表示')
+    parser = argparse.ArgumentParser(description='何切る一致率評価（4人同時）')
+    parser.add_argument('--records', nargs='*', default=None)
+    parser.add_argument('--params', default=None)
+    parser.add_argument('--override', default=None)
+    parser.add_argument('--verbose', '-v', action='store_true')
     args = parser.parse_args()
 
     params = load_params_from_args(args)
@@ -199,31 +183,26 @@ def main():
         return
 
     all_results = []
+    total_all = 0
+    matches_all = 0
+
     for rpath in record_files:
-        target = args.target_seat
-        if target is None:
-            with open(rpath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            target = auto_select_target(data)
-
-        result = evaluate_record(rpath, target, params, verbose=args.verbose)
+        result = evaluate_all(rpath, params, verbose=args.verbose)
         all_results.append(result)
+        total_all += result['total_discards']
+        matches_all += result['matches']
 
-        info = result.get('error', '')
-        print(f'Record: {result["record"]}  Seat={result["target_seat"]}  '
+        print(f'Record: {result["record"]}  '
               f'{result["matches"]}/{result["total_discards"]} = '
-              f'{result["consistency_rate"]*100:.1f}%  '
-              f'{result["elapsed_sec"]:.1f}s  {info}')
-        if result['first_mismatches']:
-            for mm in result['first_mismatches'][:3]:
-                print(f'    T{mm["tsumo"]}: actual={mm["actual"]} rec={mm["recommended"]}')
+              f'{result["consistency_rate"]*100:.1f}%')
+        for s in range(4):
+            ps = result['per_seat'][str(s)]
+            print(f'  Seat {s}: {ps["matches"]}/{ps["total"]} = {ps["rate"]*100:.1f}%')
 
-    total_all = sum(r['total_discards'] for r in all_results)
-    matches_all = sum(r['matches'] for r in all_results)
     if total_all > 0:
         overall = matches_all / total_all
         print(f'---')
-        print(f'Aggregate ({len(all_results)} records): '
+        print(f'Aggregate ({len(all_results)} records, 4 seats): '
               f'{matches_all}/{total_all} = {overall*100:.1f}%')
 
     output = {
