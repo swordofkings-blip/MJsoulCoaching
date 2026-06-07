@@ -537,11 +537,10 @@ class AttackEvaluator:
             if off < 8 and counts_after[base + off + 1] >= 1:
                 bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
 
-            for start in range(max(0, off - 2), min(off + 1, 7)):
-                if all(counts[base + start + k] >= 1 for k in range(3)):
-                    if all(counts[base + start + k] == 1 for k in range(3)):
-                        bonus -= self.params.get('MELD_BREAK_PENALTY', 50)
-                        break
+            left = off > 0 and counts[base + off - 1] > 0
+            right = off < 8 and counts[base + off + 1] > 0
+            if left or right:
+                bonus -= self.params.get('SHAPE_BREAK_PENALTY', 20)
 
         if is_honor(discard_id):
             is_pair = counts[discard_id] >= 2
