@@ -425,8 +425,14 @@ def _restore_game_state(payload: dict) -> GameState:
         converted = []
         for m in seat_melds:
             if isinstance(m, dict):
+                raw_type = m.get("type", 0)
+                if isinstance(raw_type, str):
+                    type_map = {'cpg': 1, 'chi': 1, 'pon': 2, 'peng': 2, 'kan': 5, 'minkan': 5, 'ankan': 3}
+                    meld_type = type_map.get(raw_type.lower(), 1)
+                else:
+                    meld_type = int(raw_type)
                 converted.append(Meld(
-                    type=int(m.get("type", 0)),
+                    type=meld_type,
                     tiles=list(m.get("tiles", [])),
                     froms=list(m.get("froms", [])),
                     tile_states=list(m.get("tile_states", [])),
