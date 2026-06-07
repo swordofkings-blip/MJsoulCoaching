@@ -560,6 +560,33 @@ class AttackEvaluator:
             if is_dora:
                 bonus -= self.params.get('DORA_DISCARD_PENALTY', 60)
 
+            all_ids = [tile_to_id(t) for t in self.state.my_hand]
+            all_ids.extend(tile_to_id(t) for m in self.state.my_melds for t in getattr(m, 'tiles', []))
+
+            has_term = any(is_terminal(tid) for tid in all_ids)
+            has_hon = any(is_honor(tid) for tid in all_ids)
+            can_tanyao = not has_term and not has_hon
+            if can_tanyao and not is_honor(discard_id):
+                off = discard_id % 9
+                if off == 0 or off == 8:
+                    bonus += self.params.get('TANYAO_TERMINAL_BONUS', 40)
+
+            is_red = is_red_five(tile)
+            if is_red:
+                bonus += self.params.get('AKA_KEEP_BONUS', 60)
+
+            if not is_honor(discard_id) and counts[discard_id] == 1:
+                base = (discard_id // 9) * 9
+                off = discard_id - base
+                connect = 0
+                if off > 0: connect += counts[base + off - 1] if counts[base + off - 1] > 0 else 0
+                if off < 8: connect += counts[base + off + 1] if counts[base + off + 1] > 0 else 0
+                if connect == 0:
+                    if 2 <= off <= 6:
+                        bonus += self.params.get('ISOLATED_MIDDLE_BONUS', 15)
+                    else:
+                        bonus -= self.params.get('ISOLATED_EDGE_PENALTY', 15)
+
         return bonus
 
     def _get_furiten_tile_ids(self) -> set:

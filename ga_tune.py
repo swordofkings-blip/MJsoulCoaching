@@ -19,6 +19,10 @@ GENE_DEFS = {
     'MODE_BETAORI_THRESHOLD': (0.01, 0.15, float),
     'IPPATSU_PENALTY': (100, 600, int),
     'BETAORI_SLIM_BONUS': (10, 80, int),
+    'TANYAO_TERMINAL_BONUS': (20, 80, int),
+    'AKA_KEEP_BONUS': (30, 120, int),
+    'ISOLATED_MIDDLE_BONUS': (5, 40, int),
+    'ISOLATED_EDGE_PENALTY': (5, 40, int),
 }
 
 STATE_FILE = 'ga_state.json'
