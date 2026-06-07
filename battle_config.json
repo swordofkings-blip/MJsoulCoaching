@@ -1,0 +1,23 @@
+{
+  "game_type": "tonpu",
+  "room": "jade",
+  "seeds": [1, 100],
+  "logic_a_label": "現行ロジック",
+  "logic_b_label": "Phase1拡張",
+  "logic_a_params": "config_parameters.json",
+  "logic_b_params": "",
+  "pt_table": {
+    "1st": 60,
+    "2nd": 10,
+    "3rd": -20,
+    "4th": -30
+  },
+  "initial_score": 25000,
+  "return_score": 30000,
+  "uma": {
+    "1st": 10,
+    "2nd": 0,
+    "3rd": -10,
+    "4th": -20
+  }
+}

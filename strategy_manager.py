@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from functools import lru_cache
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Callable
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from game_state import GameState, Meld
 from str_converter import (
@@ -11,7 +16,95 @@ from str_converter import (
 )
 
 
+def _build_numba_jit():
+    try:
+        from numba import njit
+    except ImportError:
+        return None, None
+
+    @njit
+    def _solve_mps_jit(c):
+        best = 0
+        first = -1
+        for i in range(9):
+            if c[i] > 0:
+                first = i
+                break
+        if first == -1:
+            return 0
+        if c[first] >= 3:
+            c2 = c.copy()
+            c2[first] -= 3
+            v = 1 + _solve_mps_jit(c2)
+            if v > best:
+                best = v
+        if first <= 6 and c[first + 1] > 0 and c[first + 2] > 0:
+            c2 = c.copy()
+            c2[first] -= 1
+            c2[first + 1] -= 1
+            c2[first + 2] -= 1
+            v = 1 + _solve_mps_jit(c2)
+            if v > best:
+                best = v
+        c2 = c.copy()
+        c2[first] -= 1
+        v = _solve_mps_jit(c2)
+        if v > best:
+            best = v
+        return best
+
+    @njit
+    def _blocks_jit(c):
+        best = 0
+        first = -1
+        for i in range(9):
+            if c[i] > 0:
+                first = i
+                break
+        if first == -1:
+            return 0
+        if c[first] >= 3:
+            c2 = c.copy()
+            c2[first] -= 3
+            best = max(best, 1 + _blocks_jit(c2))
+        if c[first] >= 2:
+            c2 = c.copy()
+            c2[first] -= 2
+            best = max(best, 1 + _blocks_jit(c2))
+        if first <= 6 and c[first+1] > 0 and c[first+2] > 0:
+            c2 = c.copy()
+            c2[first] -= 1
+            c2[first+1] -= 1
+            c2[first+2] -= 1
+            best = max(best, 1 + _blocks_jit(c2))
+        if first <= 7 and c[first+1] > 0:
+            c2 = c.copy()
+            c2[first] -= 1
+            c2[first+1] -= 1
+            best = max(best, 1 + _blocks_jit(c2))
+        if first <= 6 and c[first+2] > 0:
+            c2 = c.copy()
+            c2[first] -= 1
+            c2[first+2] -= 1
+            best = max(best, 1 + _blocks_jit(c2))
+        c2 = c.copy()
+        c2[first] -= 1
+        best = max(best, _blocks_jit(c2))
+        return best
+
+    return _solve_mps_jit, _blocks_jit
+
+
+_NUMBA_SOLVE, _NUMBA_BLOCKS = _build_numba_jit()
+
+
 class ShantenCalculator:
+    _cache: dict = {}
+
+    @staticmethod
+    def clear_cache():
+        ShantenCalculator._cache.clear()
+
     @staticmethod
     def calculate_closed(hand_counts: List[int]) -> int:
         std = ShantenCalculator._standard_shanten(hand_counts)
@@ -21,7 +114,15 @@ class ShantenCalculator:
 
     @staticmethod
     def calculate_open(hand_counts: List[int], open_meld_count: int) -> int:
-        return ShantenCalculator._open_shanten(hand_counts, open_meld_count)
+        key = tuple(hand_counts)
+        cache_key = ('op', key, open_meld_count)
+        if cache_key in ShantenCalculator._cache:
+            return ShantenCalculator._cache[cache_key]
+        result = ShantenCalculator._open_shanten(hand_counts, open_meld_count)
+        ShantenCalculator._cache[cache_key] = result
+        return result
+
+
 
     @staticmethod
     def _standard_shanten(counts: List[int]) -> int:
@@ -68,11 +169,17 @@ class ShantenCalculator:
     @staticmethod
     @lru_cache(maxsize=None)
     def _max_meld_mps(counts9: Tuple[int, ...]) -> int:
+        if _NUMBA_SOLVE is not None:
+            arr = np.array(counts9, dtype=np.int64)
+            return int(_NUMBA_SOLVE(arr))
         c = list(counts9)
         return ShantenCalculator._solve_mps(c)
 
     @staticmethod
     def _solve_mps(c: List[int]) -> int:
+        if _NUMBA_SOLVE is not None:
+            arr = np.array(c, dtype=np.int64)
+            return int(_NUMBA_SOLVE(arr))
         best = 0
         first = None
         for i in range(9):
@@ -105,21 +212,17 @@ class ShantenCalculator:
     @staticmethod
     @lru_cache(maxsize=None)
     def _solve_blocks_mps(counts9: Tuple[int, ...]) -> int:
-        """
-        @title 数牌スートの最大ブロック数算出
-        @description 面子(3枚)、対子(2枚)、ターツ(2枚:リャンメン/ペンチャン/カンチャン)に分割した場合の最大ブロック数を再帰的に求める。
-        @param {Tuple[int,...]} counts9 - 1色9種のカウント
-        @returns {int} 最大ブロック数
-        """
+        if _NUMBA_BLOCKS is not None:
+            arr = np.array(counts9, dtype=np.int64)
+            return int(_NUMBA_BLOCKS(arr))
         c = list(counts9)
         return ShantenCalculator._blocks_recursive(c)
 
     @staticmethod
     def _blocks_recursive(c: List[int]) -> int:
-        """
-        @title ブロック数再帰探索（内部）
-        @description 各選択肢（3枚組・対子・順子・リャンメン/ペンチャン・カンチャン・スキップ）を試し、最大ブロック数を返す。
-        """
+        if _NUMBA_BLOCKS is not None:
+            arr = np.array(c, dtype=np.int64)
+            return int(_NUMBA_BLOCKS(arr))
         best = 0
         first = None
         for i in range(9):
@@ -174,13 +277,16 @@ class ShantenCalculator:
 
     @staticmethod
     def calculate_closed_effective(hand_counts: List[int]) -> int:
-        """
-        @title 有効シャンテン数の算出（チートイツ・国士の条件付き）
-        @description 標準手シャンテンをベースに、対子数が4組以上の場合のみチートイツ、ヤオ九牌が9種類以上の場合のみ国士無双を計算対象とする。
-        これにより、対子不足の段階で面子を壊してチートイツに逃げる悪手を正しくペナルティ対象にする。
-        @param {List[int]} hand_counts - 34種牌のカウントリスト
-        @returns {int} 有効シャンテン数
-        """
+        key = tuple(hand_counts)
+        cache_key = ('ce', key)
+        if cache_key in ShantenCalculator._cache:
+            return ShantenCalculator._cache[cache_key]
+        result = ShantenCalculator._calc_closed_effective(hand_counts)
+        ShantenCalculator._cache[cache_key] = result
+        return result
+
+    @staticmethod
+    def _calc_closed_effective(hand_counts: List[int]) -> int:
         std = ShantenCalculator._standard_shanten(hand_counts)
         pairs = sum(1 for c in hand_counts if c >= 2)
         yaochu_indices = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
