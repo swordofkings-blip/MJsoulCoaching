@@ -526,6 +526,12 @@ class AttackEvaluator:
         return total_weighted / total
 
     def _hand_value_bonus(self, tile: str) -> int:
+        """
+        @title 手牌評価の補正値（ボーナス/ペナルティ）計算
+        @description 孤立牌の状況、字牌の安全度、染め手への移行状況、および進行度（シャンテン・ブロック数）に応じて打牌評価にボーナスを加減算する。
+        @param {str} tile - 捨てる牌の文字列
+        @returns {int} 補正スコア
+        """
         from hand_value import estimate_hand_value
         hand = list(self.state.my_hand)
         melds = self.state.my_melds
@@ -543,6 +549,40 @@ class AttackEvaluator:
         bonus = score // 10
 
         counts = self.state.my_hand_counts()
+        shanten = ShantenCalculator.calculate_closed_effective(counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(counts, open_meld_count)
+        blocks = ShantenCalculator.calculate_blocks(counts, open_meld_count)
+        turn = self.state.tsumo_count
+
+        # ホンイツ・清一色への移行判断
+        # 萬子、筒子、索子の枚数を数える（字牌を除く）
+        all_ids = [tile_to_id(t) for t in hand]
+        for m in melds:
+            all_ids.extend(tile_to_id(t) for t in getattr(m, 'tiles', []))
+        
+        suit_counts = {'m': 0, 'p': 0, 's': 0}
+        z_count = 0
+        for tid in all_ids:
+            if tid < 9: suit_counts['m'] += 1
+            elif tid < 18: suit_counts['p'] += 1
+            elif tid < 27: suit_counts['s'] += 1
+            else: z_count += 1
+        
+        dominant_suit = max(suit_counts, key=suit_counts.get)
+        dominant_count = suit_counts[dominant_suit]
+        
+        # 染め手（主力＋字牌が9枚以上かつ、通常進行がまだ遅い2向聴以上の状況）
+        is_dyeing = (dominant_count + z_count >= 9) and (shanten >= 2)
+        if is_dyeing and not is_honor(discard_id):
+            tile_suit = None
+            if discard_id < 9: tile_suit = 'm'
+            elif discard_id < 18: tile_suit = 'p'
+            elif discard_id < 27: tile_suit = 's'
+            
+            # 染める色以外を捨てる際にボーナスを加算して移行を推進
+            if tile_suit != dominant_suit:
+                bonus += self.params.get('BETAORI_HONITSU_BONUS', 40)
+
+        # 刻子・対子・順子構築に関する評価
         if counts[discard_id] == 2:
             if discard_id in SANGEN:
                 bonus -= self.params.get('YAKUHAI_PAIR_PENALTY', 30)
@@ -570,6 +610,14 @@ class AttackEvaluator:
                 bonus -= self.params.get('DORA_DISCARD_PENALTY', 40)
             visible_all = self.state.all_visible_counts()
             remaining = 4 - visible_all[discard_id]
+            
+            # 字牌の「他家役牌危険度・安全度」に応じた動的スケーリング
+            # 場に見えている枚数が多いほど安全牌として保持したいため、捨てるボーナスを減衰させる
+            vis_factor = 1.0 - (visible_all[discard_id] / 4.0)
+            if shanten <= 2 and blocks >= 5:
+                # 進行度が高く、十分なブロックがある場合は安全牌の抱えを優先（0.3は保持を強く動機付けるための定数）
+                vis_factor *= 0.3
+
             if discard_id in SANGEN:
                 if is_pair and remaining >= 2:
                     bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
@@ -583,15 +631,18 @@ class AttackEvaluator:
                     pass
                 else:
                     if not is_pair:
-                        bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
+                        bonus += int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
             if discard_id == jikaze:
                 if not is_pair and not is_double_wind:
-                    bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
+                    bonus += int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
-                bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
+                bonus += int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
 
             ratio_base = self.params.get('VISIBLE_RATIO_HONOR', 80)
-            visible_all = self.state.all_visible_counts()
+            if shanten <= 2 and blocks >= 5:
+                # 安牌（見えている字牌）を残すため、捨てる際のボーナスをマイナス化（保持へ誘導）
+                ratio_base = -ratio_base // 2
+            
             vis = visible_all[discard_id]
             if vis >= 1:
                 ratio = 4.0 / max(1, 4 - vis) - 1.0
@@ -631,11 +682,27 @@ class AttackEvaluator:
                 if off < 8: connect += counts[base + off + 1] if counts[base + off + 1] > 0 else 0
                 if connect == 0:
                     if 2 <= off <= 6:
-                        bonus -= self.params.get('ISOLATED_MIDDLE_BONUS', 10)
+                        # 孤立中張牌: 序盤は手幅のために保持したいが、巡目が進むほど危険なため徐々に嫌う（ペナルティの減衰）
+                        middle_penalty = self.params.get('ISOLATED_MIDDLE_BONUS', 10)
+                        decay = max(-1.0, 1.0 - turn / 10.0) # 10巡目以降は逆に廃棄ボーナスに転じる
+                        bonus -= int(middle_penalty * decay)
+                        
+                        # 進行度が高くブロックが十分な場合は、不要な孤立中張牌を率先して捨てる
+                        if shanten <= 2 and blocks >= 5:
+                            bonus += self.params.get('ISOLATED_MIDDLE_DISCARD_BONUS_5BLOCK', 30)
+                    elif off == 0 or off == 8:
+                        # 孤立1/9（端牌）: 最も効率が低いため率先して捨てる（巡目減衰）
+                        edge_bonus = self.params.get('ISOLATED_EDGE_BONUS', 25)
+                        decayed_edge = edge_bonus * max(0.2, 1.0 - turn / 18.0)
+                        bonus += int(decayed_edge)
                     else:
-                        bonus += self.params.get('ISOLATED_EDGE_BONUS', 25)
+                        # 孤立2/8: 1/9よりは両面変化があるため少し残しやすい（巡目減衰）
+                        bonus_28 = self.params.get('ISOLATED_28_BONUS', 10)
+                        decayed_28 = bonus_28 * max(0.2, 1.0 - turn / 18.0)
+                        bonus += int(decayed_28)
 
         return bonus
+
 
     def _get_furiten_tile_ids(self) -> set:
         my_river_ids = set()
@@ -728,9 +795,9 @@ class Evaluator:
         push_score = self.strategy.compute_push_score()
         mode = self.strategy.get_strategy_mode()
 
-        if mode == "全ツ":
+        if mode == "攻撃":
             v = float(v_attack)
-        elif mode == "ベタオリ":
+        elif mode == "防御":
             safe_threshold = self.params.get('SCORE_SUJI', 500)
             if v_defense >= safe_threshold:
                 v = float(v_defense * 2 + v_attack * 0.1)
@@ -756,7 +823,7 @@ class Evaluator:
 
         v += self._get_keiten_bonus(tile)
         threat = self.strategy.compute_opponent_threat()
-        if is_honor(tile_to_id(tile)) and threat > 0.1 and mode != "ベタオリ":
+        if is_honor(tile_to_id(tile)) and threat > 0.1 and mode != "防御":
             danger_scale = max(0.0, 1.0 - threat * 2.5)
             v *= 0.3 + 0.7 * danger_scale
         if self.params.get('USE_POSITIONAL_EV', True):
@@ -1000,7 +1067,7 @@ class Evaluator:
             return None, float('inf')
         unique_tiles = list(dict.fromkeys(hand))
         mode = self.strategy.get_strategy_mode()
-        if mode == "ベタオリ":
+        if mode == "防御":
             threshold = self.params.get('SCORE_SUJI', 500)
             safe = [(self.evaluate_tile(t), t) for t in unique_tiles
                     if self.defense.defense_score_for_tile(t) >= threshold]

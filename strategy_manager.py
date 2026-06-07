@@ -564,31 +564,67 @@ class StrategyManager:
         return max(1, remaining)
 
     def _apply_position_override(self, push_score: float) -> float:
+        """
+        @title 順位状況に応じた押し引きの強制補正
+        @description 残り局数や点数状況（ラス回避など）を考慮し、シャンテン数（進行度）に応じて動的に押し引きスコア（push_score）を補正する。
+        @param {float} push_score - 補正前の押し引きスコア
+        @returns {float} 補正後の押し引きスコア
+        """
         rank = self.state.my_score_rank()
         remaining = self._remaining_kyokus()
 
-        # 南入間近: トップ目が29000+でゲーム終了が近い
+        # 進行度（シャンテン数）を取得して、遠い手牌からの無謀な押しを防ぐ
+        hand_counts = self.state.my_hand_counts()
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+
+        # 南入間近: トップ目が29000+でゲーム終了が近い（サドンデス終了条件の30000点突破を防ぐ・狙うための閾値）
         scores = self.state.scores
         top_score = max(scores)
         if top_score >= 29000 and remaining <= 2:
             if rank == 0:
+                # トップ目の場合は放銃回避を最優先するため安全運転（0.3はテンパイ時のみ押し、通常はオリる基準）
                 return min(push_score, 0.3)
             if rank >= 2:
-                return max(push_score, 0.6)
+                # ラス回避のためのプッシュ（進行度に応じて動的に制限）
+                if shanten <= 0:
+                    return max(push_score, 0.8) # テンパイなら強く押す
+                elif shanten == 1:
+                    return max(push_score, 0.5) # 1向聴なら中程度に押す
+                elif shanten == 2:
+                    return max(push_score, 0.25) # 2向聴なら回し打ち可能な限界
+                else:
+                    return push_score # 3向聴以上なら押しを強制しない
 
-        # 残り局数が少ない: 順位に応じて傾斜
+        # 残り局数が少ない: 順位に応じて傾斜（3局以下は終盤戦）
         if remaining <= 3:
             if rank == 0:
+                # トップ目の逃げ切り（0.4は放銃を回避するための安全ライン）
                 return min(push_score, 0.4)
             if rank == 3:
-                return max(push_score, 0.7)
+                # ラス親またはラス席の押し返し（進行度に応じて補正）
+                if shanten <= 0:
+                    return max(push_score, 0.75) # 0.75は他家リーチに対しても戦う水準
+                elif shanten == 1:
+                    return max(push_score, 0.5) # 1向聴なら形維持を考慮した押し
+                elif shanten == 2:
+                    return max(push_score, 0.2) # 2向聴なら安牌優先で回す
+                else:
+                    return push_score
 
         if not self.state.is_last_round():
             return push_score
         if rank == 0:
             return min(push_score, self.params.get('LAST_ROUND_RANK0_PUSH_LIMIT', 0.2))
         if rank == 3 and self.state.ju >= 1:
-            return max(push_score, self.params.get('LAST_ROUND_RANK3_PUSH_MIN', 0.85))
+            if shanten <= 0:
+                return max(push_score, self.params.get('LAST_ROUND_RANK3_PUSH_MIN', 0.85))
+            elif shanten == 1:
+                return max(push_score, 0.6) # 1向聴ならある程度押す
+            elif shanten == 2:
+                return max(push_score, 0.3) # 2向聴ならギリギリ回し打ち可能なライン
+            else:
+                return push_score
         return push_score
 
     def is_orya_ori_mode(self) -> bool:
@@ -607,10 +643,10 @@ class StrategyManager:
         zentsu_th = self.params.get('MODE_ZENTSU_THRESHOLD', 0.7)
         betaori_th = self.params.get('MODE_BETAORI_THRESHOLD', 0.05)
         if push >= zentsu_th or self.is_zenchi_mode():
-            return "全ツ"
+            return "攻撃"
         if push <= betaori_th:
-            return "ベタオリ"
-        return "回し打ち"
+            return "防御"
+        return "様子見"
 
     def is_zenchi_mode(self) -> bool:
         if not self.state.is_last_round():
