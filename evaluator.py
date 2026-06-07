@@ -450,13 +450,9 @@ class AttackEvaluator:
             current_shanten = ShantenCalculator.calculate_closed_effective(new_counts)
         else:
             current_shanten = ShantenCalculator.calculate_open(new_counts, open_meld_count)
-        if current_shanten > 0:
-            return 1.0
-        n_ryanmen = 0
-        n_kanchan = 0
-        n_penchan = 0
-        n_tanki = 0
+        is_tenpai = current_shanten <= 0
         total = 0
+        total_weighted = 0
         visible = self.state.all_visible_counts()
         for tid in range(34):
             if new_counts[tid] >= 4:
@@ -474,35 +470,42 @@ class AttackEvaluator:
                 continue
             total += remaining
             if is_honor(tid):
-                n_tanki += remaining
-            else:
+                weight = 0.4
+            elif is_tenpai:
                 base = (tid // 9) * 9
                 off = tid - base
-                has_left = off > 0 and new_counts[base + off - 1] >= 1
-                has_right = off < 8 and new_counts[base + off + 1] >= 1
-                has_left2 = off >= 2 and new_counts[base + off - 2] >= 1
-                has_right2 = off <= 6 and new_counts[base + off + 2] >= 1
-                if has_left and has_right:
-                    n_ryanmen += remaining
-                elif has_left2 and has_left:
-                    n_kanchan += remaining
-                elif has_right and has_right2:
-                    n_kanchan += remaining
-                elif off == 0 and has_right and has_right2:
-                    n_penchan += remaining
-                elif off == 8 and has_left and has_left2:
-                    n_penchan += remaining
+                has_l = off > 0 and new_counts[base + off - 1] >= 1
+                has_r = off < 8 and new_counts[base + off + 1] >= 1
+                has_l2 = off >= 2 and new_counts[base + off - 2] >= 1
+                has_r2 = off <= 6 and new_counts[base + off + 2] >= 1
+                if has_l and has_r:
+                    weight = 1.0
+                elif has_l2 and has_l:
+                    weight = 0.7
+                elif has_r and has_r2:
+                    weight = 0.7
+                elif off == 0 and has_r and has_r2:
+                    weight = 0.5
+                elif off == 8 and has_l and has_l2:
+                    weight = 0.5
                 else:
-                    n_tanki += remaining
+                    weight = 0.5
+            else:
+                connect = 0
+                off = tid % 9
+                base = (tid // 9) * 9
+                if off > 0 and new_counts[base + off - 1] > 0:
+                    connect += 1
+                if off < 8 and new_counts[base + off + 1] > 0:
+                    connect += 1
+                if new_counts[tid] >= 2:
+                    connect += 1
+                weight = 0.4 + connect * 0.2
+                weight = min(1.0, weight)
+            total_weighted += remaining * weight
         if total == 0:
             return 0.0
-        ryanmen_w = self.params.get('WAIT_RYANMEN', 1.0)
-        kanchan_w = self.params.get('WAIT_KANCHAN', 0.7)
-        penchan_w = self.params.get('WAIT_PENCHAN', 0.5)
-        tanki_w = self.params.get('WAIT_TANKI', 0.5)
-        weighted = (n_ryanmen * ryanmen_w + n_kanchan * kanchan_w
-                     + n_penchan * penchan_w + n_tanki * tanki_w)
-        return weighted / total
+        return total_weighted / total
 
     def _hand_value_bonus(self, tile: str) -> int:
         from hand_value import estimate_hand_value
