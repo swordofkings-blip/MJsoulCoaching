@@ -370,21 +370,47 @@ class StrategyManager:
         return best_value, best_reason
 
     def _opponent_threat_for_seat(self, seat: int) -> Tuple[float, str]:
-        """
-        @title 個別他家の脅威度算出
-        @description 1家分のリーチ・副露・手出し中張牌から脅威度とその根拠を算出する。
-        @param {int} seat - 対象他家の seat 番号
-        @returns {Tuple[float, str]} (脅威度, 理由テキスト)
-        """
         seat_name = self.SEAT_NAMES[seat] if 0 <= seat < 4 else f'Player {seat}'
         if self.state.reach_states[seat].is_reach:
             reach_threat = self.params.get('REACH_THREAT', 1.0)
             return reach_threat, f'{seat_name}: リーチ済（=テンパイ確定、脅威度 {reach_threat:.2f}）'
+        # 他家リーチ後にベタオリしている相手は脅威度を大幅に下げる
+        if self._is_betaori(seat):
+            return self.params.get('BASE_THREAT', 0.0), f'{seat_name}: ベタオリ中（脅威低）'
         open_melds = [m for m in self.state.melds[seat] if m.is_open]
         n_open = len(open_melds)
         if n_open > 0:
             return self._threat_open_player(seat, seat_name, n_open, open_melds)
         return self._threat_closed_player(seat, seat_name)
+
+    def _is_betaori(self, seat: int) -> bool:
+        reach_seats = [i for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach]
+        if not reach_seats:
+            return False
+        river = self.state.river[seat]
+        if len(river) < 3:
+            return False
+        moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        from str_converter import tile_to_id, is_honor
+        betaori_count = 0
+        for idx in range(max(0, len(river) - 5), len(river)):
+            if idx >= len(river):
+                break
+            tiles = river[idx]
+            is_moqie = moqie[idx] if idx < len(moqie) else False
+            tid = tile_to_id(tiles)
+            is_genbutsu = False
+            for rs in reach_seats:
+                for t in self.state.river[rs]:
+                    if tile_to_id(t) == tid:
+                        is_genbutsu = True
+                        break
+            if is_moqie or is_genbutsu:
+                betaori_count += 1
+        recent = min(5, len(river) - max(0, len(river) - 5))
+        if recent == 0:
+            return False
+        return betaori_count / recent >= 0.8
 
     def _threat_open_player(self, seat: int, seat_name: str, n_open: int, open_melds: List[Meld]) -> Tuple[float, str]:
         """
