@@ -102,8 +102,10 @@ def main():
     with open(log_file, 'a', encoding='utf-8') as log:
         if resume_from and os.path.exists(STATE_FILE):
             start_gen, pop = load_state()
-            log.write(f'Resumed from gen {start_gen}\n')
-            print(f'Resumed from gen {start_gen}', flush=True)
+            pop_size = len(pop)
+            keep = max(2, pop_size // 6)
+            log.write(f'Resumed from gen {start_gen}, pop={pop_size}\n')
+            print(f'Resumed from gen {start_gen}, pop={pop_size}', flush=True)
         else:
             base_fit = evaluate_fitness(base_params, train_records)
             log.write(f'Baseline: {base_fit*100:.2f}%\n')
