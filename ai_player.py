@@ -28,9 +28,7 @@ class AIPlayer:
 
     def should_riichi(self, state: GameState) -> bool:
         evaluator = self._make_evaluator(state)
-        if not evaluator.should_riichi():
-            return False
-        return True
+        return evaluator.should_riichi()
 
     def choose_riichi_discard(self, state: GameState) -> Optional[str]:
         evaluator = self._make_evaluator(state)

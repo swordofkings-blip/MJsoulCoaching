@@ -207,9 +207,7 @@ class MahjongSimulator:
                 if discard is None:
                     return self._ryuukyoku()
 
-            tmp_hand = [t for t in self._hands[seat] if t != discard]
-            tmp_st = self._build_state(seat, override_hand=tmp_hand)
-            declare_riichi = self.players[seat].should_riichi(tmp_st)
+            declare_riichi = self.players[seat].should_riichi(st)
 
             self._discard(seat, discard, moqie=False)
 
@@ -309,7 +307,9 @@ class MahjongSimulator:
             if s == discarder or self._reach_locked[s]:
                 continue
             if hand_to_counts(self._hands[s])[tid] >= 3:
-                return {'type': 'kan', 'seat': s}
+                st = self._build_state(s)
+                if self.players[s].should_call_meld(st, 5, [tile, tile, tile], discarder):
+                    return {'type': 'kan', 'seat': s}
 
         pon_seats = []
         for s in range(4):
@@ -319,7 +319,10 @@ class MahjongSimulator:
                 pon_seats.append(s)
         if pon_seats:
             pon_seats.sort(key=lambda x: (x - discarder) % 4)
-            return {'type': 'pon', 'seat': pon_seats[0]}
+            for s in pon_seats:
+                st = self._build_state(s)
+                if self.players[s].should_call_meld(st, 2, [tile, tile, tile], discarder):
+                    return {'type': 'pon', 'seat': s}
 
         chi_seat = (discarder + 1) % 4
         if not self._reach_locked[chi_seat] and not is_honor(tid):
@@ -333,10 +336,13 @@ class MahjongSimulator:
                             c = [n for n in needed if n != off]
                             ch = hand_to_counts(self._hands[chi_seat])
                             if ch[base + c[0]] >= 1 and ch[base + c[1]] >= 1:
-                                return {
-                                    'type': 'chi', 'seat': chi_seat,
-                                    'consumed': [id_to_tile(base + c[0]), id_to_tile(base + c[1])]
-                                }
+                                consumed = [id_to_tile(base + c[0]), id_to_tile(base + c[1])]
+                                full_tiles = [tile] + consumed
+                                st = self._build_state(chi_seat)
+                                if self.players[chi_seat].should_call_meld(st, 1, full_tiles, discarder):
+                                    return {
+                                        'type': 'chi', 'seat': chi_seat, 'consumed': consumed
+                                    }
         return None
 
     def _do_pon(self, seat: int, from_seat: int, tile: str):

@@ -18,9 +18,14 @@ from strategy_manager import ShantenCalculator, StrategyManager
 
 SCORE_GENBUTSU = 1000
 SCORE_SUJI = 500
+SCORE_WALL_SUJI = 800
+SCORE_NO_CHANCE = 700
+SCORE_ONE_CHANCE = 200
 SCORE_HONOR = 300
-SCORE_MUSUJI = 0
+SCORE_MUSUJI_BASE = 0
+SCORE_MUSUJI_PER_REACH = -200
 SCORE_ATAMAKAKE_BONUS = 200
+MATAGI_PENALTY = 100
 
 # 形テン（形式テンパイ）ボーナス: 終盤に和了形に一歩でも近づける打牌を評価する
 # 巡目別加算値。18巡目以降はボーナス倍率を上げ、流局間際の押し返しを強調する設計。
@@ -132,24 +137,76 @@ class DefenseEvaluator:
                     result.add(s)
         return result
 
+    def _visible_counts(self) -> List[int]:
+        return self.state.all_visible_counts()
+
+    def _wall_tile_ids(self) -> set:
+        visible = self._visible_counts()
+        return {i for i in range(27) if visible[i] >= 4}
+
+    def _wall_suji_ids(self) -> set:
+        walls = self._wall_tile_ids()
+        result = set()
+        for tid in walls:
+            for s in suji_safe_tiles(tid):
+                result.add(s)
+        return result
+
+    def _no_chance_ids(self) -> set:
+        visible = self._visible_counts()
+        return {i for i in range(34) if visible[i] >= 4}
+
+    def _one_chance_ids(self) -> set:
+        visible = self._visible_counts()
+        return {i for i in range(27) if visible[i] == 3}
+
+    def _matagi_danger_ids(self, reach_seats: List[int]) -> set:
+        result = set()
+        for seat in reach_seats:
+            for t in self.state.river[seat]:
+                try:
+                    tid = tile_to_id(t)
+                except Exception:
+                    continue
+                if is_honor(tid):
+                    continue
+                base = (tid // 9) * 9
+                off = tid - base
+                for delta in (-1, 1):
+                    adj = off + delta
+                    if 0 <= adj <= 8:
+                        result.add(base + adj)
+        return result
+
     def defense_score_for_tile(self, tile: str) -> int:
-        """
-        @title 防御評価値の算出
-        @description 立直している他家のみを基準に、共通現物 (1000)、現物スジ (500)、未晒字牌 (300) の安全度を返す。
-        誰もリーチしていない序盤局面では、現物加点による自滅を防ぐため安全牌評価をスキップし 0 を返す。
-        @param tile 評価対象の牌 (例: "5m")
-        @returns int 防御評価値 (高いほど安全)
-        """
         tile_id = tile_to_id(tile)
         reach_seats = self._active_reach_seats()
         if not reach_seats:
-            return self.params.get('SCORE_MUSUJI', SCORE_MUSUJI)
+            return 0
+        n_reach = len(reach_seats)
+        use_p1 = self.params.get('USE_PHASE1_DEFENSE', True)
+
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:
             return self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+
+        if use_p1:
+            wall_suji = self._wall_suji_ids()
+            if tile_id in wall_suji:
+                return self.params.get('SCORE_WALL_SUJI', SCORE_WALL_SUJI)
+            no_chance = self._no_chance_ids()
+            if tile_id in no_chance and not is_honor(tile_id):
+                return self.params.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
+
         suji_ids = self._reach_suji_ids(reach_seats)
         if tile_id in suji_ids:
             return self.params.get('SCORE_SUJI', SCORE_SUJI)
+
+        if use_p1:
+            one_chance = self._one_chance_ids()
+            if tile_id in one_chance and not is_honor(tile_id):
+                return self.params.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
+
         for seat in reach_seats:
             for t in self.state.river[seat]:
                 try:
@@ -162,7 +219,15 @@ class DefenseEvaluator:
             visible = self.state.all_visible_counts()
             if visible[tile_id] == 0:
                 return self.params.get('SCORE_HONOR', SCORE_HONOR)
-        return self.params.get('SCORE_MUSUJI', SCORE_MUSUJI)
+
+        if use_p1:
+            matagi = self._matagi_danger_ids(reach_seats)
+            score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
+            score += n_reach * self.params.get('SCORE_MUSUJI_PER_REACH', SCORE_MUSUJI_PER_REACH)
+            if tile_id in matagi:
+                score -= self.params.get('MATAGI_PENALTY', MATAGI_PENALTY)
+            return score
+        return self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
 
     def _collect_suji_from_river(self, seat: int) -> List[int]:
         result = set()
@@ -500,8 +565,64 @@ class Evaluator:
                     return True
         return False
 
+    def _wait_tiles_for_tenpai(self) -> List[int]:
+        hand_counts = self.state.my_hand_counts()
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        ukeire = []
+        for tid in range(34):
+            if hand_counts[tid] >= 4:
+                continue
+            test = list(hand_counts)
+            test[tid] += 1
+            if open_meld_count == 0:
+                s = ShantenCalculator.calculate_closed_effective(test)
+            else:
+                s = ShantenCalculator.calculate_open(test, open_meld_count)
+            if s < 0:
+                ukeire.append(tid)
+        return ukeire
+
+    def _wait_quality_score(self) -> float:
+        waits = self._wait_tiles_for_tenpai()
+        if not waits:
+            return -0.5
+        n_ryanmen = 0
+        n_kanchan = 0
+        n_penchan = 0
+        n_tanki = 0
+        n_shanpon = 0
+        hand_counts = self.state.my_hand_counts()
+        for tid in waits:
+            test = list(hand_counts)
+            test[tid] += 1
+            if is_honor(tid):
+                n_tanki += 1
+            else:
+                base = (tid // 9) * 9
+                off = tid - base
+                left_adj = test[base + off - 1] if off > 0 else 0
+                right_adj = test[base + off + 1] if off < 8 else 0
+                left_pair = off >= 2 and test[base + off - 2] >= 2
+                right_pair = off <= 6 and test[base + off + 2] >= 2
+                if left_adj >= 1 and right_adj >= 1:
+                    n_ryanmen += 1
+                elif (off >= 2 and test[base + off - 2] >= 1 and test[base + off - 1] >= 1):
+                    n_kanchan += 1
+                elif (off <= 6 and test[base + off + 1] >= 1 and test[base + off + 2] >= 1):
+                    n_kanchan += 1
+                elif off == 0 and right_adj >= 1 and test[base + off + 2] >= 1:
+                    n_penchan += 1
+                elif off == 8 and left_adj >= 1 and test[base + off - 2] >= 1:
+                    n_penchan += 1
+                else:
+                    n_tanki += 1
+
+        total = n_ryanmen + n_kanchan + n_penchan + n_tanki + n_shanpon
+        if total == 0:
+            return 0.0
+        return (n_ryanmen * 0.3 + n_shanpon * 0.1 - n_kanchan * 0.1 - n_penchan * 0.2 - n_tanki * 0.2) / total
+
     def should_riichi(self) -> bool:
-        from sdk import all_tiles
         if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
             return False
         hand_counts = self.state.my_hand_counts()
@@ -513,12 +634,82 @@ class Evaluator:
         shanten = ShantenCalculator.calculate_closed(hand_counts)
         if shanten > 0:
             return False
-        scores = self.state.scores
-        if scores[self.state.my_seat] < 1000:
+        if self.state.scores[self.state.my_seat] < 1000:
             return False
-        return True
+
+        riichi_score = self.params.get('RIICHI_BASE', 0.6)
+
+        wait_q = self._wait_quality_score()
+        riichi_score += wait_q * self.params.get('RIICHI_WAIT_WEIGHT', 1.0)
+
+        if self.state.is_any_opponent_reach():
+            riichi_score += self.params.get('RIICHI_OPP_REACH_PENALTY', -0.4)
+
+        dora_count = 0
+        for t in self.state.my_hand:
+            for d in self.state.doras:
+                if tile_to_id(t) == tile_to_id(d):
+                    dora_count += 1
+            if is_red_five(t):
+                dora_count += 1
+        riichi_score += dora_count * self.params.get('RIICHI_DORA_PENALTY', -0.1)
+
+        late_threshold = self.params.get('RIICHI_LATE_TURN', 14)
+        if self.state.tsumo_count >= late_threshold:
+            riichi_score += self.params.get('RIICHI_LATE_PENALTY', -0.2)
+
+        rank = self.state.my_score_rank()
+        if rank == 3:
+            riichi_score += self.params.get('RIICHI_LAST_RANK_BONUS', 0.2)
+
+        threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
+        return riichi_score > threshold
 
     def should_call_meld(self, type_: int, tiles: List[str], from_seat: int) -> bool:
         if not self.strategy.is_meld_open_allowed():
             return False
+
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count >= 4:
+            return False
+
+        hand_counts = self.state.my_hand_counts()
+        melded_tiles = []
+        for mt in tiles:
+            melded_tiles.append(tile_to_id(mt))
+        after_counts = list(hand_counts)
+        for tid in melded_tiles:
+            after_counts[tid] = max(0, after_counts[tid] - 1) if len(tiles) > 1 else after_counts[tid]
+        after_counts = list(hand_counts)
+        if type_ == 2:
+            target = tile_to_id(tiles[0])
+            after_counts[target] = max(0, after_counts[target] - 2)
+        elif type_ == 1:
+            for t in tiles[1:]:
+                tid = tile_to_id(t)
+                after_counts[tid] = max(0, after_counts[tid] - 1)
+
+        before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+        after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
+
+        if after_shanten >= before_shanten:
+            return False
+
+        if type_ == 2:
+            target_id = tile_to_id(tiles[0])
+            if target_id in (31, 32, 33):
+                return True
+            if self.state.tsumo_count >= self.params.get('MELD_LATE_TURN', 10):
+                return True
+            push = self.strategy.compute_push_score()
+            if push > 0.5:
+                return True
+
+        if type_ == 1:
+            if self.state.tsumo_count >= self.params.get('MELD_LATE_TURN', 12):
+                return True
+            push = self.strategy.compute_push_score()
+            if push > 0.7:
+                return True
+
         return False

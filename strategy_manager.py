@@ -611,7 +611,7 @@ class StrategyManager:
         return self.state.my_score_rank() == 3
 
     def is_meld_open_allowed(self) -> bool:
-        return self.is_orya_ori_mode()
+        return True
 
     def get_strategy_mode(self) -> str:
         """
