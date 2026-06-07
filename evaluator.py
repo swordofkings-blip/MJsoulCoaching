@@ -297,12 +297,6 @@ class AttackEvaluator:
         return ukeire_total, unique_ukeire
 
     def shanten_after_discard(self, discard_tile: str) -> int:
-        """
-        @title 打牌後のシャンテン数
-        @description 指定牌を打牌したと仮定したときの自家手牌のシャンテン数を計算する。
-        @param discard_tile 捨てる牌の文字列 (例: "5m")
-        @returns int 打牌後のシャンテン数（-1: 和了形, 0: テンパイ）
-        """
         hand_counts = self.state.my_hand_counts()
         discard_id = tile_to_id(discard_tile)
         new_counts = list(hand_counts)
@@ -312,6 +306,29 @@ class AttackEvaluator:
             return ShantenCalculator.calculate_closed_effective(new_counts)
         else:
             return ShantenCalculator.calculate_open(new_counts, open_meld_count)
+
+    def _standard_shanten_after(self, discard_tile: str) -> int:
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(discard_tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+        return ShantenCalculator.calculate_standard(new_counts)
+
+    def _best_standard_shanten(self) -> int:
+        hand_counts = list(self.state.my_hand_counts())
+        best = 8
+        seen = set()
+        for t in self.state.my_hand:
+            tid = tile_to_id(t)
+            if tid in seen or hand_counts[tid] <= 0:
+                continue
+            seen.add(tid)
+            tmp = list(hand_counts)
+            tmp[tid] -= 1
+            s = ShantenCalculator.calculate_standard(tmp)
+            if s < best:
+                best = s
+        return best
 
     def best_shanten_after_single_discard(self) -> int:
         """
@@ -342,10 +359,8 @@ class AttackEvaluator:
         ukeire_total, _ = self.ukeire_for_discard(tile)
         shanten = self.shanten_after_discard(tile)
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
-        if not hasattr(self, '_best_shanten_cache'):
-            self._best_shanten_cache = self.best_shanten_after_single_discard()
-        best_shanten = self._best_shanten_cache
-        if shanten > best_shanten:
+        std_shanten = self._standard_shanten_after(tile)
+        if std_shanten > self._best_standard_shanten():
             return SHANTEN_BACKTRACK_PENALTY
         USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
         ukeire_mult = self.params.get('UKEIRE_MULTIPLIER', 10)

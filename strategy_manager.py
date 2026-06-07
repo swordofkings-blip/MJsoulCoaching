@@ -19,6 +19,10 @@ class ShantenCalculator:
         ShantenCalculator._cache.clear()
 
     @staticmethod
+    def calculate_standard(hand_counts: List[int]) -> int:
+        return ShantenCalculator._standard_shanten(hand_counts)
+
+    @staticmethod
     def calculate_closed(hand_counts: List[int]) -> int:
         std = ShantenCalculator._standard_shanten(hand_counts)
         chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
