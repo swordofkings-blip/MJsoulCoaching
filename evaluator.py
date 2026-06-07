@@ -1731,23 +1731,45 @@ class Evaluator:
             if def_penalty >= cond_th and push < cond_push:
                 return False
 
-        # 副露封印モード: 配牌時に閉局向き役が多いと判断した場合
+        # 副露後の安全な捨て牌の有無をチェック
+        hand_ids = [tile_to_id(t) for t in self.state.my_hand]
+        opp_discards = [set(tile_to_id(t) for t in self.state.river[opp])
+                        for opp in range(4) if opp != self.state.my_seat]
+        all_discards = set().union(*opp_discards) if opp_discards else set()
+
+        # 副露に使う牌を手牌から除いた残り
+        consumed_ids = set()
+        if type_ == 0:
+            consumed_ids = {tile_to_id(t) for t in tiles[1:]}
+        elif type_ == 1:
+            consumed_ids = {tile_to_id(tiles[0])}
+        remaining = [tid for tid in hand_ids if tid not in consumed_ids]
+        safe_after = any(tid in all_discards for tid in remaining)
+
+        if not safe_after and push < 0.5 and expected_han < 2:
+            return False
+
+        # 周囲の警戒度: 他家リーチ・副露が多いほど慎重に
+        opp_reach = sum(1 for i in range(4) if i != self.state.my_seat
+                         and self.state.reach_states[i].is_reach)
+        if opp_reach >= 1 and expected_han < 2 and not is_yakuhai_meld:
+            if not safe_after:
+                return False
+
+        turn = self.state.tsumo_count // 4
+        is_dealer = self.state.my_seat == 0
+
+        # 副露封印モード
         sealed = self.meld_seal.evaluate(self.state.my_hand, self.state.my_melds,
                                           self.state.my_seat, self.state.chang,
                                           self.state.ju)
         if sealed and is_closed:
-            # 封印中は役牌ポンか価値あるテンパイのみ許可
-            if type_ == 1:
-                target_id = tile_to_id(tiles[0])
-                seat_wind = {0:27,1:28,2:29,3:30}[self.state.my_seat]
-                round_wind = {0:27,1:28,2:29,3:30}[self.state.chang%4]
-                if target_id in (31,32,33,seat_wind,round_wind) and expected_han >= 1:
-                    return True
+            # 封印中: テンパイのみ許可（役牌すらポンしない）
             if after_shanten <= 0 and expected_han >= 1:
                 return True
             return False
 
-        # 役牌ポン（小林: 守備力変わらないので常に鳴く）
+        # 役牌ポン（封印解除時のみ: 守備力変わらないので鳴く）
         if type_ == 1:
             target_id = tile_to_id(tiles[0])
             seat_wind = {0:27,1:28,2:29,3:30}[self.state.my_seat]
@@ -1771,8 +1793,6 @@ class Evaluator:
         if expected_han < 1:
             return False
 
-        turn = self.state.tsumo_count // 4
-
         # テンパイ → 鳴く（速度優先）
         if after_shanten <= 0:
             return True
@@ -1781,13 +1801,17 @@ class Evaluator:
         if not is_closed:
             return True
 
-        # 小林: 強い門前一向聴（両面x両面＋高打点）は鳴かない
+        # 強い門前一向聴（両面x両面＋高打点）は鳴かない
         if is_closed and before_shanten <= 1 and expected_han >= 2 and turn < 6:
             return False
 
-        # 小林: 終盤（10巡以降）は速度優先で鳴く
+        # 終盤: テンパイになるか形式テンパイが必要な場合のみ許可
         if turn >= 10:
-            return True
+            if after_shanten <= 0:
+                return True
+            if self.state.my_score_rank() == 3 and self.state.left_tile_count <= 20:
+                return True
+            return False
 
         # --- 価値比較 ---
         from hand_value import estimate_han_advanced, estimate_win_score
