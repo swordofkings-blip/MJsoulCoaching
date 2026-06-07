@@ -265,3 +265,4 @@ replay/
 record_*.json
 ws_dump.pkl
 *.zip
+temp/
