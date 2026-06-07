@@ -211,6 +211,14 @@ def evaluate_state(payload: dict) -> dict:
     """
     state = _restore_game_state(payload)
     params = payload.get("params", None)
+    if params is None:
+        import os, json
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config_parameters_ldea_v1.json')
+        if os.path.exists(config_path):
+            with open(config_path, encoding='utf-8') as f:
+                params = json.load(f)
+        else:
+            params = {}
 
     my_seat = state.my_seat
     hand = list(state.my_hand)
