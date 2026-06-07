@@ -937,6 +937,10 @@
                     <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
                         <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
                         <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
+                        <div class="bot-coach-near" id="botCoachNear" style="margin-top:6px;font-size:0.7rem;color:rgba(255,255,255,0.6);">
+                            <span id="botCoachNearLabel"></span>
+                            <span id="botCoachNearTiles"></span>
+                        </div>
                     </div>
                     <div class="bot-coach-push" id="botCoachPush" style="display:none;">
                         <div class="bot-coach-push-label">
@@ -2122,6 +2126,16 @@ ${riversStr}
             recTile.innerText = getTileText(data.recommended);
             document.getElementById('botCoachRecommendText').innerHTML =
                 `<strong>${data.recommended}</strong> を切るのが最も評価値が高いと算出されました。`;
+
+            if (data.near_tiles && data.near_tiles.length > 0) {
+                document.getElementById('botCoachNear').style.display = 'block';
+                document.getElementById('botCoachNearLabel').innerText = '同等候補: ';
+                document.getElementById('botCoachNearTiles').innerHTML = data.near_tiles.map(t =>
+                    `<span class="tile ${getTileClass(t)}" style="display:inline-block;padding:2px 6px;margin:1px;border-radius:4px;font-size:0.75rem;">${getTileText(t)}</span>`
+                ).join('');
+            } else {
+                document.getElementById('botCoachNear').style.display = 'none';
+            }
 
             const pushBox = document.getElementById('botCoachPush');
             pushBox.style.display = 'flex';

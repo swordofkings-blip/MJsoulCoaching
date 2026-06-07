@@ -247,14 +247,21 @@ def evaluate_state(payload: dict) -> dict:
     recommended = evaluations[0]["tile"] if evaluations else None
 
     best_score = evaluations[0]["score"] if evaluations else 0
+    near_tiles = []
     for ev in evaluations:
         ev["blunder_score"] = round(best_score - ev["score"], 2)
         ev["is_blunder"] = ev["blunder_score"] > 200
         ev["reason"] = _build_decision_reason(ev, strategy_details, evaluator, is_best=(ev["tile"] == recommended))
+        if ev["tile"] != recommended:
+            abs_diff = abs(best_score - ev["score"])
+            rel_diff = abs_diff / max(abs(best_score), 1) if best_score != 0 else 1
+            if abs_diff <= params.get('MATCH_ABS_TOLERANCE', 15) or rel_diff <= params.get('MATCH_TOLERANCE', 0.05):
+                near_tiles.append(ev["tile"])
 
     return {
         "status": "ok",
         "recommended": recommended,
+        "near_tiles": near_tiles,
         "push_score": round(push_score, 3),
         "strategy_details": strategy_details,
         "evaluations": evaluations,
