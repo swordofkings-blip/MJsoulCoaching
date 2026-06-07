@@ -14,9 +14,9 @@ WALL_SIZE = 136
 DEAD_WALL_SIZE = 14
 HAND_SIZE = 13
 
-CALL_PON = 2
-CALL_CHI = 1
-CALL_KAN = 5
+CALL_PON = 1
+CALL_CHI = 0
+CALL_KAN = 2
 
 
 @dataclass
@@ -218,6 +218,7 @@ class MahjongSimulator:
         self._reach_states: List[ReachState] = [ReachState() for _ in range(4)]
         self._reach_locked: List[bool] = [False] * 4
         self._tsumo_count = 0
+        self._player_tsumo = [0, 0, 0, 0]
         self._last_discard = None
         self._last_discard_seat = -1
         self._current_player = self._dealer_seat
@@ -253,6 +254,7 @@ class MahjongSimulator:
                     return self._ryuukyoku()
                 self._hands[seat].append(drawn)
                 self._tsumo_count += 1
+                self._player_tsumo[seat] += 1
 
                 if self._is_tenpai(seat):
                     st = self._build_state(seat)
@@ -273,6 +275,7 @@ class MahjongSimulator:
                     return self._ryuukyoku()
                 self._hands[seat].append(drawn)
                 self._tsumo_count += 1
+                self._player_tsumo[seat] += 1
 
                 if self._is_tenpai(seat):
                     st = self._build_state(seat)
@@ -467,7 +470,9 @@ class MahjongSimulator:
         han, yaku_list = estimate_han(hand, self._melds[seat], self._dora_indicators,
                                       is_open=is_open, is_tsumo=True,
                                       has_reach=self._reach_states[seat].is_reach,
-                                      is_ippatsu=self._reach_states[seat].is_ippatsu)
+                                      is_ippatsu=self._reach_states[seat].is_ippatsu,
+                                      seat=seat, chang=self._chang, ju=self._ju,
+                                      win_tile=drawn, tsumo_turn=self._tsumo_count)
 
         fu = calculate_fu(hand, self._melds[seat], drawn, is_tsumo=True,
                           is_open=is_open, is_dealer=is_dealer,
@@ -510,7 +515,7 @@ class MahjongSimulator:
                            meld_counts=[len(self._melds[s]) for s in range(4)],
                            open_meld_counts=[len([m for m in self._melds[s] if m.type in (1, 2)]) for s in range(4)],
                            win_tile=drawn, win_score=delta[seat],
-                           tsumo_turn=self._tsumo_count, yaku_list=yaku_list,
+                           tsumo_turn=self._player_tsumo[seat], yaku_list=yaku_list,
                            dealer_seat=self._dealer_seat)
 
     def _ron_win(self, seat: int, discarder: int, tile: str) -> KyokuResult:
@@ -523,7 +528,9 @@ class MahjongSimulator:
         han, yaku_list = estimate_han(hand, self._melds[seat], self._dora_indicators,
                                       is_open=is_open, is_tsumo=False,
                                       has_reach=self._reach_states[seat].is_reach,
-                                      is_ippatsu=self._reach_states[seat].is_ippatsu)
+                                      is_ippatsu=self._reach_states[seat].is_ippatsu,
+                                      seat=seat, chang=self._chang, ju=self._ju,
+                                      win_tile=tile, tsumo_turn=self._tsumo_count)
 
         fu = calculate_fu(hand, self._melds[seat], tile, is_tsumo=False,
                           is_open=is_open, is_dealer=is_dealer, wait_type='ron')
@@ -551,7 +558,7 @@ class MahjongSimulator:
                            meld_counts=[len(self._melds[s]) for s in range(4)],
                            open_meld_counts=[len([m for m in self._melds[s] if m.type in (1, 2)]) for s in range(4)],
                            win_tile=tile, win_score=delta[seat],
-                           tsumo_turn=self._tsumo_count, yaku_list=yaku_list,
+                           tsumo_turn=self._player_tsumo[seat], yaku_list=yaku_list,
                            dealer_seat=self._dealer_seat)
 
     def _ryuukyoku(self) -> KyokuResult:
@@ -569,7 +576,7 @@ class MahjongSimulator:
                            reach_seats=[rs.is_reach for rs in self._reach_states],
                            meld_counts=[len(self._melds[s]) for s in range(4)],
                            open_meld_counts=[len([m for m in self._melds[s] if m.type in (1, 2)]) for s in range(4)],
-                           tsumo_turn=self._tsumo_count,
+                           tsumo_turn=self._player_tsumo[self._dealer_seat],
                            dealer_seat=self._dealer_seat)
 
     def _build_state(self, seat: int, override_hand: List[str] = None) -> GameState:

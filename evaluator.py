@@ -29,6 +29,7 @@ SCORE_MUSUJI_PER_REACH = -200
 SCORE_ATAMAKAKE_BONUS = 200
 MATAGI_PENALTY = 100
 
+
 # 形テン（形式テンパイ）ボーナス: 終盤に和了形に一歩でも近づける打牌を評価する
 # 巡目別加算値。18巡目以降はボーナス倍率を上げ、流局間際の押し返しを強調する設計。
 KEITEN_BONUS_15_17 = 1500
@@ -638,7 +639,9 @@ class AttackEvaluator:
         score = estimate_hand_value(after_hand, melds, self.state.actual_doras,
                                      is_open=open_meld_count > 0,
                                      has_reach=has_reach, is_ippatsu=False,
-                                     is_tsumo=False, is_dealer=is_dealer)
+                                     is_tsumo=False, is_dealer=is_dealer,
+                                     seat=self.state.my_seat, chang=self.state.chang,
+                                     ju=self.state.ju)
         bonus = score // 10
         if bonus > 0:
             self.record_detail(tile, f"手役・打点評価ボーナス (+{bonus})")
@@ -664,6 +667,16 @@ class AttackEvaluator:
         
         dominant_suit = max(suit_counts, key=suit_counts.get)
         dominant_count = suit_counts[dominant_suit]
+
+        # 色バイアス: 主色の孤立中張牌を残す動機付け（控えめに）
+        honitsu_cfg = self.params.get('yaku_strategy', {}).get('honitsu', {})
+        if honitsu_cfg.get('enabled', True) and dominant_count >= honitsu_cfg.get('suit_threshold', 6):
+            bonus_per = 20
+            max_bonus = 200
+            concentration_bonus = min((dominant_count - 5) * bonus_per, max_bonus)
+            if concentration_bonus > 0:
+                bonus += concentration_bonus
+                self.record_detail(tile, f"染めバイアス (+{concentration_bonus})")
         
         # 染め手（主力＋字牌が9枚以上かつ、通常進行がまだ遅い2向聴以上の状況）
         is_dyeing = (dominant_count + z_count >= 9) and (shanten >= 2)
@@ -1103,7 +1116,9 @@ class Evaluator:
         is_dealer = (self.state.my_seat % 4) == 0
         return estimate_hand_value(hand, melds, self.state.doras, is_open,
                                     has_reach=has_reach, is_ippatsu=False,
-                                    is_tsumo=False, is_dealer=is_dealer)
+                                    is_tsumo=False, is_dealer=is_dealer,
+                                    seat=self.state.my_seat, chang=self.state.chang,
+                                    ju=self.state.ju)
 
     def _estimate_deal_loss(self, tile: str) -> int:
         from opponent_model import estimate_opponent_state
@@ -1127,7 +1142,8 @@ class Evaluator:
                     [], self.state.melds[seat], self.state.doras,
                     is_open=opp['open_meld_count'] > 0,
                     has_reach=opp['is_riichi'], is_ippatsu=False,
-                    is_tsumo=False, is_dealer=(seat == 0))
+                    is_tsumo=False, is_dealer=(seat == 0),
+                    seat=seat, chang=self.state.chang, ju=self.state.ju)
                 est_score = max(1000, est_score)
                 seat_loss = int(est_score * danger)
                 total_loss += seat_loss
@@ -1300,9 +1316,11 @@ class Evaluator:
             return False
         hand_counts = self.state.my_hand_counts()
         push = self.strategy.compute_push_score()
+        kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
+        min_push = kan_cfg.get('min_push_score', 0.6)
         for i, c in enumerate(hand_counts):
             if c == 4:
-                if push > 0.6:
+                if push > min_push:
                     return True
         return False
 
@@ -1481,8 +1499,158 @@ class Evaluator:
         if rank == 3:
             riichi_score += self.params.get('RIICHI_LAST_RANK_BONUS', 0.2)
 
+        riichi_cfg = self.params.get('yaku_strategy', {}).get('riichi', {})
+        try:
+            from yaku_detector import analyze_all
+            yaku_infos = analyze_all(self.state.my_hand, self.state.my_melds,
+                                      seat=self.state.my_seat, chang=self.state.chang,
+                                      ju=self.state.ju)
+            expected_han = 0
+            pursuing_damaten = False
+            for yi in yaku_infos.values():
+                if yi.is_complete:
+                    expected_han += yi.closed_han
+                if not yi.is_complete and yi.progress > 0.6:
+                    if yi.name in ('sanshoku', 'ittsuu'):
+                        pursuing_damaten = True
+            if expected_han <= 0:
+                riichi_score += riichi_cfg.get('low_value_penalty', -0.2)
+            elif expected_han >= 2:
+                riichi_score += riichi_cfg.get('expected_han_bonus_per_han', 0.1) * expected_han
+            if pursuing_damaten:
+                penalty = riichi_cfg.get('damaten_sanshoku_penalty', -0.3)
+                riichi_score += penalty
+        except Exception:
+            pass
+
         threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
         return riichi_score > threshold
+
+    def _estimate_open_han(self) -> int:
+        """
+        @title 鳴き時の期待飜数の見積もり
+        @description 鳴いた後の期待飜数をHeuristicに見積もる。
+        @returns {int} 期待飜数（エラー時は0）
+        """
+        # アガる前の進行中の手牌から役を推測するため、strictなyaku_detectorではなくheuristicな予測ロジックを使用する
+        try:
+            from hand_value import estimate_han_advanced
+            return estimate_han_advanced(
+                self.state.my_hand, self.state.my_melds, self.state.doras,
+                is_open=True, has_reach=False, is_ippatsu=False, is_tsumo=False,
+                seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju
+            )
+        except Exception:
+            # エラー発生時のフォールバック値0
+            return 0
+
+    def _yaku_meld_bias(self, type_: int, tiles: List[str]) -> Optional[bool]:
+        try:
+            from yaku_detector import analyze_all
+            yaku_infos = analyze_all(self.state.my_hand, self.state.my_melds,
+                                      seat=self.state.my_seat, chang=self.state.chang,
+                                      ju=self.state.ju)
+        except Exception:
+            return None
+
+        yaku_strategy = self.params.get('yaku_strategy', {})
+
+        toitoi_cfg = yaku_strategy.get('toitoi', {})
+        if toitoi_cfg.get('meld_bias') == 'pon_only':
+            toitoi = yaku_infos.get('toitoi')
+            if toitoi and toitoi.progress >= toitoi_cfg.get('pairs_threshold', 3):
+                    if type_ == 0:
+                        return False
+                    if type_ == 1:
+                        return True
+
+        honitsu_cfg = yaku_strategy.get('honitsu', {})
+        if honitsu_cfg.get('meld_bias') == 'dominant_only' and type_ == 0:
+            honitsu = yaku_infos.get('honitsu')
+            chinitsu = yaku_infos.get('chinitsu')
+            target = honitsu or chinitsu
+            if target and target.main_suit is not None:
+                tile_suit = tile_to_id(tiles[0]) // 9
+                if tile_suit != target.main_suit and tile_suit < 3:
+                    return False
+
+        for yaku_name in ('ittsuu', 'sanshoku'):
+            cfg = yaku_strategy.get(yaku_name, {})
+            if cfg.get('meld_bias') == 'accept' and type_ == 0:
+                yi = yaku_infos.get(yaku_name)
+                if yi and yi.progress >= cfg.get('pursue_threshold', 0.0):
+                    return True
+
+        # 役牌ポンは常に価値があるため、pinfu/chiitoitsuなどのdeclineを無視
+        is_yakuhai_pon = False
+        if type_ == 1:
+            target_id = tile_to_id(tiles[0])
+            seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
+            round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
+            is_yakuhai_pon = target_id in (31, 32, 33, seat_wind, round_wind)
+
+        # 既に副露している場合、pinfu/chiitoitsuなど閉局専用役は不可能なのでdeclineを無視
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        for yaku_name in ('chiitoitsu', 'ryanpeikou', 'pinfu'):
+            cfg = yaku_strategy.get(yaku_name, {})
+            if cfg.get('meld_bias') == 'decline':
+                yi = yaku_infos.get(yaku_name)
+                if yi and yi.progress >= cfg.get('pursue_threshold', 0.0):
+                    if open_meld_count == 0 and not is_yakuhai_pon:
+                        return False
+
+        return None
+
+    def _meld_defense_penalty(self, type_: int, tiles: List[str]) -> int:
+        cfg = self.params.get('yaku_strategy', {}).get('meld_defense', {})
+        riichi_weight = cfg.get('riichi_penalty_per_tile', 300)
+        threat_weight = cfg.get('threat_penalty_per_tile', 150)
+        min_defense = cfg.get('min_defense_weight', 0.2)
+        abs_threshold = cfg.get('absolute_threshold', 300)
+        cond_threshold = cfg.get('conditional_threshold', 150)
+        cond_push = cfg.get('conditional_push_min', 0.7)
+
+        consumed = []
+        if type_ == 1:
+            tid = tile_to_id(tiles[0])
+            consumed = [tid, tid]
+        elif type_ == 0:
+            consumed = [tile_to_id(t) for t in tiles[1:]]
+        elif type_ == 2:
+            tid = tile_to_id(tiles[0])
+            consumed = [tid, tid, tid]
+        else:
+            return 0
+
+        hand_counts = self.state.my_hand_counts()
+        open_count = sum(1 for m in self.state.my_melds if m.is_open)
+        my_shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_count)
+
+        push = self.strategy.compute_push_score()
+        defense_weight = max(min_defense, 1.0 - push)
+        speed_factor = max(1.0, my_shanten * 0.5)
+
+        hand_ids = [tile_to_id(t) for t in self.state.my_hand]
+        total_loss = 0
+
+        for opp in range(4):
+            if opp == self.state.my_seat:
+                continue
+            is_riichi = self.state.reach_states[opp].is_reach
+            if not is_riichi:
+                opp_threat = self.strategy.compute_opponent_threat()
+                if opp_threat < 0.4:
+                    continue
+
+            opp_discards = set(tile_to_id(t) for t in self.state.river[opp])
+            genbutsu = {tid for tid in set(hand_ids) if tid in opp_discards}
+            lost = sum(1 for c in consumed if c in genbutsu)
+            if lost == 0:
+                continue
+            total_loss += lost * (riichi_weight if is_riichi else threat_weight)
+
+        self._last_def_penalty = int(total_loss * defense_weight * speed_factor)
+        return self._last_def_penalty
 
     def should_call_meld(self, type_: int, tiles: List[str], from_seat: int) -> bool:
         if not self.strategy.is_meld_open_allowed():
@@ -1490,49 +1658,103 @@ class Evaluator:
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
         if open_meld_count >= 4:
             return False
+
+        bias = self._yaku_meld_bias(type_, tiles)
+        if bias is not None:
+            return bias
+
         hand_counts = self.state.my_hand_counts()
         before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
         after_counts = list(hand_counts)
-        if type_ == 2:
+        if type_ == 1:
             target = tile_to_id(tiles[0])
             after_counts[target] = max(0, after_counts[target] - 2)
-        elif type_ == 1:
+        elif type_ == 0:
             for t in tiles[1:]:
                 tid = tile_to_id(t)
                 after_counts[tid] = max(0, after_counts[tid] - 1)
-        elif type_ == 5:
+        elif type_ == 2:
             target = tile_to_id(tiles[0])
             after_counts[target] = max(0, after_counts[target] - 3)
         after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
         if after_shanten >= before_shanten:
             return False
 
-        push = self.strategy.compute_push_score()
-        turn = self.state.tsumo_count
+        turn = self.state.tsumo_count // 4
+        is_closed = open_meld_count == 0
+        expected_han = self._estimate_open_han()
 
-        if type_ == 2:
-            target_id = tile_to_id(tiles[0])
-            is_yakuhai = target_id in (31, 32, 33)
-            if is_yakuhai:
-                return True
-            if after_shanten <= 0:
-                return True
-            if turn >= self.params.get('MELD_LATE_TURN_PON', 10):
-                return True
-            if push > 0.5:
-                return True
-            return False
-
+        # 役牌ポン or 高価値手は防御ペナルティを無視
+        is_yakuhai_meld = False
         if type_ == 1:
+            target_id = tile_to_id(tiles[0])
+            seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
+            round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
+            is_yakuhai_meld = target_id in (31, 32, 33, seat_wind, round_wind)
+
+        # 【追加】防御ペナルティ: 安全牌喪失リスクを評価
+        def_cfg = self.params.get('yaku_strategy', {}).get('meld_defense', {})
+        push = self.strategy.compute_push_score()
+        def_penalty = self._meld_defense_penalty(type_, tiles)
+        abs_th = def_cfg.get('absolute_threshold', 300)
+        cond_th = def_cfg.get('conditional_threshold', 150)
+        cond_push = def_cfg.get('conditional_push_min', 0.7)
+        if not is_yakuhai_meld and expected_han < 2:
+            if def_penalty >= abs_th:
+                return False
+            if def_penalty >= cond_th and push < cond_push:
+                return False
+
+        if type_ == 1:  # ポン
+            target_id = tile_to_id(tiles[0])
+
+            # 役牌ポン（三元牌 + 自風 + 場風）
+            seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
+            round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
+            is_yakuhai = target_id in (31, 32, 33, seat_wind, round_wind)
+            if is_yakuhai:
+                if is_closed:
+                    closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
+                    if closed_shanten <= 0:
+                        return False
+                else:
+                    if after_shanten > 0:
+                        return False
+                return True
+
+
+            # メンテン維持: 門前で1向聴以内かつリーチ可能なら副露しない
+            if is_closed and before_shanten <= 1:
+                closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
+                if closed_shanten <= 1:
+                    return False
+
+            # テンパイ: 常に許可（聴牌価値）
             if after_shanten <= 0:
                 return True
-            if turn >= self.params.get('MELD_LATE_TURN_CHI', 12):
+
+            # 既に副露済みなら手を進めるため積極的に鳴く
+            if not is_closed:
                 return True
-            if push > 0.7:
-                return True
+
             return False
 
-        if type_ == 5:
+        if type_ == 0:  # チー
+            # メンテン維持
+            if is_closed and before_shanten <= 1:
+                closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
+                if closed_shanten <= 1:
+                    return False
+
+            if after_shanten <= 0:
+                return True
+
+            if not is_closed:
+                return True
+
+            return False
+
+        if type_ == 2:  # 大明槓
             if push > 0.6:
                 return True
             dora_gain = 0

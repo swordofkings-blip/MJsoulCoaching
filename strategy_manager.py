@@ -523,17 +523,22 @@ class StrategyManager:
         return 0.0
 
     def _estimate_han(self) -> int:
-        han = 1
-        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
-        if open_meld_count == 0:
-            han += 1
-        for dora in self.state.doras:
-            for t in self.state.my_hand:
-                if t == dora or (is_red_five(t) and tile_to_id(t) == tile_to_id(dora)):
-                    han += 1
-        if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
-            han += 1
-        return han
+        """
+        @title 期待飜数の見積もり
+        @description 現在の局状態から、和了時の期待飜数をHeuristicに見積もる。
+        @returns {int} 期待飜数（最低1）
+        """
+        # アガる前の進行中の手牌から役を推測するため、strictなyaku_detectorではなくheuristicな予測ロジックを使用する
+        is_open = any(m.is_open for m in self.state.my_melds)
+        has_reach = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
+        from hand_value import estimate_han_advanced
+        han = estimate_han_advanced(
+            self.state.my_hand, self.state.my_melds, self.state.doras,
+            is_open=is_open, has_reach=has_reach, is_ippatsu=False, is_tsumo=False,
+            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju
+        )
+        # 最低1飜を保証するための数値1
+        return max(han, 1)
 
     def compute_push_score(self) -> float:
         a_base = self.compute_base_attack()

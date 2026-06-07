@@ -52,5 +52,34 @@
   "BASE_ATTACK_TENPAI_LOW": 0.7,
   "BASE_ATTACK_1SHANTEN": 0.4,
   "LAST_ROUND_RANK0_PUSH_LIMIT": 0.2,
-  "LAST_ROUND_RANK3_PUSH_MIN": 0.85
+  "LAST_ROUND_RANK3_PUSH_MIN": 0.85,
+  "yaku_strategy": {
+    "pinfu": { "enabled": true, "meld_bias": "decline", "pursue_threshold": 0.3, "value_weight": 0.8 },
+    "iipeikou": { "enabled": true, "pursue_threshold": 0.3, "value_weight": 0.6, "meld_bias": "decline" },
+    "ittsuu": { "enabled": true, "pursue_threshold": 0.3, "giveup_turn": 14, "value_weight": 1.0, "meld_bias": "accept" },
+    "sanshoku": { "enabled": true, "pursue_threshold": 0.3, "giveup_turn": 12, "value_weight": 1.2, "meld_bias": "accept" },
+    "sanshoku_doukou": { "enabled": true, "pursue_threshold": 0.3, "value_weight": 0.8 },
+    "toitoi": { "enabled": true, "pairs_threshold": 3, "value_weight": 1.2, "meld_bias": "pon_only" },
+    "honitsu": { "enabled": true, "suit_threshold": 6, "bonus_per_tile": 50, "max_bonus": 500, "value_weight": 1.0, "meld_bias": "dominant_only" },
+    "chinitsu": { "enabled": true, "suit_threshold": 8, "bonus_per_tile": 60, "max_bonus": 800, "value_weight": 1.5, "meld_bias": "dominant_only" },
+    "chanta": { "enabled": false, "pursue_threshold": 0.5, "value_weight": 0.5 },
+    "junchan": { "enabled": false, "pursue_threshold": 0.5, "value_weight": 0.5 },
+    "shousangen": { "enabled": true, "pursue_threshold": 0.3, "value_weight": 1.0 },
+    "honroutou": { "enabled": false, "pursue_threshold": 0.5, "value_weight": 0.3 },
+    "chiitoitsu": { "enabled": true, "pairs_threshold": 4, "value_weight": 0.8, "meld_bias": "decline" },
+    "ryanpeikou": { "enabled": true, "pursue_threshold": 0.3, "value_weight": 0.8, "meld_bias": "decline" },
+    "tanyao": { "enabled": true, "value_weight": 0.5 },
+    "sanankou": { "enabled": true, "pursue_threshold": 0.3, "value_weight": 1.0 },
+    "riichi": { "enabled": true, "damaten_sanshoku_penalty": -0.3, "damaten_ittsuu_penalty": -0.3, "expected_han_bonus_per_han": 0.1, "low_value_penalty": -0.2 },
+    "kan": { "enabled": true, "min_push_score": 0.6, "chankan_risk_threshold": 0.3, "decline_if_wait_reduces": true },
+    "yakuhai": { "enabled": true, "value_weight": 0.8 },
+    "meld_defense": {
+      "riichi_penalty_per_tile": 300,
+      "threat_penalty_per_tile": 150,
+      "min_defense_weight": 0.2,
+      "absolute_threshold": 300,
+      "conditional_threshold": 150,
+      "conditional_push_min": 0.7
+    }
+  }
 }
