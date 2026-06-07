@@ -20,6 +20,7 @@ from hand_value import SANGEN
 SCORE_GENBUTSU = 1000
 SCORE_SUJI = 500
 SCORE_WALL_SUJI = 800
+SCORE_KABE_EDGE = 750
 SCORE_NO_CHANCE = 700
 SCORE_ONE_CHANCE = 200
 SCORE_HONOR = 300
@@ -179,6 +180,19 @@ class DefenseEvaluator:
                         result.add(base + adj)
         return result
 
+    def _kabe_edge_safe_ids(self) -> set:
+        visible = self._visible_counts()
+        result = set()
+        for tid in range(27):
+            if visible[tid] >= 4:
+                off = tid % 9
+                base = (tid // 9) * 9
+                if off == 1:
+                    result.add(base)
+                elif off == 7:
+                    result.add(base + 8)
+        return result
+
     def defense_score_for_tile(self, tile: str) -> int:
         tile_id = tile_to_id(tile)
         reach_seats = self._active_reach_seats()
@@ -198,6 +212,9 @@ class DefenseEvaluator:
             no_chance = self._no_chance_ids()
             if tile_id in no_chance and not is_honor(tile_id):
                 return self.params.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
+            kabe_edge = self._kabe_edge_safe_ids()
+            if tile_id in kabe_edge:
+                return self.params.get('SCORE_KABE_EDGE', 750)
 
         suji_ids = self._reach_suji_ids(reach_seats)
         if tile_id in suji_ids:
