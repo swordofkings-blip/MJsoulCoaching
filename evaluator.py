@@ -507,6 +507,25 @@ class AttackEvaluator:
             if off < 8 and counts_after[base + off + 1] >= 1:
                 bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
 
+        if is_honor(discard_id):
+            is_dora = any(tile_to_id(t) == discard_id for d in self.state.doras for t in [d])
+            if is_dora:
+                bonus -= self.params.get('DORA_DISCARD_PENALTY', 40)
+            if discard_id in SANGEN:
+                bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+            bakaze = 27 + (self.state.chang % 4)
+            jikaze = 27 + (self.state.my_seat % 4)
+            if discard_id == bakaze:
+                bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+            if discard_id == jikaze:
+                pass
+            elif discard_id not in SANGEN and discard_id != bakaze:
+                bonus += self.params.get('HONOR_DISCARD_BONUS', 10)
+        else:
+            is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
+            if is_dora:
+                bonus -= self.params.get('DORA_DISCARD_PENALTY', 60)
+
         return bonus
 
     def _get_furiten_tile_ids(self) -> set:
