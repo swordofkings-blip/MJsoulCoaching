@@ -115,13 +115,14 @@
 
         /* 麻雀卓 - 960px x 740px へ拡張。高さを少し潰して縦方向のゆとりを確保しつつ被りを排除 */
         .mahjong-table {
-            width: 960px; /* 卓の横幅。牌や川の配置に十分な余白を持たせるための960px */
-            height: 740px; /* 卓の縦幅。画面全体の縦スクロールを不要にするための740px */
+            width: 960px;
+            height: 740px;
             background: var(--table-bg);
-            border: 20px solid #1a1b20; /* 卓の額縁（枠線）。960pxの広さに対して重厚感を出すための20px幅 */
+            border: 20px solid #1a1b20;
             box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.8), 0 24px 48px rgba(0, 0, 0, 0.6);
-            border-radius: 44px; /* 卓の角丸。高さが縮小された卓の縦横比に合わせた44pxの円弧 */
+            border-radius: 44px;
             position: relative;
+            overflow: visible;
         }
 
         /* 中央の表示エリア - 240px x 200px へ縮めて縦方向の被りを防止 */
@@ -259,7 +260,7 @@
         }
 
 
-        /* プレイヤー席情報表示 - 卓内4隅に横一列で配置 */
+        /* プレイヤー席情報表示 */
         .seat-info {
             position: absolute;
             background: rgba(22, 26, 37, 0.9);
@@ -273,14 +274,13 @@
             gap: 8px;
             z-index: 4;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            min-width: 160px; /* 点差表示も含めた横幅 */
+            min-width: 160px;
             white-space: nowrap;
         }
-        .seat-info.bottom { bottom: 16px; left: 16px; }
-        .seat-info.right { bottom: 16px; right: 16px; }
-        .seat-info.top { top: 16px; right: 16px; }
-        .seat-info.left { top: 16px; left: 16px; }
-
+        .seat-info.bottom { bottom: -10px; left: 50%; transform: translate(-50%, 50%); }
+        .seat-info.top { top: -10px; left: 50%; transform: translate(-50%, -50%); }
+        .seat-info.right { top: 50%; right: -10px; transform: translate(50%, -50%); }
+        .seat-info.left { top: 50%; left: -10px; transform: translate(-50%, -50%); }
         .seat-info.active {
             border-color: var(--accent-green);
             box-shadow: 0 0 8px var(--accent-green);
