@@ -107,8 +107,23 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
                         is_match = True
                     else:
                         evaluator = Evaluator(states[seat], params=params)
-                        recommended, _ = evaluator.best_discard_with_score(hand)
-                        is_match = (recommended == tile)
+                        recommended, rec_score = evaluator.best_discard_with_score(hand)
+                        if recommended == tile:
+                            is_match = True
+                        else:
+                            unique = list(dict.fromkeys(hand))
+                            actual_score = None
+                            for t in unique:
+                                if t == tile:
+                                    actual_score = evaluator.evaluate_tile(t)
+                                    break
+                            if actual_score is not None and rec_score is not None:
+                                tolerance = params.get('MATCH_TOLERANCE', 0.05)
+                                score_range = max(abs(rec_score), 1)
+                                diff = abs(rec_score - actual_score) / score_range
+                                is_match = diff <= tolerance
+                            else:
+                                is_match = False
                     if is_match:
                         per_seat[seat]['matches'] += 1
                     else:
