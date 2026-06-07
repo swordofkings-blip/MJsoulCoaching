@@ -591,9 +591,9 @@ class AttackEvaluator:
                 if off < 8: connect += counts[base + off + 1] if counts[base + off + 1] > 0 else 0
                 if connect == 0:
                     if 2 <= off <= 6:
-                        bonus += self.params.get('ISOLATED_MIDDLE_BONUS', 15)
+                        bonus -= self.params.get('ISOLATED_MIDDLE_BONUS', 10)
                     else:
-                        bonus -= self.params.get('ISOLATED_EDGE_PENALTY', 15)
+                        bonus += self.params.get('ISOLATED_EDGE_BONUS', 25)
 
         return bonus
 
