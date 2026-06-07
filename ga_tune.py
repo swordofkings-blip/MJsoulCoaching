@@ -85,10 +85,16 @@ def main():
         base_params = json.load(f)
 
     resume_from = len(sys.argv) > 1 and sys.argv[1] == '--resume'
+    extra_gens = 0
+    if len(sys.argv) > 2:
+        try:
+            extra_gens = int(sys.argv[2])
+        except:
+            pass
     start_gen = 0
     pop_size = 8
     keep = 2
-    generations = 30
+    generations = 30 + extra_gens
     train_records = all_records[:2]
 
     log_file = 'ga_result.log'
@@ -141,7 +147,7 @@ def main():
                 nxt.append((0.0, mutate(random.choice(pop[:3])[1], rate, size)))
             pop = nxt
 
-        save_state(pop, start_gen + 100, log)
+        save_state(pop, start_gen + generations, log)
         log.write(f'\nValidation on {len(all_records)} records:\n')
         bf = evaluate_fitness(base_params, all_records)
         gf = evaluate_fitness(pop[0][1], all_records)
