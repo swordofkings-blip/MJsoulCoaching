@@ -1718,49 +1718,29 @@ class Evaluator:
 
         my_rank = self.state.my_score_rank()
 
-        # --- 価値ベース例外処理 ---
-
-        # 役牌ポン: 常に1飜確定、積極的に取る（小林の原則）
+        # --- 役牌ポン ---
         if is_yakuhai:
             if is_closed:
                 closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
                 if closed_shanten <= 0:
-                    return False  # テンパイ時はリーチ優先
+                    return False
             else:
                 if after_shanten > 0:
-                    return False  # 既開局でテンパイにならない役牌ポンは不要
+                    return False
             return True
 
-        # 聴牌: 速度優先で許可（小林スタイル）
-        # ただし「愚形+打点なし」は例外
+        # --- 聴牌 ---
         if after_shanten <= 0:
             if expected_han < 1:
-                return False  # 0飜テンパイ: 愚形打点なし → decline
+                return False
             return True
 
-        # 既開局: コミットしているので積極的に手を進める
+        # --- 既開局 ---
         if not is_closed:
             return True
 
-        # --- 門前手の判断（小林: 速度 vs 門前価値の比較） ---
-
-        # 向聴が遠い（3以上）: 速度優先で鳴いて手を進める
-        if before_shanten >= 3:
-            return True
-
-        # 向聴が近い（1-2）: リーチ含めた門前価値を考慮
-        # 手の価値が2飜以上なら門前維持を検討
-        if expected_han >= 2:
-            return False
-
-        # ラス目で大差: 高打点狙いで門前維持
-        if my_rank == 3 and self.state.left_tile_count <= 50:
-            return False
-
-        # 上記以外は門前維持
-        return False
-
-        if type_ == 2:  # 大明槓
+        # 大明槓
+        if type_ == 2:
             if push > 0.6:
                 return True
             dora_gain = 0
@@ -1771,4 +1751,29 @@ class Evaluator:
                 return True
             return False
 
+        # --- 門前手: 鳴き下がりを考慮した価値比較 ---
+        from hand_value import estimate_han_advanced, estimate_win_score
+
+        closed_han = estimate_han_advanced(
+            self.state.my_hand, self.state.my_melds, self.state.doras,
+            is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
+            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
+        is_dealer = self.state.my_seat == 0
+        open_score = estimate_win_score(expected_han, 30, is_dealer)
+
+        if before_shanten <= 1:
+            closed_score = estimate_win_score(closed_han + 2, 30, is_dealer)
+        else:
+            closed_score = estimate_win_score(closed_han + 1, 30, is_dealer)
+
+        speed_gain = (before_shanten - after_shanten) * 500
+        if closed_score > open_score + speed_gain + 500:
+            return False
+
+        if my_rank == 3 and self.state.left_tile_count <= 50:
+            return False
+
+        return True
+
         return False
+
