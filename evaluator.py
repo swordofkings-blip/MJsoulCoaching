@@ -36,6 +36,31 @@ KEITEN_BONUS_15_17 = 1500
 KEITEN_BONUS_18 = 3000
 
 
+class MeldSealTracker:
+    """配牌時点の役進行度から「副露封印モード」を判定"""
+
+    # 鳴くと死ぬ役（閉局専用 or 飜数半減）
+    _CLOSED_YAKU = {'pinfu', 'chiitoitsu', 'ryanpeikou', 'sanshoku', 'ittsuu'}
+    # 鳴いても生きる役（飜数不変または微減）
+    _OPEN_YAKU = {'yakuhai', 'toitoi', 'honitsu', 'chinitsu', 'tanyao'}
+
+    def __init__(self):
+        self._sealed: bool | None = None
+
+    def evaluate(self, hand, melds, seat, chang, ju) -> bool:
+        if self._sealed is not None:
+            return self._sealed
+        try:
+            from yaku_detector import analyze_all
+            yi = analyze_all(hand, melds, seat=seat, chang=chang, ju=ju)
+            closed_w = sum(y.progress * y.closed_han for n, y in yi.items() if n in self._CLOSED_YAKU)
+            open_w = sum(y.progress * y.closed_han for n, y in yi.items() if n in self._OPEN_YAKU)
+            self._sealed = closed_w >= open_w and closed_w > 0
+        except Exception:
+            self._sealed = False
+        return self._sealed
+
+
 class DefenseEvaluator:
     def __init__(self, state: GameState, params: dict = None):
         self.state = state
@@ -915,6 +940,7 @@ class Evaluator:
         self.defense = DefenseEvaluator(state, params=self.params)
         self.defense.evaluator = self
         self.strategy = StrategyManager(state, params=self.params)
+        self.meld_seal = MeldSealTracker()
 
     def record_detail(self, tile: str, msg: str):
         lst = self.details.setdefault(tile, [])
@@ -1705,6 +1731,22 @@ class Evaluator:
             if def_penalty >= cond_th and push < cond_push:
                 return False
 
+        # 副露封印モード: 配牌時に閉局向き役が多いと判断した場合
+        sealed = self.meld_seal.evaluate(self.state.my_hand, self.state.my_melds,
+                                          self.state.my_seat, self.state.chang,
+                                          self.state.ju)
+        if sealed and is_closed:
+            # 封印中は役牌ポンか価値あるテンパイのみ許可
+            if type_ == 1:
+                target_id = tile_to_id(tiles[0])
+                seat_wind = {0:27,1:28,2:29,3:30}[self.state.my_seat]
+                round_wind = {0:27,1:28,2:29,3:30}[self.state.chang%4]
+                if target_id in (31,32,33,seat_wind,round_wind) and expected_han >= 1:
+                    return True
+            if after_shanten <= 0 and expected_han >= 1:
+                return True
+            return False
+
         # 役牌ポン（小林: 守備力変わらないので常に鳴く）
         if type_ == 1:
             target_id = tile_to_id(tiles[0])
@@ -1740,7 +1782,6 @@ class Evaluator:
             return True
 
         # 小林: 強い門前一向聴（両面x両面＋高打点）は鳴かない
-        # 条件: 閉局1向聴以内 & 2飜以上 & 6巡未満
         if is_closed and before_shanten <= 1 and expected_han >= 2 and turn < 6:
             return False
 
