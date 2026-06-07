@@ -238,10 +238,11 @@ def evaluate_state(payload: dict) -> dict:
     evaluations.sort(key=lambda x: (-x["score"], x["tile"]))
     recommended = evaluations[0]["tile"] if evaluations else None
 
-    if recommended is not None:
-        rec_entry = next((e for e in evaluations if e["tile"] == recommended), None)
-        if rec_entry is not None:
-            rec_entry["reason"] = _build_decision_reason(rec_entry, strategy_details, evaluator)
+    best_score = evaluations[0]["score"] if evaluations else 0
+    for ev in evaluations:
+        ev["blunder_score"] = round(best_score - ev["score"], 2)
+        ev["is_blunder"] = ev["blunder_score"] > 200
+        ev["reason"] = _build_decision_reason(ev, strategy_details, evaluator, is_best=(ev["tile"] == recommended))
 
     return {
         "status": "ok",
@@ -298,27 +299,31 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
 
 
 def _safety_description(defense: float, evaluator: 'Evaluator') -> str:
-    """
-    @title 安全度の日本語説明生成
-    @description 防御スコアから、現物・スジ・字牌・無筋のいずれに該当するかを判定して日本語ラベルを返す。
-    @param {float} defense - 防御評価スコア
-    @param {Evaluator} evaluator - Evaluatorインスタンス（戦略モード参照用）
-    @returns {str} 安全度分類の日本語ラベル
-    """
     p = evaluator.params
-    from evaluator import SCORE_GENBUTSU, SCORE_SUJI, SCORE_HONOR
+    from evaluator import SCORE_GENBUTSU, SCORE_SUJI, SCORE_WALL_SUJI, SCORE_NO_CHANCE, SCORE_ONE_CHANCE, SCORE_HONOR
     score_genbutsu = p.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+    score_wall = p.get('SCORE_WALL_SUJI', SCORE_WALL_SUJI)
+    score_no_chance = p.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
     score_suji = p.get('SCORE_SUJI', SCORE_SUJI)
+    score_one_chance = p.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
     score_honor = p.get('SCORE_HONOR', SCORE_HONOR)
     if defense >= score_genbutsu:
         return "現物 (安全度: 極高)"
+    if defense >= score_wall:
+        return "壁スジ (安全度: 非常高)"
+    if defense >= score_no_chance:
+        return "ノーチャンス (安全度: 高)"
     if defense >= score_suji:
         return "スジ (安全度: 高)"
+    if defense >= score_one_chance:
+        return "ワンチャンス (安全度: 中)"
     if defense >= score_honor:
         return "字牌/生牌 (安全度: 中)"
     if defense > 0:
-        return "準安全 (安全度: 低)"
-    return "無筋 (危険)"
+        return f"準安全 (守備点: {defense:.0f})"
+    if defense == 0:
+        return "無筋 (危険)"
+    return f"危険 (守備点: {defense:.0f})"
 
 
 def _attack_description(shanten: int, ukeire: int) -> str:
@@ -340,44 +345,39 @@ def _attack_description(shanten: int, ukeire: int) -> str:
     return f"{shanten}向聴 (有効牌: {ukeire}枚)"
 
 
-def _build_decision_reason(rec_entry: dict, strategy_details: dict, evaluator: 'Evaluator') -> str:
-    """
-    @title 推奨打牌の決定理由生成
-    @description 戦略モードと推奨牌の安全度・手効率から、なぜその牌が選ばれたかを日本語で要約する。
-    @param {dict} rec_entry - 推奨牌の評価エントリ
-    @param {dict} strategy_details - 戦略パラメータ辞書
-    @param {Evaluator} evaluator - Evaluatorインスタンス
-    @returns {str} 推奨理由の日本語テキスト
-    """
+def _build_decision_reason(entry: dict, strategy_details: dict,
+                            evaluator: 'Evaluator', is_best: bool = False) -> str:
     mode = strategy_details.get("mode", "")
     push = strategy_details.get("push_score", 0.0)
-    threat = strategy_details.get("max_threat", 0.0)
-    tile = rec_entry["tile"]
-    shanten = rec_entry["shanten"]
-    ukeire = rec_entry["ukeire"]
-    defense = rec_entry["defense"]
-    attack = rec_entry["attack"]
-    safety_desc = rec_entry["safety_desc"]
-    attack_desc = rec_entry["attack_desc"]
-    keiten_bonus = rec_entry.get("keiten_bonus", 0)
+    tile = entry["tile"]
+    shanten = entry["shanten"]
+    ukeire = entry["ukeire"]
+    defense = entry["defense"]
+    attack = entry["attack"]
+    safety_desc = entry["safety_desc"]
+    attack_desc = entry["attack_desc"]
 
-    parts = []
-    if mode.startswith("ベタオリ"):
-        if defense >= 1000:
-            parts.append(f"他家リーチ・面前等の脅威が高いため、ベタオリ（完全防御）モードで安全牌を最優先。")
-            parts.append(f"「{tile}」は{safety_desc}（守備点: {defense:.0f}）でロスのない打牌。")
+    if is_best:
+        parts = [f"「{tile}」を推奨（総合スコア最高）"]
+        if push >= 0.5:
+            parts.append(f"押し気味(Push={push:.2f})、{attack_desc}")
         else:
-            parts.append(f"完全防御局面だが、現物がないため無筋の中から相対的にリスクの低い牌を選択。")
-            parts.append(f"「{tile}」は守備点 {defense:.0f}、手効率 {attack_desc} の妥協打牌。")
-    elif mode.startswith("ゼンツ"):
-        parts.append(f"オーラス・ラス目のためゼンツ（全ツモ・全当たり狙い）。")
-        parts.append(f"「{tile}」の手効率 {attack_desc} を評価して採用。")
-    elif push >= 0.5:
-        parts.append(f"押し気味（PushScore={push:.2f}）で {attack_desc} を選択。")
-        parts.append(f"「{tile}」の攻撃評価 {attack:.0f} が最大。")
+            parts.append(f"モード「{mode}」、{attack_desc}と{safety_desc}を総合評価")
+        if shanten <= 0:
+            parts.append(f"打牌後{'和了' if shanten<0 else 'テンパイ'}")
+        return "。".join(parts)
+
+    blunder = entry.get("blunder_score", 0)
+    parts = [f"「{tile}」"]
+    if blunder > 200:
+        parts.append(f"推奨手より{blunder:.0f}点低い悪手")
+        if defense < 0:
+            parts.append(f"危険牌で放銃リスク大")
+        elif shanten > 0:
+            parts.append(f"手が後退するため非推奨")
     else:
-        parts.append(f"{mode} にて {attack_desc}（有効牌 {ukeire}枚）と{safety_desc}を総合評価。")
-        parts.append(f"「{tile}」が総合スコア最高。")
+        parts.append(f"打牌後{shanten}向聴の{attack_desc}、{safety_desc}")
+    return "。".join(parts)
 
     if keiten_bonus > 0:
         parts.append(f"終盤の形テンボーナス +{keiten_bonus} 点を加算。")

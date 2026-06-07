@@ -474,6 +474,10 @@
             border-color: rgba(16, 185, 129, 0.6);
             background: rgba(16, 185, 129, 0.08);
         }
+        .bot-coach-eval-row.is-blunder {
+            border-color: rgba(231, 76, 60, 0.4);
+            background: rgba(231, 76, 60, 0.05);
+        }
         .bot-coach-eval-tile {
             width: 32px; height: 42px;
             display: flex; align-items: center; justify-content: center;
@@ -2113,10 +2117,7 @@ ${riversStr}
             const list = document.getElementById('botCoachEvalList');
             Array.from(list.children).forEach(c => c.classList.remove('is-active'));
             row.classList.add('is-active');
-            const reason = (ev.tile === recommendedTile)
-                ? ev.reason
-                : `「${ev.tile}」を打牌した場合: ${ev.safety_desc} / ${ev.attack_desc} (評価値 ${ev.score.toFixed(0)})`;
-            renderReasonForTile(reason);
+            renderReasonForTile(ev.reason || `「${ev.tile}」を打牌した場合: ${ev.safety_desc} / ${ev.attack_desc} (評価値 ${ev.score.toFixed(0)})`);
         }
 
         /**
@@ -2154,7 +2155,7 @@ ${riversStr}
             const maxAbs = Math.max(1, ...evals.map(e => Math.abs(e.score)));
             evals.forEach(ev => {
                 const row = document.createElement('div');
-                row.className = 'bot-coach-eval-row' + (ev.tile === data.recommended ? ' is-recommended' : '');
+                row.className = 'bot-coach-eval-row' + (ev.tile === data.recommended ? ' is-recommended' : '') + (ev.is_blunder ? ' is-blunder' : '');
                 row.dataset.tile = ev.tile;
 
                 const tileEl = document.createElement('div');
@@ -2180,7 +2181,11 @@ ${riversStr}
 
                 const meta = document.createElement('div');
                 meta.className = 'bot-coach-eval-meta';
-                meta.innerHTML = `<div>${ev.safety_desc || ''}</div><div>${ev.attack_desc || ''}</div>`;
+                let metaHtml = `<div>${ev.safety_desc || ''}</div><div>${ev.attack_desc || ''}</div>`;
+                if (ev.is_blunder) {
+                    metaHtml += `<div style="color:#e74c3c;font-weight:bold;">⚠ 悪手 (-${ev.blunder_score})</div>`;
+                }
+                meta.innerHTML = metaHtml;
 
                 row.appendChild(tileEl);
                 row.appendChild(bar);
