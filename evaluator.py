@@ -338,29 +338,24 @@ class AttackEvaluator:
         return best
 
     def attack_score_for_tile(self, tile: str) -> int:
-        """
-        @title 攻撃評価値の算出
-        @description 有効牌枚数と打牌後シャンテン数から攻撃寄りの評価値を計算する。打牌によって手牌全体の最良シャンテン数を後退させる牌には強いペナルティを科す。
-        また、3向聴以下で6ブロック以上の状態を維持する打牌にもペナルティを科し、5ブロックへのスリム化（ブロック整理）を促す。
-        @param tile 捨てる牌の文字列 (例: "5m")
-        @returns int 攻撃評価値（高いほど和了に近い）
-        """
         ukeire_total, _ = self.ukeire_for_discard(tile)
         shanten = self.shanten_after_discard(tile)
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
         best_shanten = self.best_shanten_after_single_discard()
         if shanten > best_shanten:
             return SHANTEN_BACKTRACK_PENALTY
+        USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
         ukeire_mult = self.params.get('UKEIRE_MULTIPLIER', 10)
         shanten_mult = self.params.get('SHANTEN_MULTIPLIER', 100)
-        score = ukeire_total * ukeire_mult - shanten * shanten_mult
-        # Why: 打牌後にテンパイする場合、自河にある牌が和了牌に含まれているとロン和了できない（永久フリテン）。
-        # Why: ただしツモ和了は常に可能なため、一律禁止ではなくフリテン和了牌の比率に応じた軽度なペナルティとする。
-        # Why: ダマテンフリテン両面や国士十三面待ちなど戦術的にフリテンを選ぶケースを許容するため、最大でも300点の減点に留める。
+        if USE_P2:
+            quality = self._ukeire_quality_mult(tile)
+            effective_ukeire = int(ukeire_total * quality)
+            score = effective_ukeire * ukeire_mult - shanten * shanten_mult
+            score += self._hand_value_bonus(tile)
+        else:
+            score = ukeire_total * ukeire_mult - shanten * shanten_mult
         if shanten <= 0:
             score -= self._compute_furiten_penalty(tile)
-        # Why: 3向聴以下で6ブロック以上を維持する打牌は、受入が狭まるだけでなくテンパイ時に余剰な危険牌を切り出す原因になる。
-        # Why: ペナルティを適用して最も弱いターツを切らせ、5ブロックへスリム化させる。
         if shanten <= 3:
             hand_counts = self.state.my_hand_counts()
             discard_id = tile_to_id(tile)
@@ -373,6 +368,87 @@ class AttackEvaluator:
                 penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                 score -= penalty
         return score
+
+    def _ukeire_quality_mult(self, tile: str) -> float:
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            current_shanten = ShantenCalculator.calculate_closed_effective(new_counts)
+        else:
+            current_shanten = ShantenCalculator.calculate_open(new_counts, open_meld_count)
+        if current_shanten > 0:
+            return 1.0
+        n_ryanmen = 0
+        n_kanchan = 0
+        n_penchan = 0
+        n_tanki = 0
+        total = 0
+        visible = self.state.all_visible_counts()
+        for tid in range(34):
+            if new_counts[tid] >= 4:
+                continue
+            test = list(new_counts)
+            test[tid] += 1
+            if open_meld_count == 0:
+                ns = ShantenCalculator.calculate_closed_effective(test)
+            else:
+                ns = ShantenCalculator.calculate_open(test, open_meld_count)
+            if ns >= current_shanten:
+                continue
+            remaining = 4 - visible[tid]
+            if remaining <= 0:
+                continue
+            total += remaining
+            if is_honor(tid):
+                n_tanki += remaining
+            else:
+                base = (tid // 9) * 9
+                off = tid - base
+                has_left = off > 0 and new_counts[base + off - 1] >= 1
+                has_right = off < 8 and new_counts[base + off + 1] >= 1
+                has_left2 = off >= 2 and new_counts[base + off - 2] >= 1
+                has_right2 = off <= 6 and new_counts[base + off + 2] >= 1
+                if has_left and has_right:
+                    n_ryanmen += remaining
+                elif has_left2 and has_left:
+                    n_kanchan += remaining
+                elif has_right and has_right2:
+                    n_kanchan += remaining
+                elif off == 0 and has_right and has_right2:
+                    n_penchan += remaining
+                elif off == 8 and has_left and has_left2:
+                    n_penchan += remaining
+                else:
+                    n_tanki += remaining
+        if total == 0:
+            return 0.0
+        ryanmen_w = self.params.get('WAIT_RYANMEN', 1.0)
+        kanchan_w = self.params.get('WAIT_KANCHAN', 0.7)
+        penchan_w = self.params.get('WAIT_PENCHAN', 0.5)
+        tanki_w = self.params.get('WAIT_TANKI', 0.5)
+        weighted = (n_ryanmen * ryanmen_w + n_kanchan * kanchan_w
+                     + n_penchan * penchan_w + n_tanki * tanki_w)
+        return weighted / total
+
+    def _hand_value_bonus(self, tile: str) -> int:
+        from hand_value import estimate_han_advanced, estimate_win_score
+        hand = list(self.state.my_hand)
+        melds = self.state.my_melds
+        discard_id = tile_to_id(tile)
+        after_hand = [t for t in hand if tile_to_id(t) != discard_id or hand.count(t) > 1]
+        if tile in after_hand:
+            after_hand.remove(tile)
+        open_meld_count = sum(1 for m in melds if m.is_open)
+        has_riichi = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
+        han = estimate_han_advanced(after_hand, melds, self.state.doras,
+                                     is_open=open_meld_count > 0,
+                                     has_reach=has_riichi, is_ippatsu=False, is_tsumo=False)
+        is_dealer = (self.state.my_seat % 4) == 0
+        score = estimate_win_score(han, is_dealer)
+        return score // 10
 
     def _get_furiten_tile_ids(self) -> set:
         my_river_ids = set()
