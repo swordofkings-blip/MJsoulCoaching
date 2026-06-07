@@ -359,15 +359,26 @@ class AttackEvaluator:
             score = ukeire_total * ukeire_mult - shanten * shanten_mult
         if shanten <= 0:
             score -= self._compute_furiten_penalty(tile)
-        if shanten <= 3:
-            hand_counts = self.state.my_hand_counts()
-            discard_id = tile_to_id(tile)
-            after_counts = list(hand_counts)
-            after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
-            open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
-            blocks_before = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
-            blocks_after = ShantenCalculator.calculate_blocks(after_counts, open_meld_count)
-            if blocks_before >= 6 and blocks_after >= 6:
+            if shanten <= 3:
+                hand_counts = self.state.my_hand_counts()
+                discard_id = tile_to_id(tile)
+                after_counts = list(hand_counts)
+                after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
+                open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+                blocks_before = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
+                if blocks_before >= 6:
+                    is_isolated = (hand_counts[discard_id] == 1 and not is_honor(discard_id))
+                    if is_isolated:
+                        base = (discard_id // 9) * 9
+                        off = discard_id - base
+                        has_l = off > 0 and hand_counts[base + off - 1] > 0
+                        has_r = off < 8 and hand_counts[base + off + 1] > 0
+                        is_isolated = not has_l and not has_r
+                    if not is_isolated:
+                        blocks_after = ShantenCalculator.calculate_blocks(after_counts, open_meld_count)
+                        if blocks_after >= 6:
+                            penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
+                            score -= penalty
                 penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                 score -= penalty
         if shanten >= self.params.get('BETAORI_PREP_SHANTEN', 4):
