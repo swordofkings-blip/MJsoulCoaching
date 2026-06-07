@@ -391,6 +391,12 @@
             z-index: 5;
             position: relative;
         }
+        .tile-near {
+            border: 2px solid rgba(245, 158, 11, 0.7) !important;
+            border-radius: 6px;
+            z-index: 4;
+            position: relative;
+        }
 
         /* BOTコーチング・パネル専用スタイル */
         .bot-coach-panel {
@@ -2226,7 +2232,8 @@ ${riversStr}
             .then(data => {
                 renderBotCoachUI(data);
                 window.__lastCoachRecommended = data.recommended || null;
-                highlightRecommendedTile(data.recommended || null);
+                window.__lastCoachNear = data.near_tiles || [];
+                highlightRecommendedTile(data.recommended || null, data.near_tiles);
             })
             .catch(err => {
                 console.warn('coach api error', err);
@@ -2238,14 +2245,20 @@ ${riversStr}
          * @description 現在の手牌描画のうち、推奨牌に .tile-recommended クラスを付与する。
          * @param {string|null} tile - 推奨牌文字列
          */
-        function highlightRecommendedTile(tile) {
+        function highlightRecommendedTile(tile, nearTiles) {
             const handEl = document.getElementById('hand' + perspectiveSeat);
             if (!handEl) return;
             handEl.querySelectorAll('.tile-recommended').forEach(el => el.classList.remove('tile-recommended'));
+            handEl.querySelectorAll('.tile-near').forEach(el => el.classList.remove('tile-near'));
             if (!tile) return;
+            const nearSet = new Set((nearTiles || []).map(t => getTileText(t)));
             handEl.querySelectorAll('.tile').forEach(el => {
-                if (!el.classList.contains('tile-back') && el.innerText === getTileText(tile) && !el.classList.contains('tsumo-gap')) {
+                if (el.classList.contains('tile-back') || el.classList.contains('tsumo-gap')) return;
+                const txt = el.innerText;
+                if (txt === getTileText(tile)) {
                     el.classList.add('tile-recommended');
+                } else if (nearSet.has(txt)) {
+                    el.classList.add('tile-near');
                 }
             });
         }
