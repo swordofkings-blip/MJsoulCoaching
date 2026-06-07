@@ -475,19 +475,11 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     elif "ノーチャンス" in safety_desc:
         lines.append("ノーチャンスのため比較的安全です。")
 
-    lines.append(f"有効牌{ukeire}枚。")
-
-    from evaluator import AttackEvaluator
     try:
-        qual = evaluator.attack._ukeire_quality_mult(entry["tile"])
-        if qual < 1.0:
-            good = int(ukeire * qual)
-            bad = ukeire - good
-            lines.append(f"（良形{good}枚、悪形{bad}枚）")
-        else:
-            lines.append("（良形多い）")
+        bd = evaluator.attack._ukeire_quality_breakdown(entry["tile"])
+        lines.append(f"有効牌{ukeire}枚（良形{bd['good']}枚、悪形{bd['bad']}枚）。")
     except:
-        pass
+        lines.append(f"有効牌{ukeire}枚。")
 
     if hvb:
         lines.append(f"手役評価+{hvb}。")

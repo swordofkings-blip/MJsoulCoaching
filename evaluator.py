@@ -39,6 +39,11 @@ class DefenseEvaluator:
     def __init__(self, state: GameState, params: dict = None):
         self.state = state
         self.params = params or {}
+        self.evaluator = None
+
+    def record_detail(self, tile: str, msg: str):
+        if self.evaluator:
+            self.evaluator.record_detail(tile, msg)
 
     def genbutsu_tiles(self) -> List[int]:
         genbutsu = set()
@@ -203,27 +208,39 @@ class DefenseEvaluator:
 
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:
-            return self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+            score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+            self.record_detail(tile, f"他家共通現物 (+{score})")
+            return score
 
         if use_p1:
             wall_suji = self._wall_suji_ids()
             if tile_id in wall_suji:
-                return self.params.get('SCORE_WALL_SUJI', SCORE_WALL_SUJI)
+                score = self.params.get('SCORE_WALL_SUJI', SCORE_WALL_SUJI)
+                self.record_detail(tile, f"壁スジ安全 (+{score})")
+                return score
             no_chance = self._no_chance_ids()
             if tile_id in no_chance and not is_honor(tile_id):
-                return self.params.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
+                score = self.params.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
+                self.record_detail(tile, f"ノーチャンス安全 (+{score})")
+                return score
             kabe_edge = self._kabe_edge_safe_ids()
             if tile_id in kabe_edge:
-                return self.params.get('SCORE_KABE_EDGE', 750)
+                score = self.params.get('SCORE_KABE_EDGE', 750)
+                self.record_detail(tile, f"壁端安全 (+{score})")
+                return score
 
         suji_ids = self._reach_suji_ids(reach_seats)
         if tile_id in suji_ids:
-            return self.params.get('SCORE_SUJI', SCORE_SUJI)
+            score = self.params.get('SCORE_SUJI', SCORE_SUJI)
+            self.record_detail(tile, f"スジ安全 (+{score})")
+            return score
 
         if use_p1:
             one_chance = self._one_chance_ids()
             if tile_id in one_chance and not is_honor(tile_id):
-                return self.params.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
+                score = self.params.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
+                self.record_detail(tile, f"ワンチャンス安全 (+{score})")
+                return score
 
         for seat in reach_seats:
             for t in self.state.river[seat]:
@@ -232,20 +249,29 @@ class DefenseEvaluator:
                 except Exception:
                     continue
                 if is_honor(tid) and tid == tile_id:
-                    return self.params.get('SCORE_HONOR', SCORE_HONOR)
+                    score = self.params.get('SCORE_HONOR', SCORE_HONOR)
+                    self.record_detail(tile, f"リーチ者河字牌安全 (+{score})")
+                    return score
         if is_honor(tile_id):
             visible = self.state.all_visible_counts()
             if visible[tile_id] == 0:
-                return self.params.get('SCORE_HONOR', SCORE_HONOR)
+                score = self.params.get('SCORE_HONOR', SCORE_HONOR)
+                self.record_detail(tile, f"字牌・生牌安全 (+{score})")
+                return score
 
         if use_p1:
             matagi = self._matagi_danger_ids(reach_seats)
             score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
             score += n_reach * self.params.get('SCORE_MUSUJI_PER_REACH', SCORE_MUSUJI_PER_REACH)
+            self.record_detail(tile, f"無筋危険 ({score})")
             if tile_id in matagi:
-                score -= self.params.get('MATAGI_PENALTY', MATAGI_PENALTY)
+                penalty = self.params.get('MATAGI_PENALTY', MATAGI_PENALTY)
+                score -= penalty
+                self.record_detail(tile, f"マタギスジ危険 (-{penalty})")
             return score
-        return self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
+        score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
+        self.record_detail(tile, f"無筋安全基準 ({score})")
+        return score
 
     def _collect_suji_from_river(self, seat: int) -> List[int]:
         result = set()
@@ -265,6 +291,11 @@ class AttackEvaluator:
     def __init__(self, state: GameState, params: dict = None):
         self.state = state
         self.params = params or {}
+        self.evaluator = None
+
+    def record_detail(self, tile: str, msg: str):
+        if self.evaluator:
+            self.evaluator.record_detail(tile, msg)
 
     def ukeire_for_discard(self, discard_tile: str) -> Tuple[int, int]:
         """
@@ -378,18 +409,27 @@ class AttackEvaluator:
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
         std_shanten = self._standard_shanten_after(tile)
         if std_shanten > self._best_standard_shanten():
+            self.record_detail(tile, f"シャンテン後退ペナルティ ({SHANTEN_BACKTRACK_PENALTY})")
             return SHANTEN_BACKTRACK_PENALTY
         USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
         if USE_P2:
             quality = self._ukeire_quality_mult(tile)
             effective_ukeire = int(ukeire_total * quality)
             score = effective_ukeire * self.params.get('UKEIRE_MULTIPLIER', 10)
-            score -= shanten * self.params.get('SHANTEN_MULTIPLIER', 500)
+            self.record_detail(tile, f"有効牌枚数・質評価 (+{score})")
+            shanten_penalty = shanten * self.params.get('SHANTEN_MULTIPLIER', 500)
+            score -= shanten_penalty
+            if shanten_penalty > 0:
+                self.record_detail(tile, f"シャンテン数ペナルティ (-{shanten_penalty})")
             score += self._hand_value_bonus(tile)
         else:
             score = ukeire_total * 10 - shanten * 500
+            self.record_detail(tile, f"手効率基本評価 (+{score})")
         if shanten <= 0:
-            score -= self._compute_furiten_penalty(tile)
+            furiten_pen = self._compute_furiten_penalty(tile)
+            if furiten_pen > 0:
+                score -= furiten_pen
+                self.record_detail(tile, f"フリテンペナルティ (-{furiten_pen})")
             if shanten <= 3:
                 hand_counts = self.state.my_hand_counts()
                 discard_id = tile_to_id(tile)
@@ -410,6 +450,7 @@ class AttackEvaluator:
                         if blocks_after >= 6:
                             penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                             score -= penalty
+                            self.record_detail(tile, f"6ブロック維持ペナルティ (-{penalty})")
         if shanten >= self.params.get('BETAORI_PREP_SHANTEN', 4):
             score += self._betaori_prep_bonus(tile, shanten)
         return score
@@ -525,6 +566,58 @@ class AttackEvaluator:
             return 0.0
         return total_weighted / total
 
+    def _ukeire_quality_breakdown(self, tile: str) -> dict:
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            current_shanten = ShantenCalculator.calculate_closed_effective(new_counts)
+        else:
+            current_shanten = ShantenCalculator.calculate_open(new_counts, open_meld_count)
+        is_tenpai = current_shanten <= 0
+        n_good = 0
+        n_bad = 0
+        total = 0
+        visible = self.state.all_visible_counts()
+        for tid in range(34):
+            if new_counts[tid] >= 4:
+                continue
+            test = list(new_counts)
+            test[tid] += 1
+            if open_meld_count == 0:
+                ns = ShantenCalculator.calculate_closed_effective(test)
+            else:
+                ns = ShantenCalculator.calculate_open(test, open_meld_count)
+            if ns >= current_shanten:
+                continue
+            remaining = 4 - visible[tid]
+            if remaining <= 0:
+                continue
+            total += remaining
+            if is_honor(tid):
+                n_bad += remaining
+            elif is_tenpai:
+                off = tid % 9
+                base = (tid // 9) * 9
+                has_l = off > 0 and new_counts[base + off - 1] >= 1
+                has_r = off < 8 and new_counts[base + off + 1] >= 1
+                if has_l and has_r:
+                    n_good += remaining
+                else:
+                    n_bad += remaining
+            else:
+                off = tid % 9
+                base = (tid // 9) * 9
+                has_l = off > 0 and new_counts[base + off - 1] > 0
+                has_r = off < 8 and new_counts[base + off + 1] > 0
+                if (has_l or has_r) or new_counts[tid] >= 2:
+                    n_good += remaining
+                else:
+                    n_bad += remaining
+        return {'total': total, 'good': n_good, 'bad': n_bad}
+
     def _hand_value_bonus(self, tile: str) -> int:
         """
         @title 手牌評価の補正値（ボーナス/ペナルティ）計算
@@ -542,11 +635,13 @@ class AttackEvaluator:
         open_meld_count = sum(1 for m in melds if m.is_open)
         has_reach = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
         is_dealer = (self.state.my_seat % 4) == 0
-        score = estimate_hand_value(after_hand, melds, self.state.doras,
+        score = estimate_hand_value(after_hand, melds, self.state.actual_doras,
                                      is_open=open_meld_count > 0,
                                      has_reach=has_reach, is_ippatsu=False,
                                      is_tsumo=False, is_dealer=is_dealer)
         bonus = score // 10
+        if bonus > 0:
+            self.record_detail(tile, f"手役・打点評価ボーナス (+{bonus})")
 
         counts = self.state.my_hand_counts()
         shanten = ShantenCalculator.calculate_closed_effective(counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(counts, open_meld_count)
@@ -580,34 +675,48 @@ class AttackEvaluator:
             
             # 染める色以外を捨てる際にボーナスを加算して移行を推進
             if tile_suit != dominant_suit:
-                bonus += self.params.get('BETAORI_HONITSU_BONUS', 40)
+                dye_bonus = self.params.get('BETAORI_HONITSU_BONUS', 40)
+                bonus += dye_bonus
+                self.record_detail(tile, f"染め手移行推進ボーナス (+{dye_bonus})")
 
         # 刻子・対子・順子構築に関する評価
         if counts[discard_id] == 2:
             if discard_id in SANGEN:
-                bonus -= self.params.get('YAKUHAI_PAIR_PENALTY', 30)
+                penalty = self.params.get('YAKUHAI_PAIR_PENALTY', 30)
+                bonus -= penalty
+                self.record_detail(tile, f"三元牌対子キープペナルティ (-{penalty})")
             if discard_id in (27, 28, 29, 30):
-                bonus -= self.params.get('YAKUHAI_PAIR_PENALTY', 30)
+                penalty = self.params.get('YAKUHAI_PAIR_PENALTY', 30)
+                bonus -= penalty
+                self.record_detail(tile, f"自風・場風対子キープペナルティ (-{penalty})")
 
         if not is_honor(discard_id):
             base = (discard_id // 9) * 9
             off = discard_id - base
             counts_after = hand_to_counts(after_hand)
             if off > 0 and counts_after[base + off - 1] >= 1:
-                bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
+                ryan_bonus = self.params.get('RYANMEN_KEEP_BONUS', 15)
+                bonus += ryan_bonus
+                self.record_detail(tile, f"両面変化維持ボーナス (+{ryan_bonus})")
             if off < 8 and counts_after[base + off + 1] >= 1:
-                bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
+                ryan_bonus = self.params.get('RYANMEN_KEEP_BONUS', 15)
+                bonus += ryan_bonus
+                self.record_detail(tile, f"両面変化維持ボーナス (+{ryan_bonus})")
 
             left = off > 0 and counts[base + off - 1] > 0
             right = off < 8 and counts[base + off + 1] > 0
             if left or right:
-                bonus -= self.params.get('SHAPE_BREAK_PENALTY', 20)
+                penalty = self.params.get('SHAPE_BREAK_PENALTY', 20)
+                bonus -= penalty
+                self.record_detail(tile, f"搭子破壊ペナルティ (-{penalty})")
 
         if is_honor(discard_id):
             is_pair = counts[discard_id] >= 2
-            is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
+            is_dora = any(tile_to_id(d) == discard_id for d in self.state.actual_doras)
             if is_dora:
-                bonus -= self.params.get('DORA_DISCARD_PENALTY', 40)
+                penalty = self.params.get('DORA_DISCARD_PENALTY', 40)
+                bonus -= penalty
+                self.record_detail(tile, f"ドラ字牌放出ペナルティ (-{penalty})")
             visible_all = self.state.all_visible_counts()
             remaining = 4 - visible_all[discard_id]
             
@@ -620,44 +729,65 @@ class AttackEvaluator:
 
             if discard_id in SANGEN:
                 if is_pair and remaining >= 2:
-                    bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+                    penalty = self.params.get('HONOR_VALUE_PENALTY', 20)
+                    bonus -= penalty
+                    self.record_detail(tile, f"三元牌対子保持ペナルティ (-{penalty})")
             bakaze = 27 + (self.state.chang % 4)
             jikaze = 27 + (self.state.my_seat % 4)
             is_double_wind = (bakaze == jikaze) and (discard_id == bakaze)
             if discard_id == bakaze:
                 if is_pair and remaining >= 2:
-                    bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+                    penalty = self.params.get('HONOR_VALUE_PENALTY', 20)
+                    bonus -= penalty
+                    self.record_detail(tile, f"場風対子保持ペナルティ (-{penalty})")
                 elif is_double_wind:
                     pass
                 else:
                     if not is_pair:
-                        bonus += int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                        val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                        bonus += val_bonus
+                        self.record_detail(tile, f"不要場風整理ボーナス (+{val_bonus})")
             if discard_id == jikaze:
                 if not is_pair and not is_double_wind:
-                    bonus += int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                    val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                    bonus += val_bonus
+                    self.record_detail(tile, f"不要自風整理ボーナス (+{val_bonus})")
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
-                bonus += int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                bonus += val_bonus
+                self.record_detail(tile, f"不要客風整理ボーナス (+{val_bonus})")
 
             ratio_base = self.params.get('VISIBLE_RATIO_HONOR', 80)
+            is_keeping_safe = False
             if shanten <= 2 and blocks >= 5:
                 # 安牌（見えている字牌）を残すため、捨てる際のボーナスをマイナス化（保持へ誘導）
                 ratio_base = -ratio_base // 2
+                is_keeping_safe = True
             
             vis = visible_all[discard_id]
             if vis >= 1:
                 ratio = 4.0 / max(1, 4 - vis) - 1.0
-                bonus += int(ratio * ratio_base)
+                offset = int(ratio * ratio_base)
+                bonus += offset
+                if is_keeping_safe:
+                    self.record_detail(tile, f"安全字牌抱えペナルティ ({offset})")
+                else:
+                    self.record_detail(tile, f"安牌字牌整理ボーナス (+{offset})")
         else:
-            is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
+            is_dora = any(tile_to_id(d) == discard_id for d in self.state.actual_doras)
             if is_dora:
-                bonus -= self.params.get('DORA_DISCARD_PENALTY', 60)
+                penalty = self.params.get('DORA_DISCARD_PENALTY', 60)
+                bonus -= penalty
+                self.record_detail(tile, f"ドラ放出ペナルティ (-{penalty})")
 
             ratio_base = self.params.get('VISIBLE_RATIO_BASE', 20)
             visible_all = self.state.all_visible_counts()
             vis = visible_all[discard_id]
             if vis >= 1 and counts[discard_id] == 1:
                 ratio = 4.0 / max(1, 4 - vis) - 1.0
-                bonus += int(ratio * ratio_base)
+                offset = int(ratio * ratio_base)
+                bonus += offset
+                self.record_detail(tile, f"安牌整理ボーナス (+{offset})")
 
             all_ids = [tile_to_id(t) for t in self.state.my_hand]
             all_ids.extend(tile_to_id(t) for m in self.state.my_melds for t in getattr(m, 'tiles', []))
@@ -668,11 +798,15 @@ class AttackEvaluator:
             if can_tanyao and not is_honor(discard_id):
                 off = discard_id % 9
                 if off == 0 or off == 8:
-                    bonus += self.params.get('TANYAO_TERMINAL_BONUS', 40)
+                    tan_bonus = self.params.get('TANYAO_TERMINAL_BONUS', 40)
+                    bonus += tan_bonus
+                    self.record_detail(tile, f"断么九変化端牌整理ボーナス (+{tan_bonus})")
 
             is_red = is_red_five(tile)
             if is_red:
-                bonus += self.params.get('AKA_KEEP_BONUS', 60)
+                aka_bonus = self.params.get('AKA_KEEP_BONUS', 60)
+                bonus += aka_bonus
+                self.record_detail(tile, f"赤5整理ボーナス (+{aka_bonus})")
 
             if not is_honor(discard_id) and counts[discard_id] == 1:
                 base = (discard_id // 9) * 9
@@ -685,22 +819,30 @@ class AttackEvaluator:
                         # 孤立中張牌: 序盤は手幅のために保持したいが、巡目が進むほど危険なため徐々に嫌う（ペナルティの減衰）
                         middle_penalty = self.params.get('ISOLATED_MIDDLE_BONUS', 10)
                         decay = max(-1.0, 1.0 - turn / 10.0) # 10巡目以降は逆に廃棄ボーナスに転じる
-                        bonus -= int(middle_penalty * decay)
+                        offset = int(middle_penalty * decay)
+                        bonus -= offset
+                        if offset > 0:
+                            self.record_detail(tile, f"孤立中張牌保持ペナルティ (-{offset})")
+                        elif offset < 0:
+                            self.record_detail(tile, f"孤立中張牌整理ボーナス (+{-offset})")
                         
                         # 進行度が高くブロックが十分な場合は、不要な孤立中張牌を率先して捨てる
                         if shanten <= 2 and blocks >= 5:
-                            bonus += self.params.get('ISOLATED_MIDDLE_DISCARD_BONUS_5BLOCK', 30)
+                            disc_bonus = self.params.get('ISOLATED_MIDDLE_DISCARD_BONUS_5BLOCK', 30)
+                            bonus += disc_bonus
+                            self.record_detail(tile, f"5ブロック不要中張牌整理ボーナス (+{disc_bonus})")
                     elif off == 0 or off == 8:
                         # 孤立1/9（端牌）: 最も効率が低いため率先して捨てる（巡目減衰）
                         edge_bonus = self.params.get('ISOLATED_EDGE_BONUS', 25)
-                        decayed_edge = edge_bonus * max(0.2, 1.0 - turn / 18.0)
-                        bonus += int(decayed_edge)
+                        decayed_edge = int(edge_bonus * max(0.2, 1.0 - turn / 18.0))
+                        bonus += decayed_edge
+                        self.record_detail(tile, f"孤立端牌整理ボーナス (+{decayed_edge})")
                     else:
                         # 孤立2/8: 1/9よりは両面変化があるため少し残しやすい（巡目減衰）
                         bonus_28 = self.params.get('ISOLATED_28_BONUS', 10)
-                        decayed_28 = bonus_28 * max(0.2, 1.0 - turn / 18.0)
-                        bonus += int(decayed_28)
-
+                        decayed_28 = int(bonus_28 * max(0.2, 1.0 - turn / 18.0))
+                        bonus += decayed_28
+                        self.record_detail(tile, f"孤立2/8牌整理ボーナス (+{decayed_28})")
         return bonus
 
 
@@ -754,9 +896,17 @@ class Evaluator:
     def __init__(self, state: GameState, params: dict = None):
         self.state = state
         self.params = params or {}
+        self.details = {}  # tile -> List[str]
         self.attack = AttackEvaluator(state, params=self.params)
+        self.attack.evaluator = self
         self.defense = DefenseEvaluator(state, params=self.params)
+        self.defense.evaluator = self
         self.strategy = StrategyManager(state, params=self.params)
+
+    def record_detail(self, tile: str, msg: str):
+        lst = self.details.setdefault(tile, [])
+        if msg not in lst:
+            lst.append(msg)
 
     def _get_keiten_bonus(self, tile: str) -> int:
         """
@@ -789,7 +939,10 @@ class Evaluator:
     def evaluate_tile(self, tile: str) -> float:
         use_ev = self.params.get('USE_EV_FRAMEWORK', False)
         if use_ev:
-            return self._evaluate_tile_ev(tile) + self._positional_ev()
+            ev_val = self._evaluate_tile_ev(tile)
+            pos_val = self._positional_ev()
+            self.record_detail(tile, f"EV期待値評価 ({ev_val + pos_val:.1f})")
+            return float(ev_val + pos_val)
         v_attack = self.attack.attack_score_for_tile(tile)
         v_defense = self.defense.defense_score_for_tile(tile)
         push_score = self.strategy.compute_push_score()
@@ -797,17 +950,22 @@ class Evaluator:
 
         if mode == "攻撃":
             v = float(v_attack)
+            self.record_detail(tile, "戦略モード「攻撃」を適用")
         elif mode == "防御":
             safe_threshold = self.params.get('SCORE_SUJI', 500)
             if v_defense >= safe_threshold:
                 v = float(v_defense * 2 + v_attack * 0.1)
+                self.record_detail(tile, "戦略モード「防御」（安牌評価強化）を適用")
             else:
                 v = float(v_defense + v_attack * 0.05)
+                self.record_detail(tile, "戦略モード「防御」（非安牌・危険回避）を適用")
         else:
             if not self.state.is_any_opponent_reach() and not self._any_opponent_has_open_meld(self.state):
                 v = float(v_attack)
+                self.record_detail(tile, "戦略モード「平場攻撃」を適用")
             else:
                 v = push_score * v_attack + (1.0 - push_score) * v_defense
+                self.record_detail(tile, f"戦略モード「押し引きバランス」(Push={push_score:.2f})を適用")
 
         is_ippatsu_turn = any(
             rs.is_ippatsu for i, rs in enumerate(self.state.reach_states) if i != self.state.my_seat
@@ -819,16 +977,28 @@ class Evaluator:
                 genbutsu_safe = tile_id in self.defense._common_genbutsu_ids(reach_seats)
                 if not genbutsu_safe:
                     penalty = self.params.get('IPPATSU_PENALTY', 300)
-                    v -= penalty * (1.0 - push_score)
+                    ippatsu_pen = penalty * (1.0 - push_score)
+                    v -= ippatsu_pen
+                    self.record_detail(tile, f"一発放銃回避安全牌保持ペナルティ (-{ippatsu_pen:.1f})")
 
-        v += self._get_keiten_bonus(tile)
+        keiten_bonus = self._get_keiten_bonus(tile)
+        if keiten_bonus > 0:
+            v += keiten_bonus
+            self.record_detail(tile, f"形テンボーナス (+{keiten_bonus})")
+
         threat = self.strategy.compute_opponent_threat()
         if is_honor(tile_to_id(tile)) and threat > 0.1 and mode != "防御":
             danger_scale = max(0.0, 1.0 - threat * 2.5)
             v *= 0.3 + 0.7 * danger_scale
+            self.record_detail(tile, f"他家脅威による字牌評価減衰 (脅威度: {threat:.2f})")
+
         if self.params.get('USE_POSITIONAL_EV', True):
-            v += self._positional_ev()
-            v += self._assist_squeeze_bonus(tile)
+            pos_ev = self._positional_ev()
+            v += pos_ev
+            if pos_ev != 0:
+                self.record_detail(tile, f"順位状況価値 (PositionalEV) (+{pos_ev:.1f})")
+            assist_sq = self._assist_squeeze_bonus(tile)
+            v += assist_sq
         return v
 
     def _assist_squeeze_bonus(self, tile: str) -> float:
@@ -851,7 +1021,9 @@ class Evaluator:
                 for t in self.state.river[ally_target]:
                     opp_discards.add(tile_to_id(t))
                 if (tid // 9) in {t // 9 for t in opp_discards}:
-                    bonus += self.params.get('ASSIST_BONUS', 20)
+                    ally_bonus = self.params.get('ASSIST_BONUS', 20)
+                    bonus += ally_bonus
+                    self.record_detail(tile, f"アシストボーナス (+{ally_bonus})")
 
         n_reach = sum(1 for i in range(4) if i != my_seat and self.state.reach_states[i].is_reach)
         if n_reach > 0:
@@ -864,8 +1036,9 @@ class Evaluator:
                     has_l = off > 0 and counts[base + off - 1] > 0
                     has_r = off < 8 and counts[base + off + 1] > 0
                     if has_l or has_r:
-                        bonus += self.params.get('SQUEEZE_BONUS', 25)
-
+                        sq_bonus = self.params.get('SQUEEZE_BONUS', 25)
+                        bonus += sq_bonus
+                        self.record_detail(tile, f"絞りボーナス (+{sq_bonus})")
         return bonus
 
     def _evaluate_tile_ev(self, tile: str) -> float:
@@ -1189,6 +1362,84 @@ class Evaluator:
         if total == 0:
             return 0.0
         return (n_ryanmen * 0.3 + n_shanpon * 0.1 - n_kanchan * 0.1 - n_penchan * 0.2 - n_tanki * 0.2) / total
+
+    def get_riichi_decision_details(self) -> dict:
+        """
+        @title 立直判断の根拠詳細化
+        @description 現在のテンパイ手牌において、立直推奨値を計算しその内訳と判断理由を日本語で返します。
+        @returns {dict} {"should_riichi": bool, "score": float, "threshold": float, "reason": str}
+        """
+        hand_counts = self.state.my_hand_counts()
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        
+        # 前提条件のチェック
+        if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
+            return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "すでに立直しています。"}
+        if open_meld_count > 0:
+            return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "門前（メンゼン）ではないため立直できません。"}
+        if self.state.scores[self.state.my_seat] < 1000:
+            return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "持ち点が1000点未満のため立直できません。"}
+
+        riichi_base = self.params.get('RIICHI_BASE', 0.6)
+        wait_q = self._wait_quality_score()
+        wait_weight = self.params.get('RIICHI_WAIT_WEIGHT', 1.0)
+        wait_score = wait_q * wait_weight
+        
+        opp_reach_score = 0.0
+        if self.state.is_any_opponent_reach():
+            opp_reach_score = self.params.get('RIICHI_OPP_REACH_PENALTY', -0.4)
+
+        dora_count = 0
+        for t in self.state.my_hand:
+            for d in self.state.doras:
+                if tile_to_id(t) == tile_to_id(d):
+                    dora_count += 1
+            if is_red_five(t):
+                dora_count += 1
+        dora_penalty_param = self.params.get('RIICHI_DORA_PENALTY', -0.1)
+        dora_score = dora_count * dora_penalty_param
+
+        late_score = 0.0
+        late_threshold = self.params.get('RIICHI_LATE_TURN', 14)
+        if self.state.tsumo_count >= late_threshold:
+            late_score = self.params.get('RIICHI_LATE_PENALTY', -0.2)
+
+        rank_bonus = 0.0
+        rank = self.state.my_score_rank()
+        if rank == 3:
+            rank_bonus = self.params.get('RIICHI_LAST_RANK_BONUS', 0.2)
+
+        total_score = riichi_base + wait_score + opp_reach_score + dora_score + late_score + rank_bonus
+        threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
+        should_riichi = total_score > threshold
+
+        # 理由のテキスト構成
+        reasons = []
+        reasons.append(f"基礎価値 ({riichi_base:+.2f})")
+        reasons.append(f"待ち品質 ({wait_score:+.2f})")
+        if opp_reach_score != 0:
+            reasons.append(f"他家リーチ有 ({opp_reach_score:+.2f})")
+        if dora_score != 0:
+            reasons.append(f"ドラ・赤ドラ枚数 ({dora_score:+.2f})")
+        if late_score != 0:
+            reasons.append(f"終盤ペナルティ ({late_score:+.2f})")
+        if rank_bonus != 0:
+            reasons.append(f"ラス回避価値 ({rank_bonus:+.2f})")
+
+        reason_text = "立直判定値: {:.2f} (閾値: {:.2f})。内訳: {}".format(
+            total_score, threshold, ", ".join(reasons)
+        )
+        if should_riichi:
+            reason_text += " -> 【立直推奨】ダマテンよりリーチを推奨します。"
+        else:
+            reason_text += " -> 【ダマテン推奨】ダマテンを推奨します。"
+
+        return {
+            "should_riichi": should_riichi,
+            "score": round(total_score, 3),
+            "threshold": threshold,
+            "reason": reason_text
+        }
 
     def should_riichi(self) -> bool:
         if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
