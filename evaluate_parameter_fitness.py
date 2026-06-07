@@ -102,9 +102,13 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
             if awaiting_discard[seat]:
                 hand = list(states[seat].my_hand)
                 if len(hand) % 3 == 2:
-                    evaluator = Evaluator(states[seat], params=params)
-                    recommended, _ = evaluator.best_discard_with_score(hand)
-                    is_match = (recommended == tile)
+                    is_riichi = states[seat].reach_states[seat].is_reach
+                    if is_riichi:
+                        is_match = True
+                    else:
+                        evaluator = Evaluator(states[seat], params=params)
+                        recommended, _ = evaluator.best_discard_with_score(hand)
+                        is_match = (recommended == tile)
                     if is_match:
                         per_seat[seat]['matches'] += 1
                     else:
