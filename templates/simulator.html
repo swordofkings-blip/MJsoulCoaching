@@ -948,9 +948,11 @@
                     <input type="range" id="actionSlider" min="0" max="0" value="0" oninput="jumpToAction(parseInt(this.value))">
                 </div>
                 <div class="btn-group">
-                    <button class="btn" id="btnPrev" onclick="step(-1)">◀ 1手戻る</button>
-                    <button class="btn" id="btnPlay" onclick="togglePlay()">自動再生</button>
-                    <button class="btn" id="btnNext" onclick="step(1)">1手進む ▶</button>
+                    <button class="btn" onclick="step(-1)">◀ 1手</button>
+                    <button class="btn" onclick="stepOwnTurn(-1)">▲ 前自順</button>
+                    <button class="btn" id="btnPlay" onclick="togglePlay()">▶</button>
+                    <button class="btn" onclick="stepOwnTurn(1)">▼ 次自順</button>
+                    <button class="btn" onclick="step(1)">1手 ▶</button>
                 </div>
             </div>
             <div class="control-section">
@@ -1586,6 +1588,23 @@
             }
         }
 
+        function stepOwnTurn(direction) {
+            let idx = currentActionIndex + direction;
+            while (idx >= 0 && idx < timelineSteps.length) {
+                const rawIdx = timelineSteps[idx];
+                const act = rawActionsList[rawIdx];
+                if (act && act.result && act.result.data) {
+                    const cls = act.result.class_name;
+                    const seat = act.result.data.seat;
+                    if ((cls === 'RecordDealTile' || cls === 'RecordDiscardTile') && seat === perspectiveSeat) {
+                        jumpToAction(idx);
+                        return;
+                    }
+                }
+                idx += direction;
+            }
+        }
+
         /**
          * @title 自動再生切り替え関数
          * @description シミュレーターの自動再生（1秒間隔で1手進める）を開始または一時停止します。
@@ -1629,6 +1648,12 @@
             } else if (event.key === 'ArrowRight') {
                 event.preventDefault();
                 step(1);
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                stepOwnTurn(-1);
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                stepOwnTurn(1);
             }
         });
 
