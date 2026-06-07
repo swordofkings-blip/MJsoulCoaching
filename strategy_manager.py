@@ -51,6 +51,20 @@ class ShantenCalculator:
             tmp[head] -= 2
             melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
             s = 8 - 2 * melds - 1
+            extra_pairs = 0
+            for i in range(34):
+                if tmp[i] >= 2:
+                    if i >= 27:
+                        extra_pairs += 1
+                    else:
+                        base = (i // 9) * 9
+                        off = i - base
+                        has_l = off > 0 and tmp[base + off - 1] > 0
+                        has_r = off < 8 and tmp[base + off + 1] > 0
+                        if not has_l and not has_r:
+                            extra_pairs += 1
+            if extra_pairs >= 1:
+                s -= 1
             if s < best:
                 best = s
         melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
