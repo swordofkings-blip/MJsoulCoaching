@@ -115,19 +115,20 @@ def main():
                 pop.append((0.0, mutate(base_params, 0.5, 0.2)))
             save_state(pop, 0, log)
 
+        n_workers = min(multiprocessing.cpu_count(), pop_size)
+        pool = multiprocessing.Pool(n_workers)
+
         for gen in range(start_gen + 1, start_gen + generations + 1):
             t0 = time.time()
             need_eval = [i for i in range(pop_size) if pop[i][0] == 0.0]
-            if need_eval and len(need_eval) > 1:
+            if need_eval:
                 args_list = [(pop[i][1], train_records) for i in need_eval]
-                n_workers = min(multiprocessing.cpu_count(), len(need_eval))
-                with multiprocessing.Pool(n_workers) as pool:
+                if len(need_eval) > 1:
                     results = pool.map(_eval_worker, args_list)
+                else:
+                    results = [_eval_worker(args_list[0])]
                 for i, fit in zip(need_eval, results):
                     pop[i] = (fit, pop[i][1])
-            else:
-                for i in need_eval:
-                    pop[i] = (_eval_worker((pop[i][1], train_records)), pop[i][1])
             pop.sort(key=lambda x: -x[0])
             msg = f'G{gen}: best={pop[0][0]*100:.2f}% ({time.time()-t0:.0f}s)'
             log.write(msg + '\n')
@@ -151,6 +152,8 @@ def main():
             pop = nxt
 
         save_state(pop, start_gen + generations, log)
+        pool.terminate()
+        pool.join()
         log.write(f'\nValidation on {len(all_records)} records:\n')
         bf = evaluate_fitness(base_params, all_records)
         gf = evaluate_fitness(pop[0][1], all_records)
