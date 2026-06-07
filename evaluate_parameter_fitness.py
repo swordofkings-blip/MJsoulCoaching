@@ -118,13 +118,8 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
                                     actual_score = evaluator.evaluate_tile(t)
                                     break
                             if actual_score is not None and rec_score is not None:
-                                abs_diff = abs(rec_score - actual_score)
                                 rel_tolerance = params.get('MATCH_TOLERANCE', 0.05)
-                                abs_tolerance = params.get('MATCH_ABS_TOLERANCE', 50)
-                                is_match = abs_diff <= abs_tolerance
-                                if not is_match and abs(rec_score) > 1:
-                                    rel_diff = abs_diff / abs(rec_score)
-                                    is_match = rel_diff <= rel_tolerance
+                                is_match = abs(rec_score - actual_score) / max(abs(rec_score), 1) <= rel_tolerance
                             else:
                                 is_match = False
                     if is_match:
