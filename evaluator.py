@@ -646,19 +646,8 @@ class Evaluator:
         push_score = self.strategy.compute_push_score()
         mode = self.strategy.get_strategy_mode()
 
-        is_ippatsu_turn = any(
-            rs.is_ippatsu for i, rs in enumerate(self.state.reach_states) if i != self.state.my_seat
-        )
-        if is_ippatsu_turn:
-            genbutsu_threshold = self.params.get('SCORE_GENBUTSU', 1000)
-            if v_defense < genbutsu_threshold:
-                v_defense *= self.params.get('IPPAKU_DEFENSE_MULT', 3)
-
         if mode == "全ツ":
-            if is_ippatsu_turn:
-                v = float(v_defense + v_attack * 0.1)
-            else:
-                v = float(v_attack)
+            v = float(v_attack)
         elif mode == "ベタオリ":
             safe_threshold = self.params.get('SCORE_SUJI', 500)
             if v_defense >= safe_threshold:
@@ -667,6 +656,20 @@ class Evaluator:
                 v = float(v_defense + v_attack * 0.05)
         else:
             if not self.state.is_any_opponent_reach() and not self._any_opponent_has_open_meld(self.state):
+                v = float(v_attack)
+            else:
+                v = push_score * v_attack + (1.0 - push_score) * v_defense
+
+        is_ippatsu_turn = any(
+            rs.is_ippatsu for i, rs in enumerate(self.state.reach_states) if i != self.state.my_seat
+        )
+        if is_ippatsu_turn:
+            tile_id = tile_to_id(tile)
+            if not self.defense.is_genbutsu(tile_id):
+                genbutsu_safe = tile_id in self.defense._common_genbutsu_ids(self.defense._active_reach_seats())
+                if not genbutsu_safe:
+                    ippatsu_penalty = self.params.get('IPPATSU_PENALTY', 300)
+                    v -= ippatsu_penalty * (1.0 - push_score)
                 v = float(v_attack)
             else:
                 v = push_score * v_attack + (1.0 - push_score) * v_defense
