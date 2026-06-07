@@ -434,7 +434,7 @@ class AttackEvaluator:
         return weighted / total
 
     def _hand_value_bonus(self, tile: str) -> int:
-        from hand_value import estimate_han_advanced, estimate_win_score
+        from hand_value import estimate_hand_value
         hand = list(self.state.my_hand)
         melds = self.state.my_melds
         discard_id = tile_to_id(tile)
@@ -442,12 +442,12 @@ class AttackEvaluator:
         if tile in after_hand:
             after_hand.remove(tile)
         open_meld_count = sum(1 for m in melds if m.is_open)
-        has_riichi = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
-        han = estimate_han_advanced(after_hand, melds, self.state.doras,
-                                     is_open=open_meld_count > 0,
-                                     has_reach=has_riichi, is_ippatsu=False, is_tsumo=False)
+        has_reach = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
         is_dealer = (self.state.my_seat % 4) == 0
-        score = estimate_win_score(han, is_dealer)
+        score = estimate_hand_value(after_hand, melds, self.state.doras,
+                                     is_open=open_meld_count > 0,
+                                     has_reach=has_reach, is_ippatsu=False,
+                                     is_tsumo=False, is_dealer=is_dealer)
         return score // 10
 
     def _get_furiten_tile_ids(self) -> set:
@@ -601,33 +601,16 @@ class Evaluator:
         return min(0.5, danger)
 
     def _estimate_win_score(self) -> int:
-        from scoring import estimate_han
+        from hand_value import estimate_hand_value
         hand = self.state.my_hand
         melds = self.state.my_melds
         open_melds = [m for m in melds if m.is_open]
         is_open = len(open_melds) > 0
-        han = estimate_han(hand, melds, self.state.doras, is_open,
-                           is_tsumo=False, has_reach=False, is_ippatsu=False)
-        if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
-            han += 1
+        has_reach = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
         is_dealer = (self.state.my_seat % 4) == 0
-        if han >= 5:
-            if han >= 13:
-                base = 32000
-            elif han >= 11:
-                base = 24000
-            elif han >= 8:
-                base = 16000
-            elif han >= 6:
-                base = 12000
-            else:
-                base = 8000
-        else:
-            base = 30 * 4 * (2 ** (2 + han))
-            base = ((base + 99) // 100) * 100
-        if is_dealer:
-            base = int(base * 1.5)
-        return base
+        return estimate_hand_value(hand, melds, self.state.doras, is_open,
+                                    has_reach=has_reach, is_ippatsu=False,
+                                    is_tsumo=False, is_dealer=is_dealer)
 
     def _estimate_deal_loss(self, tile: str) -> int:
         n_reach = len(self.defense._active_reach_seats())

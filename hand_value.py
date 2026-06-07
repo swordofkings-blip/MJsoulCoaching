@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-from typing import List
+from typing import List, Tuple
 
 from str_converter import (
     HONOR_IDS, TERMINAL_IDS,
@@ -9,25 +9,99 @@ from str_converter import (
 
 SANGEN = {31, 32, 33}
 
+SUIT_COLORS = {'m': 0, 'p': 1, 's': 2}
+
+_1_3_HAN_SCORE = {
+    (20, 1, False): 1000, (20, 1, True): 1500,
+    (20, 2, False): 2000, (20, 2, True): 3000,
+    (20, 3, False): 3900, (20, 3, True): 5800,
+    (25, 1, False): 1600, (25, 1, True): 2400,
+    (25, 2, False): 3200, (25, 2, True): 4800,
+    (25, 3, False): 6400, (25, 3, True): 9600,
+    (30, 1, False): 1000, (30, 1, True): 1500,
+    (30, 2, False): 2000, (30, 2, True): 2900,
+    (30, 3, False): 3900, (30, 3, True): 5800,
+    (40, 1, False): 1300, (40, 1, True): 2000,
+    (40, 2, False): 2600, (40, 2, True): 3900,
+    (40, 3, False): 5200, (40, 3, True): 7700,
+    (50, 1, False): 1600, (50, 1, True): 2400,
+    (50, 2, False): 3200, (50, 2, True): 4800,
+    (50, 3, False): 6400, (50, 3, True): 9600,
+    (60, 1, False): 2000, (60, 1, True): 2900,
+    (60, 2, False): 3900, (60, 2, True): 5800,
+    (60, 3, False): 7700, (60, 3, True): 11600,
+    (70, 1, False): 2300, (70, 1, True): 3400,
+    (70, 2, False): 4500, (70, 2, True): 6800,
+    (70, 3, False): 9000, (70, 3, True): 13600,
+}
+
+
+def _all_tile_ids(hand: List[str], melds: List) -> List[int]:
+    result = [tile_to_id(t) for t in hand]
+    for m in melds:
+        mt = m.tiles if hasattr(m, 'tiles') else []
+        result.extend(tile_to_id(t) for t in mt)
+    return result
+
+
+def _has_only_2to8(tiles: List[int]) -> bool:
+    for tid in tiles:
+        if is_honor(tid):
+            return False
+        if tid % 9 in (0, 8):
+            return False
+    return True
+
+
+def _suits_used(tiles: List[int]) -> Tuple[set, bool]:
+    suits = set()
+    has_hon = False
+    for tid in tiles:
+        if tid < 9:
+            suits.add('m')
+        elif tid < 18:
+            suits.add('p')
+        elif tid < 27:
+            suits.add('s')
+        else:
+            has_hon = True
+    return suits, has_hon
+
+
+def estimate_fu(hand: List[str], melds: List, win_tile: str = None) -> int:
+    counts = hand_to_counts(hand)
+    fu = 20
+    for i in range(34):
+        if counts[i] >= 3:
+            yaochu = is_terminal(i) or is_honor(i)
+            fu += (8 if yaochu else 4)
+    for m in melds:
+        mt = m.tiles if hasattr(m, 'tiles') else []
+        if len(mt) >= 3:
+            tid = tile_to_id(mt[0])
+            yaochu = is_terminal(tid) or is_honor(tid)
+            if hasattr(m, 'type'):
+                if m.type == 3:
+                    fu += (32 if yaochu else 16)
+                elif m.type == 2:
+                    fu += (16 if yaochu else 8)
+                elif hasattr(m, 'is_open') and not m.is_open:
+                    fu += (8 if yaochu else 4)
+    for i in range(27, 34):
+        if counts[i] >= 2:
+            if i in SANGEN or i <= 30:
+                fu += 2
+            break
+    fu = min(fu, 110)
+    return ((fu + 9) // 10) * 10
+
 
 def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
                           is_open: bool, has_reach: bool, is_ippatsu: bool,
                           is_tsumo: bool) -> int:
     han = 0
     counts = hand_to_counts(hand)
-    total_counts = list(counts)
-    meld_tiles = []
-    for m in melds:
-        mt = m.tiles if hasattr(m, 'tiles') else []
-        meld_tiles.extend(mt)
-        for t in mt:
-            tid = tile_to_id(t)
-            total_counts[tid] += 3 if hasattr(m, 'type') and m.type == 3 else 0
-
-    all_tiles = list(hand)
-    for m in melds:
-        mt = m.tiles if hasattr(m, 'tiles') else []
-        all_tiles.extend(mt)
+    all_ids = _all_tile_ids(hand, melds)
 
     if has_reach:
         han += 1
@@ -36,89 +110,64 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
     if is_tsumo and not is_open:
         han += 1
 
-    has_aka = any(is_red_five(t) for t in all_tiles)
-    if has_aka:
-        aka_count = sum(1 for t in all_tiles if is_red_five(t))
-        han += aka_count
+    aka_count = sum(1 for tid in all_ids if is_red_five(id_to_tile(tid)))
+    han += aka_count
 
     for d in doras:
         did = tile_to_id(d)
-        in_hand = sum(1 for t in hand if tile_to_id(t) == did)
-        in_melds = 0
-        for m in melds:
-            mt = m.tiles if hasattr(m, 'tiles') else []
-            in_melds += sum(1 for t in mt if tile_to_id(t) == did)
-        han += in_hand + in_melds
+        han += sum(1 for tid in all_ids if tid == did)
 
-    has_term = any(is_terminal(tile_to_id(t)) for t in all_tiles)
-    has_hon = any(is_honor(tile_to_id(t)) for t in all_tiles)
+    if not _has_only_2to8(all_ids):
+        pass
+    elif not is_open:
+        han += 1
 
-    if not is_open:
-        if not has_term and not has_hon:
-            han += 1
-
-    suits_used = set()
-    for t in all_tiles:
-        tid = tile_to_id(t)
-        if tid < 9:
-            suits_used.add('m')
-        elif tid < 18:
-            suits_used.add('p')
-        elif tid < 27:
-            suits_used.add('s')
-        else:
-            suits_used.add('z')
+    suits, has_hon = _suits_used(all_ids)
 
     if not is_open:
-        if len(suits_used) == 1 and 'z' not in suits_used:
+        if len(suits) == 1 and not has_hon:
             han += 6
-        elif len(suits_used) == 2 and 'z' in suits_used and len(suits_used - {'z'}) == 1:
+        elif len(suits) == 1 and has_hon:
             han += 3
-        elif len(suits_used) == 1 and 'z' in suits_used:
-            han += 3
-
-    for m in melds:
-        mt = m.tiles if hasattr(m, 'tiles') else []
-        if len(mt) >= 3 and hasattr(m, 'is_open') and not m.is_open:
-            tid = tile_to_id(mt[0])
-            if is_terminal(tid) or is_honor(tid):
-                han += 8
 
     for i in SANGEN:
         c = counts[i]
-        m_count = 0
+        mc = 0
         for m in melds:
             mt = m.tiles if hasattr(m, 'tiles') else []
-            if mt and tile_to_id(mt[0]) == i and hasattr(m, 'is_open'):
-                m_count += 1
-        if c >= 3 or m_count >= 1:
+            if mt and tile_to_id(mt[0]) == i and (not hasattr(m, 'is_open') or m.is_open):
+                mc += 1
+        if c >= 3 or mc >= 1:
             han += 1
 
-    se_total = 0
-    for suit in range(3):
-        base = suit * 9
-        seqs = 0
-        for start in range(7):
-            if (counts[base + start] >= 1 and counts[base + start + 1] >= 1
-                    and counts[base + start + 2] >= 1):
-                seqs += 1
-        if seqs >= 3:
-            se_total += 2
-
-    if not is_open:
-        all_koutsu = True
-        for i in range(34):
-            if counts[i] not in (0, 2, 3, 4):
-                all_koutsu = False
-                break
+    if len(hand) >= 13 and not is_open:
         pairs = sum(1 for c in counts if c >= 2)
-        if all_koutsu and pairs == 7:
+        if pairs >= 6:
             han += 2
+
+    if not is_open and has_ryanmen_wait(hand):
+        if han == 0 and not is_open:
+            pass
 
     return han
 
 
-def estimate_win_score(han: int, is_dealer: bool) -> int:
+def estimate_win_score(han: int, fu: int, is_dealer: bool) -> int:
+    if han >= 5:
+        return _mangan_score(han, is_dealer)
+
+    key = (fu, han, is_dealer)
+    if key in _1_3_HAN_SCORE:
+        return _1_3_HAN_SCORE[key]
+
+    base = fu * 4 * (2 ** (han + 2))
+    base = ((base + 99) // 100) * 100
+    if is_dealer:
+        base = int(base * 1.5)
+    return base
+
+
+def _mangan_score(han: int, is_dealer: bool) -> int:
     if han >= 13:
         base = 32000
     elif han >= 11:
@@ -127,16 +176,22 @@ def estimate_win_score(han: int, is_dealer: bool) -> int:
         base = 16000
     elif han >= 6:
         base = 12000
-    elif han == 5:
-        base = 8000
-    elif han == 4:
-        base = 2000
-    elif han == 3:
-        base = 1000
-    elif han == 2:
-        base = 500
     else:
-        base = 300
+        base = 8000
     if is_dealer:
         base = int(base * 1.5)
     return base
+
+
+def estimate_hand_value(hand: List[str], melds: List, doras: List[str],
+                        is_open: bool, has_reach: bool, is_ippatsu: bool,
+                        is_tsumo: bool, is_dealer: bool) -> int:
+    han = estimate_han_advanced(hand, melds, doras, is_open, has_reach, is_ippatsu, is_tsumo)
+    fu = estimate_fu(hand, melds)
+    return estimate_win_score(han, fu, is_dealer)
+
+
+has_ryanmen_wait = lambda h: True
+
+
+from str_converter import id_to_tile
