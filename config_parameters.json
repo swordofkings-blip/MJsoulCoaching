@@ -2,6 +2,7 @@
   "USE_PHASE1_DEFENSE": true,
   "USE_PHASE2_ATTACK": true,
   "USE_EV_FRAMEWORK": false,
+  "USE_POSITIONAL_EV": true,
   "EV_WIN_P_SCALE": 1.0,
   "SCORE_GENBUTSU": 1000,
   "SCORE_SUJI": 500,

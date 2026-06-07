@@ -576,26 +576,47 @@ class StrategyManager:
         return han
 
     def compute_push_score(self) -> float:
-        """
-        @title 押し引き度の算出
-        @description 自家の攻撃度（手牌進行）と他家の最大脅威度から、現在の押し（攻め）度合いを 0.0–1.0 で返す。
-        他家からの脅威が一切ない場合（t_max = 0.0）は、手牌のシャンテン数に関わらず無条件に 1.0（全ツモ手効率優先）を返す。
-        @returns {float} 押し度 0.0 (ベタオリ) 〜 1.0 (全力押)
-        """
         a_base = self.compute_base_attack()
         t_max = self.compute_opponent_threat()
-        # Why: 序盤で他家に立直や副露が一つもない局面では、テンパイ到達や高打点の手役完成に向けて
-        # Why: 純粋な手効率（攻撃評価）を最大優先すべき。現物の影響を受けないよう無条件で全押しとする。
         if t_max <= 0.0:
             return 1.0
         push_score = a_base * (1.0 - t_max)
         push_score = self._apply_position_override(push_score)
         return max(0.0, min(1.0, push_score))
 
+    def _remaining_kyokus(self) -> int:
+        ju = self.state.ju
+        chang = self.state.chang
+        total = chang * 4 + ju + 1
+        max_kyoku = 8
+        remaining = max(0, max_kyoku - total)
+        scores = self.state.scores
+        if max(scores) < 30000 and total >= max_kyoku:
+            remaining += 4
+        return max(1, remaining)
+
     def _apply_position_override(self, push_score: float) -> float:
+        rank = self.state.my_score_rank()
+        remaining = self._remaining_kyokus()
+
+        # 南入間近: トップ目が29000+でゲーム終了が近い
+        scores = self.state.scores
+        top_score = max(scores)
+        if top_score >= 29000 and remaining <= 2:
+            if rank == 0:
+                return min(push_score, 0.3)
+            if rank >= 2:
+                return max(push_score, 0.6)
+
+        # 残り局数が少ない: 順位に応じて傾斜
+        if remaining <= 3:
+            if rank == 0:
+                return min(push_score, 0.4)
+            if rank == 3:
+                return max(push_score, 0.7)
+
         if not self.state.is_last_round():
             return push_score
-        rank = self.state.my_score_rank()
         if rank == 0:
             return min(push_score, self.params.get('LAST_ROUND_RANK0_PUSH_LIMIT', 0.2))
         if rank == 3 and self.state.ju >= 1:

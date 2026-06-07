@@ -535,7 +535,7 @@ class Evaluator:
     def evaluate_tile(self, tile: str) -> float:
         use_ev = self.params.get('USE_EV_FRAMEWORK', False)
         if use_ev:
-            return self._evaluate_tile_ev(tile)
+            return self._evaluate_tile_ev(tile) + self._positional_ev()
         v_attack = self.attack.attack_score_for_tile(tile)
         v_defense = self.defense.defense_score_for_tile(tile)
         push_score = self.strategy.compute_push_score()
@@ -544,6 +544,8 @@ class Evaluator:
         else:
             v = push_score * v_attack + (1.0 - push_score) * v_defense
         v += self._get_keiten_bonus(tile)
+        if self.params.get('USE_POSITIONAL_EV', True):
+            v += self._positional_ev()
         return v
 
     def _evaluate_tile_ev(self, tile: str) -> float:
@@ -649,11 +651,76 @@ class Evaluator:
         return base_loss
 
     def _positional_ev(self) -> float:
-        rank = self.state.my_score_rank()
-        my_score = self.state.scores[self.state.my_seat]
-        scores = sorted(self.state.scores, reverse=True)
-        rank_bonus = {0: 10, 1: 0, 2: -10, 3: -20}.get(rank, 0)
-        return float(rank_bonus)
+        scores = self.state.scores
+        my_seat = self.state.my_seat
+        my_score = scores[my_seat]
+        sorted_scores = sorted(enumerate(scores), key=lambda x: -x[1])
+        my_rank = next(i for i, (s, _) in enumerate(sorted_scores) if s == my_seat)
+        sorted_vals = [s for s, _ in sorted_scores]
+
+        rank_pt = {0: 45, 1: 15, 2: -15, 3: -45}
+        current_pt = rank_pt.get(my_rank, 0) + (my_score - 25000) // 1000
+
+        if my_rank > 0:
+            gap_to_up = sorted_vals[my_rank - 1] - my_score
+            pt_gain_up = (rank_pt[my_rank - 1] + ((sorted_vals[my_rank - 1] + (gap_to_up // 2)) - 25000) // 1000) - current_pt
+        else:
+            gap_to_up = float('inf')
+            pt_gain_up = 0
+
+        if my_rank < 3:
+            gap_to_down = my_score - sorted_vals[my_rank + 1]
+            pt_loss_down = current_pt - (rank_pt[my_rank + 1] + ((sorted_vals[my_rank + 1] + (gap_to_down // 2)) - 25000) // 1000)
+        else:
+            gap_to_down = float('inf')
+            pt_loss_down = 0
+
+        remaining = self._remaining_kyokus()
+
+        if remaining <= 0:
+            urgency = 2.0
+        elif remaining <= 2:
+            urgency = 1.5
+        elif remaining <= 4:
+            urgency = 1.0
+        else:
+            urgency = 0.5
+
+        up_prob = max(0, min(1, 1.0 - gap_to_up / max(1, remaining * 3000)))
+        down_prob = max(0, min(1, 1.0 - gap_to_down / max(1, remaining * 3000)))
+
+        naniire_bonus = self._naniire_bonus()
+
+        positional_value = (up_prob * pt_gain_up - down_prob * pt_loss_down) * urgency + naniire_bonus
+        return float(positional_value)
+
+    def _remaining_kyokus(self) -> int:
+        ju = self.state.ju
+        chang = self.state.chang
+        total = chang * 4 + ju + 1
+        max_kyoku = 8
+        remaining = max(0, max_kyoku - total)
+        scores = self.state.scores
+        if max(scores) < 30000 and total >= max_kyoku:
+            remaining += 4
+        return max(1, remaining)
+
+    def _naniire_bonus(self) -> float:
+        scores = self.state.scores
+        top_score = max(scores)
+        if top_score >= 29000 and top_score < 30000:
+            rank = self.state.my_score_rank()
+            if rank == 0:
+                return 15.0
+            else:
+                return -5.0
+        if top_score >= 30000:
+            return 0.0
+        if top_score < 27000 and self._remaining_kyokus() <= 2:
+            rank = self.state.my_score_rank()
+            if rank >= 2:
+                return 10.0
+        return 0.0
 
     def _hand_is_winning(self) -> bool:
         counts = self.state.my_hand_counts()
