@@ -379,8 +379,6 @@ class AttackEvaluator:
                         if blocks_after >= 6:
                             penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                             score -= penalty
-                penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
-                score -= penalty
         if shanten >= self.params.get('BETAORI_PREP_SHANTEN', 4):
             score += self._betaori_prep_bonus(tile, shanten)
         return score
@@ -519,19 +517,23 @@ class AttackEvaluator:
                 bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
 
         if is_honor(discard_id):
-            is_dora = any(tile_to_id(t) == discard_id for d in self.state.doras for t in [d])
+            is_pair = counts[discard_id] >= 2
+            is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:
                 bonus -= self.params.get('DORA_DISCARD_PENALTY', 40)
             if discard_id in SANGEN:
-                bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+                if is_pair:
+                    bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
             bakaze = 27 + (self.state.chang % 4)
             jikaze = 27 + (self.state.my_seat % 4)
             if discard_id == bakaze:
-                bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
+                if is_pair:
+                    bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
             if discard_id == jikaze:
-                pass
-            elif discard_id not in SANGEN and discard_id != bakaze:
-                bonus += self.params.get('HONOR_DISCARD_BONUS', 10)
+                if not is_pair:
+                    bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
+            elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
+                bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:
