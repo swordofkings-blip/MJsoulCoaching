@@ -470,7 +470,7 @@ class AttackEvaluator:
                 continue
             total += remaining
             if is_honor(tid):
-                weight = 0.4
+                weight = self.params.get('UKEIRE_QUAL_HONOR', 0.4)
             elif is_tenpai:
                 base = (tid // 9) * 9
                 off = tid - base
@@ -479,17 +479,17 @@ class AttackEvaluator:
                 has_l2 = off >= 2 and new_counts[base + off - 2] >= 1
                 has_r2 = off <= 6 and new_counts[base + off + 2] >= 1
                 if has_l and has_r:
-                    weight = 1.0
+                    weight = self.params.get('UKEIRE_QUAL_RYANMEN', 1.0)
                 elif has_l2 and has_l:
-                    weight = 0.7
+                    weight = self.params.get('UKEIRE_QUAL_KANCHAN', 0.7)
                 elif has_r and has_r2:
-                    weight = 0.7
+                    weight = self.params.get('UKEIRE_QUAL_KANCHAN', 0.7)
                 elif off == 0 and has_r and has_r2:
-                    weight = 0.5
+                    weight = self.params.get('UKEIRE_QUAL_PENCHAN', 0.5)
                 elif off == 8 and has_l and has_l2:
-                    weight = 0.5
+                    weight = self.params.get('UKEIRE_QUAL_PENCHAN', 0.5)
                 else:
-                    weight = 0.5
+                    weight = self.params.get('UKEIRE_QUAL_TANKI', 0.5)
             else:
                 connect = 0
                 off = tid % 9
@@ -500,8 +500,9 @@ class AttackEvaluator:
                     connect += 1
                 if new_counts[tid] >= 2:
                     connect += 1
-                weight = 0.4 + connect * 0.2
-                weight = min(1.0, weight)
+                base_w = self.params.get('UKEIRE_QUAL_CONNECT_BASE', 0.4)
+                per = self.params.get('UKEIRE_QUAL_CONNECT_PER', 0.2)
+                weight = min(1.0, base_w + connect * per)
             total_weighted += remaining * weight
         if total == 0:
             return 0.0

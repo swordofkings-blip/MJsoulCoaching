@@ -23,6 +23,11 @@ GENE_DEFS = {
     'AKA_KEEP_BONUS': (30, 120, int),
     'ISOLATED_MIDDLE_BONUS': (5, 40, int),
     'ISOLATED_EDGE_PENALTY': (5, 40, int),
+    'UKEIRE_QUAL_HONOR': (0.2, 0.8, float),
+    'UKEIRE_QUAL_RYANMEN': (0.7, 1.0, float),
+    'UKEIRE_QUAL_KANCHAN': (0.3, 0.9, float),
+    'UKEIRE_QUAL_CONNECT_BASE': (0.2, 0.7, float),
+    'UKEIRE_QUAL_CONNECT_PER': (0.1, 0.4, float),
 }
 
 STATE_FILE = 'ga_state.json'
@@ -72,8 +77,10 @@ def main():
 
     resume_from = len(sys.argv) > 1 and sys.argv[1] == '--resume'
     start_gen = 0
-    pop_size = 10
+    pop_size = 8
     keep = 2
+    generations = 30
+    train_records = all_records[:2]
 
     log_file = 'ga_result.log'
 
@@ -81,7 +88,7 @@ def main():
         if resume_from and os.path.exists(STATE_FILE):
             start_gen, pop = load_state()
             log.write(f'Resumed from gen {start_gen}\n')
-            print(f'Resumed from gen {start_gen}')
+            print(f'Resumed from gen {start_gen}', flush=True)
         else:
             base_fit = evaluate_fitness(base_params, train_records)
             log.write(f'Baseline: {base_fit*100:.2f}%\n')
@@ -91,7 +98,7 @@ def main():
                 pop.append((0.0, mutate(base_params, 0.5, 0.2)))
             save_state(pop, 0, log)
 
-        for gen in range(start_gen + 1, start_gen + 101):
+        for gen in range(start_gen + 1, start_gen + generations + 1):
             t0 = time.time()
             for i in range(pop_size):
                 if pop[i][0] == 0.0:
@@ -101,7 +108,7 @@ def main():
             msg = f'G{gen}: best={pop[0][0]*100:.2f}% ({time.time()-t0:.0f}s)'
             log.write(msg + '\n')
             log.flush()
-            print(msg)
+            print(msg, flush=True)
 
             if gen % 10 == 0:
                 save_state(pop, gen, log)
