@@ -568,14 +568,16 @@ class AttackEvaluator:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:
                 bonus -= self.params.get('DORA_DISCARD_PENALTY', 40)
+            visible_all = self.state.all_visible_counts()
+            remaining = 4 - visible_all[discard_id]
             if discard_id in SANGEN:
-                if is_pair:
+                if is_pair and remaining >= 2:
                     bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
             bakaze = 27 + (self.state.chang % 4)
             jikaze = 27 + (self.state.my_seat % 4)
             is_double_wind = (bakaze == jikaze) and (discard_id == bakaze)
             if discard_id == bakaze:
-                if is_pair:
+                if is_pair and remaining >= 2:
                     bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
                 elif is_double_wind:
                     pass
@@ -588,14 +590,23 @@ class AttackEvaluator:
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
 
-            visible_honor = self.state.all_visible_counts()
-            vis = visible_honor[discard_id]
+            ratio_base = self.params.get('VISIBLE_RATIO_BASE', 20)
+            visible_all = self.state.all_visible_counts()
+            vis = visible_all[discard_id]
             if vis >= 1:
-                bonus += vis * self.params.get('HONOR_VISIBLE_BONUS', 15)
+                ratio = 4.0 / max(1, 4 - vis) - 1.0
+                bonus += int(ratio * ratio_base)
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:
                 bonus -= self.params.get('DORA_DISCARD_PENALTY', 60)
+
+            ratio_base = self.params.get('VISIBLE_RATIO_BASE', 20)
+            visible_all = self.state.all_visible_counts()
+            vis = visible_all[discard_id]
+            if vis >= 1 and counts[discard_id] == 1:
+                ratio = 4.0 / max(1, 4 - vis) - 1.0
+                bonus += int(ratio * ratio_base)
 
             all_ids = [tile_to_id(t) for t in self.state.my_hand]
             all_ids.extend(tile_to_id(t) for m in self.state.my_melds for t in getattr(m, 'tiles', []))
