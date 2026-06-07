@@ -1705,7 +1705,50 @@ class Evaluator:
             if def_penalty >= cond_th and push < cond_push:
                 return False
 
-        # --- 門前vs副露の価値比較（yaku_detector補完つき） ---
+        # 役牌ポン（小林: 守備力変わらないので常に鳴く）
+        if type_ == 1:
+            target_id = tile_to_id(tiles[0])
+            seat_wind = {0:27,1:28,2:29,3:30}[self.state.my_seat]
+            round_wind = {0:27,1:28,2:29,3:30}[self.state.chang%4]
+            if target_id in (31,32,33,seat_wind,round_wind) and expected_han >= 1:
+                return True
+
+        # 大明槓
+        if type_ == 2:
+            if push > 0.6:
+                return True
+            dora_gain = 0
+            for d in self.state.doras:
+                if tile_to_id(tiles[0]) == tile_to_id(d):
+                    dora_gain += 1
+            if dora_gain > 0 and push > 0.3:
+                return True
+            return False
+
+        # 0飜開局 = 和了れない → 絶対に鳴かない
+        if expected_han < 1:
+            return False
+
+        turn = self.state.tsumo_count // 4
+
+        # テンパイ → 鳴く（速度優先）
+        if after_shanten <= 0:
+            return True
+
+        # 既開局 → コミットしているので鳴く
+        if not is_closed:
+            return True
+
+        # 小林: 強い門前一向聴（両面x両面＋高打点）は鳴かない
+        # 条件: 閉局1向聴以内 & 2飜以上 & 6巡未満
+        if is_closed and before_shanten <= 1 and expected_han >= 2 and turn < 6:
+            return False
+
+        # 小林: 終盤（10巡以降）は速度優先で鳴く
+        if turn >= 10:
+            return True
+
+        # --- 価値比較 ---
         from hand_value import estimate_han_advanced, estimate_win_score
         is_dealer = self.state.my_seat == 0
 
@@ -1725,36 +1768,11 @@ class Evaluator:
             pass
         if before_shanten <= 1:
             closed_han += 2
+
         closed_score = estimate_win_score(closed_han, 30, is_dealer)
-
-        # 大明槓
-        if type_ == 2:
-            if push > 0.6:
-                return True
-            dora_gain = 0
-            for d in self.state.doras:
-                if tile_to_id(tiles[0]) == tile_to_id(d):
-                    dora_gain += 1
-            if dora_gain > 0 and push > 0.3:
-                return True
-            return False
-
-        # 門前維持価値（推定不能役の分+1飜の保守的補正）
-        closed_han = estimate_han_advanced(
-            self.state.my_hand, self.state.my_melds, self.state.doras,
-            is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
-            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
-        if before_shanten <= 1:
-            closed_han += 2  # リーチ(1) + ツモ(1)
-        else:
-            closed_han += 1  # 門下位の潜在役価値
-        closed_score = estimate_win_score(closed_han, 30, is_dealer)
-
-        # 副露価値（最低1飜で計算）
-        open_score = estimate_win_score(max(expected_han, 1), 30, is_dealer)
+        open_score = estimate_win_score(expected_han, 30, is_dealer)
         speed_bonus = (before_shanten - after_shanten) * 1000
 
-        # スコア差ベース判断
         gap = closed_score - open_score
         if gap <= 500:
             return True
