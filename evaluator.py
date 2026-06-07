@@ -14,6 +14,7 @@ from str_converter import (
     suji_safe_tiles,
 )
 from strategy_manager import ShantenCalculator, StrategyManager
+from hand_value import SANGEN
 
 
 SCORE_GENBUTSU = 1000
@@ -450,7 +451,25 @@ class AttackEvaluator:
                                      is_open=open_meld_count > 0,
                                      has_reach=has_reach, is_ippatsu=False,
                                      is_tsumo=False, is_dealer=is_dealer)
-        return score // 10
+        bonus = score // 10
+
+        counts = self.state.my_hand_counts()
+        if counts[discard_id] == 2:
+            if discard_id in SANGEN:
+                bonus -= self.params.get('YAKUHAI_PAIR_PENALTY', 30)
+            if discard_id in (27, 28, 29, 30):
+                bonus -= self.params.get('YAKUHAI_PAIR_PENALTY', 30)
+
+        if not is_honor(discard_id):
+            base = (discard_id // 9) * 9
+            off = discard_id - base
+            counts_after = hand_to_counts(after_hand)
+            if off > 0 and counts_after[base + off - 1] >= 1:
+                bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
+            if off < 8 and counts_after[base + off + 1] >= 1:
+                bonus += self.params.get('RYANMEN_KEEP_BONUS', 15)
+
+        return bonus
 
     def _get_furiten_tile_ids(self) -> set:
         my_river_ids = set()
