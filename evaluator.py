@@ -672,13 +672,13 @@ class Evaluator:
             return 0.0
         draw_chance = ukeire_total / max(1, remaining)
         if shanten <= -1:
-            return min(0.9, draw_chance * 4)
+            return min(self.params.get('EV_WIN_MAX', 0.9), draw_chance * self.params.get('EV_WIN_AGARI_MULT', 4))
         elif shanten == 0:
-            return min(0.7, draw_chance * 3)
+            return min(self.params.get('EV_WIN_TENPAI_MAX', 0.7), draw_chance * self.params.get('EV_WIN_TENPAI_MULT', 3))
         elif shanten == 1:
-            return min(0.3, draw_chance * 2)
+            return min(self.params.get('EV_WIN_1S_MAX', 0.3), draw_chance * self.params.get('EV_WIN_1S_MULT', 2))
         else:
-            return min(0.1, draw_chance * 0.5)
+            return min(self.params.get('EV_WIN_HIGH_MAX', 0.1), draw_chance * self.params.get('EV_WIN_HIGH_MULT', 0.5))
 
     def _estimate_deal_in_p(self, tile: str) -> float:
         n_reach = len(self.defense._active_reach_seats())
@@ -691,19 +691,19 @@ class Evaluator:
         if tile_id in self.defense._common_genbutsu_ids(reach_seats):
             return 0.0
         if tile_id in self.defense._wall_suji_ids():
-            return 0.01
+            return self.params.get('EV_DEALIN_WALL', 0.01)
         if tile_id in self.defense._no_chance_ids() and not is_honor(tile_id):
-            return 0.02
+            return self.params.get('EV_DEALIN_NOCHANCE', 0.02)
         if tile_id in self.defense._reach_suji_ids(reach_seats):
-            return 0.03 * n_reach
+            return self.params.get('EV_DEALIN_SUJI', 0.03) * n_reach
         if tile_id in self.defense._one_chance_ids() and not is_honor(tile_id):
-            return 0.05 * n_reach
+            return self.params.get('EV_DEALIN_ONECHANCE', 0.05) * n_reach
         matagi = self.defense._matagi_danger_ids(reach_seats)
-        danger = 0.06
-        danger += n_reach * 0.05
+        danger = self.params.get('EV_DEALIN_MUSUJI_BASE', 0.06)
+        danger += n_reach * self.params.get('EV_DEALIN_MUSUJI_PER_REACH', 0.05)
         if tile_id in matagi:
-            danger += 0.05
-        return min(0.5, danger)
+            danger += self.params.get('EV_DEALIN_MATAGI', 0.05)
+        return min(self.params.get('EV_DEALIN_MAX', 0.5), danger)
 
     def _estimate_win_score(self) -> int:
         from hand_value import estimate_hand_value

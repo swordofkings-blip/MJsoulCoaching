@@ -15,7 +15,14 @@ GENE_DEFS = {
     'DORA_DISCARD_PENALTY': (40, 200, int),
     'MATAGI_PENALTY': (0, 300, int),
     'PENALTY_6BLOCK_MAINTAIN': (30, 150, int),
+    'EV_WIN_TENPAI_MULT': (1, 8, int),
+    'EV_WIN_1S_MULT': (0.5, 5, float),
+    'EV_DEALIN_SUJI': (0.005, 0.1, float),
+    'EV_DEALIN_MUSUJI_BASE': (0.01, 0.2, float),
+    'EV_DEALIN_MUSUJI_PER_REACH': (0.01, 0.15, float),
 }
+
+STATE_FILE = 'ga_state.json'
 
 def mutate(params, rate=0.3, size=0.15):
     new = dict(params)
@@ -39,63 +46,87 @@ def evaluate_fitness(params, record_paths):
         m += r['matches']
     return m / total if total > 0 else 0.0
 
+def save_state(pop, gen, log):
+    state = {'gen': gen, 'pop': [(f, p) for f, p in pop]}
+    with open(STATE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(state, f, indent=2)
+    log.write(f'State saved at gen {gen}\n')
+    log.flush()
+
+def load_state():
+    with open(STATE_FILE, encoding='utf-8') as f:
+        state = json.load(f)
+    return state['gen'], [(f, p) for f, p in state['pop']]
+
 def main():
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
     all_records = sorted(glob.glob(os.path.join(data_dir, 'record_*_trimmed.json')))
-    train_records = all_records[:2]  # 2 records for speed (~4s total)
+    train_records = all_records[:2]
 
     base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config_parameters_ldea_v1.json')
     with open(base_path, encoding='utf-8') as f:
         base_params = json.load(f)
 
-    pop_size = 5
-    generations = 8
+    resume_from = len(sys.argv) > 1 and sys.argv[1] == '--resume'
+    start_gen = 0
+    pop_size = 10
     keep = 2
+
     log_file = 'ga_result.log'
 
-    with open(log_file, 'w', encoding='utf-8') as log:
-        log.write(f'GA start: {len(train_records)} training records\n')
-        log.flush()
+    with open(log_file, 'a', encoding='utf-8') as log:
+        if resume_from and os.path.exists(STATE_FILE):
+            start_gen, pop = load_state()
+            log.write(f'Resumed from gen {start_gen}\n')
+            print(f'Resumed from gen {start_gen}')
+        else:
+            base_fit = evaluate_fitness(base_params, train_records)
+            log.write(f'Baseline: {base_fit*100:.2f}%\n')
+            print(f'Baseline: {base_fit*100:.2f}%')
+            pop = [(base_fit, base_params)]
+            for _ in range(pop_size - 1):
+                pop.append((0.0, mutate(base_params, 0.5, 0.2)))
+            save_state(pop, 0, log)
 
-        base_fit = evaluate_fitness(base_params, train_records)
-        log.write(f'Baseline: {base_fit*100:.2f}%\n')
-        log.flush()
-        print(f'Baseline: {base_fit*100:.2f}%')
-
-        pop = [(base_fit, base_params)]
-        for _ in range(pop_size - 1):
-            pop.append((0.0, mutate(base_params, 0.5, 0.2)))
-
-        for gen in range(generations):
+        for gen in range(start_gen + 1, start_gen + 101):
             t0 = time.time()
             for i in range(pop_size):
                 if pop[i][0] == 0.0:
                     fit = evaluate_fitness(pop[i][1], train_records)
                     pop[i] = (fit, pop[i][1])
             pop.sort(key=lambda x: -x[0])
-            msg = f'G{gen+1}: best={pop[0][0]*100:.2f}% ({time.time()-t0:.0f}s)'
+            msg = f'G{gen}: best={pop[0][0]*100:.2f}% ({time.time()-t0:.0f}s)'
             log.write(msg + '\n')
             log.flush()
             print(msg)
-            if gen < generations - 1:
-                nxt = pop[:keep]
-                for _ in range(pop_size - keep):
-                    nxt.append((0.0, mutate(random.choice(pop[:2])[1], 0.3, 0.15)))
-                pop = nxt
 
+            if gen % 10 == 0:
+                save_state(pop, gen, log)
+                # Show top params every 10 gens
+                best_p = pop[0][1]
+                for k in list(GENE_DEFS.keys())[:6]:
+                    print(f'  {k}={best_p.get(k, "?")}', end='  ')
+                print()
+
+            rate = max(0.05, 0.35 * (1 - (gen - start_gen) / 100))
+            size = max(0.05, 0.18 * (1 - (gen - start_gen) / 100))
+            nxt = pop[:keep]
+            while len(nxt) < pop_size:
+                nxt.append((0.0, mutate(random.choice(pop[:3])[1], rate, size)))
+            pop = nxt
+
+        save_state(pop, start_gen + 100, log)
         log.write(f'\nValidation on {len(all_records)} records:\n')
         bf = evaluate_fitness(base_params, all_records)
         gf = evaluate_fitness(pop[0][1], all_records)
         log.write(f'Baseline: {bf*100:.2f}%\n')
         log.write(f'GA best:  {gf*100:.2f}%\n')
+        print(f'Validation: base={bf*100:.2f}% ga={gf*100:.2f}%')
         if gf > bf:
-            log.write('Improved! Saving to ga_best.json\n')
-            with open('ga_best.json', 'w', encoding='utf-8') as f:
+            log.write('Improved!\n')
+            best_path = 'ga_best.json'
+            with open(best_path, 'w', encoding='utf-8') as f:
                 json.dump(pop[0][1], f, indent=2, ensure_ascii=False)
-        else:
-            log.write('No improvement\n')
-
-    print(f'Done. Check {log_file}')
 
 if __name__ == '__main__':
     main()
