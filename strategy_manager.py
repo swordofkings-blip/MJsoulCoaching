@@ -337,6 +337,14 @@ class StrategyManager:
         if self.state.tsumo_count >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
             bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_OPEN', 0.10)))
         value = min(1.0, base + sum(b[1] for b in bonuses))
+        tsumo = self.state.tsumo_count
+        if tsumo < 8:
+            turn_scale = max(0.3, tsumo / 12.0)
+            value = value * turn_scale
+        elif tsumo < 12:
+            turn_scale = max(0.5, tsumo / 12.0)
+            value = value * turn_scale
+        value = min(1.0, value)
         reason = f'{seat_name}: {n_open}副露 (基礎 {base:.2f})'
         for label, b in bonuses:
             reason += f' + {label} (+{b:.2f})'
