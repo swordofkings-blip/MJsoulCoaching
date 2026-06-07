@@ -120,6 +120,9 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
 
             for s in range(4):
                 states[s].on_discard(seat, tile, isLiqi, moqie)
+            for s in range(4):
+                for rs in states[s].reach_states:
+                    rs.is_ippatsu = False
 
         elif cls == 'RecordChiPengGang':
             for s in range(4):

@@ -590,9 +590,11 @@ class StrategyManager:
 
     def get_strategy_mode(self) -> str:
         push = self.compute_push_score()
-        if push >= 0.7 or self.is_zenchi_mode():
+        zentsu_th = self.params.get('MODE_ZENTSU_THRESHOLD', 0.7)
+        betaori_th = self.params.get('MODE_BETAORI_THRESHOLD', 0.05)
+        if push >= zentsu_th or self.is_zenchi_mode():
             return "全ツ"
-        if push <= 0.05:
+        if push <= betaori_th:
             return "ベタオリ"
         return "回し打ち"
 

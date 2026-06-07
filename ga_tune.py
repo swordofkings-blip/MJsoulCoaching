@@ -15,11 +15,9 @@ GENE_DEFS = {
     'DORA_DISCARD_PENALTY': (40, 200, int),
     'MATAGI_PENALTY': (0, 300, int),
     'PENALTY_6BLOCK_MAINTAIN': (30, 150, int),
-    'EV_WIN_TENPAI_MULT': (1, 8, int),
-    'EV_WIN_1S_MULT': (0.5, 5, float),
-    'EV_DEALIN_SUJI': (0.005, 0.1, float),
-    'EV_DEALIN_MUSUJI_BASE': (0.01, 0.2, float),
-    'EV_DEALIN_MUSUJI_PER_REACH': (0.01, 0.15, float),
+    'MODE_ZENTSU_THRESHOLD': (0.5, 0.95, float),
+    'MODE_BETAORI_THRESHOLD': (0.01, 0.15, float),
+    'IPPATSU_PENALTY': (100, 600, int),
 }
 
 STATE_FILE = 'ga_state.json'
