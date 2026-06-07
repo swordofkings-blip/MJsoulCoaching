@@ -916,18 +916,11 @@ class Evaluator:
     def should_call_meld(self, type_: int, tiles: List[str], from_seat: int) -> bool:
         if not self.strategy.is_meld_open_allowed():
             return False
-
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
         if open_meld_count >= 4:
             return False
-
         hand_counts = self.state.my_hand_counts()
-        melded_tiles = []
-        for mt in tiles:
-            melded_tiles.append(tile_to_id(mt))
-        after_counts = list(hand_counts)
-        for tid in melded_tiles:
-            after_counts[tid] = max(0, after_counts[tid] - 1) if len(tiles) > 1 else after_counts[tid]
+        before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
         after_counts = list(hand_counts)
         if type_ == 2:
             target = tile_to_id(tiles[0])
@@ -936,28 +929,47 @@ class Evaluator:
             for t in tiles[1:]:
                 tid = tile_to_id(t)
                 after_counts[tid] = max(0, after_counts[tid] - 1)
-
-        before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+        elif type_ == 5:
+            target = tile_to_id(tiles[0])
+            after_counts[target] = max(0, after_counts[target] - 3)
         after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
-
         if after_shanten >= before_shanten:
             return False
 
+        push = self.strategy.compute_push_score()
+        turn = self.state.tsumo_count
+
         if type_ == 2:
             target_id = tile_to_id(tiles[0])
-            if target_id in (31, 32, 33):
+            is_yakuhai = target_id in (31, 32, 33)
+            if is_yakuhai:
                 return True
-            if self.state.tsumo_count >= self.params.get('MELD_LATE_TURN', 10):
+            if after_shanten <= 0:
                 return True
-            push = self.strategy.compute_push_score()
+            if turn >= self.params.get('MELD_LATE_TURN_PON', 10):
+                return True
             if push > 0.5:
                 return True
+            return False
 
         if type_ == 1:
-            if self.state.tsumo_count >= self.params.get('MELD_LATE_TURN', 12):
+            if after_shanten <= 0:
                 return True
-            push = self.strategy.compute_push_score()
+            if turn >= self.params.get('MELD_LATE_TURN_CHI', 12):
+                return True
             if push > 0.7:
                 return True
+            return False
+
+        if type_ == 5:
+            if push > 0.6:
+                return True
+            dora_gain = 0
+            for d in self.state.doras:
+                if tile_to_id(tiles[0]) == tile_to_id(d):
+                    dora_gain += 1
+            if dora_gain > 0 and push > 0.3:
+                return True
+            return False
 
         return False

@@ -14,6 +14,10 @@ WALL_SIZE = 136
 DEAD_WALL_SIZE = 14
 HAND_SIZE = 13
 
+CALL_PON = 2
+CALL_CHI = 1
+CALL_KAN = 5
+
 
 @dataclass
 class KyokuResult:
@@ -308,7 +312,7 @@ class MahjongSimulator:
                 continue
             if hand_to_counts(self._hands[s])[tid] >= 3:
                 st = self._build_state(s)
-                if self.players[s].should_call_meld(st, 5, [tile, tile, tile], discarder):
+                if self.players[s].should_call_meld(st, CALL_KAN, [tile, tile, tile], discarder):
                     return {'type': 'kan', 'seat': s}
 
         pon_seats = []
@@ -321,7 +325,7 @@ class MahjongSimulator:
             pon_seats.sort(key=lambda x: (x - discarder) % 4)
             for s in pon_seats:
                 st = self._build_state(s)
-                if self.players[s].should_call_meld(st, 2, [tile, tile, tile], discarder):
+                if self.players[s].should_call_meld(st, CALL_PON, [tile, tile, tile], discarder):
                     return {'type': 'pon', 'seat': s}
 
         chi_seat = (discarder + 1) % 4
@@ -339,7 +343,7 @@ class MahjongSimulator:
                                 consumed = [id_to_tile(base + c[0]), id_to_tile(base + c[1])]
                                 full_tiles = [tile] + consumed
                                 st = self._build_state(chi_seat)
-                                if self.players[chi_seat].should_call_meld(st, 1, full_tiles, discarder):
+                                if self.players[chi_seat].should_call_meld(st, CALL_CHI, full_tiles, discarder):
                                     return {
                                         'type': 'chi', 'seat': chi_seat, 'consumed': consumed
                                     }
