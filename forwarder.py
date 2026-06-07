@@ -437,55 +437,72 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     safety_desc = entry["safety_desc"]
     attack_desc = entry["attack_desc"]
     hvb = entry.get("hvb", 0)
+    keiten = entry.get("keiten_bonus", 0)
 
-    parts = [f"「{tile}」"]
-    parts.append(f"{mode}モード")
-    if push > 0.7:
-        parts.append("積極的に攻めます")
-    elif push < 0.1:
-        parts.append("降り気味です")
+    lines = []
+    if is_best:
+        lines.append(f"「{tile}」を推奨。")
     else:
-        parts.append("様子見です")
+        lines.append(f"「{tile}」を打牌した場合。")
+
+    if mode == "攻撃":
+        lines.append("攻める手です。")
+    elif mode == "防御":
+        if defense >= 800:
+            lines.append("防御モードですが安全牌があるので問題ありません。")
+        else:
+            lines.append("防御モードですが安全牌がなく、苦しい選択です。")
+    else:
+        lines.append("様子見です。")
+
+    tsumo = evaluator.state.tsumo_count
+    human_turn = (tsumo - 1) // 4 + 1
+    lines.append(f"{human_turn}巡目で")
 
     if shanten <= -1:
-        parts.append("打牌後和了形です")
+        lines.append("打牌後和了形です。")
     elif shanten == 0:
-        parts.append("打牌後テンパイです")
-    elif shanten <= 2:
-        parts.append(f"{shanten}向聴")
+        lines.append("打牌後テンパイです。")
     else:
-        parts.append(f"{shanten}向聴と少し遠いです")
+        lines.append(f"{shanten}向聴です。")
 
-    if "危険" in safety_desc and defense < 0:
-        parts.append("非常に危険な牌です")
-    elif "危険" in safety_desc:
-        parts.append("無筋なので危険です")
-    elif "安全" in safety_desc or "現物" in safety_desc:
-        parts.append("安全な牌です")
+    if "危険" in safety_desc:
+        lines.append("無筋のため危険です。")
+    elif "現物" in safety_desc or "壁" in safety_desc:
+        lines.append("安牌です。")
     elif "スジ" in safety_desc:
-        parts.append("スジなのでやや安全です")
+        lines.append("スジのためやや安牌です。")
+    elif "ノーチャンス" in safety_desc:
+        lines.append("ノーチャンスのため比較的安全です。")
 
-    parts.append(f"有効牌{ukeire}枚")
+    lines.append(f"有効牌{ukeire}枚。")
 
-    detail_parts = []
-    detail_parts.append(f"Attack:{attack:.0f}")
-    detail_parts.append(f"Defense:{defense:.0f}")
-    keiten = entry.get("keiten_bonus", 0)
-    if keiten:
-        detail_parts.append(f"形テン+{keiten}")
-    if hvb:
-        detail_parts.append(f"手役+{hvb}")
-
-    if is_best:
-        text = "。".join(parts)
-    else:
-        blunder = entry.get("blunder_score", 0)
-        if blunder > 200:
-            text = f"「{tile}」は推奨手より{blunder:.0f}点低い悪手です"
+    from evaluator import AttackEvaluator
+    try:
+        qual = evaluator.attack._ukeire_quality_mult(entry["tile"])
+        if qual < 1.0:
+            good = int(ukeire * qual)
+            bad = ukeire - good
+            lines.append(f"（良形{good}枚、悪形{bad}枚）")
         else:
-            text = "。".join(parts)
+            lines.append("（良形多い）")
+    except:
+        pass
 
-    text += f" 【{', '.join(detail_parts)}】"
+    if hvb:
+        lines.append(f"手役評価+{hvb}。")
+
+    if keiten:
+        lines.append(f"終盤の形テンボーナス+{keiten}。")
+
+    text = "".join(lines)
+    text += f" 【攻撃:{attack:.0f} 防御:{defense:.0f}"
+    if hvb:
+        text += f" 手役:{hvb}"
+    if keiten:
+        text += f" 形テン:{keiten}"
+    text += "】"
+
     return text
 
 
