@@ -587,6 +587,11 @@ class AttackEvaluator:
                     bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
+
+            visible_honor = self.state.all_visible_counts()
+            vis = visible_honor[discard_id]
+            if vis >= 1:
+                bonus += vis * self.params.get('HONOR_VISIBLE_BONUS', 15)
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:

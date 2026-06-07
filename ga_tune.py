@@ -32,6 +32,7 @@ GENE_DEFS = {
     'AKA_KEEP_BONUS': (30, 120, int),
     'ISOLATED_MIDDLE_BONUS': (5, 40, int),
     'ISOLATED_EDGE_PENALTY': (5, 40, int),
+    'HONOR_VISIBLE_BONUS': (5, 40, int),
     'UKEIRE_QUAL_HONOR': (0.2, 0.8, float),
     'UKEIRE_QUAL_RYANMEN': (0.7, 1.0, float),
     'UKEIRE_QUAL_KANCHAN': (0.3, 0.9, float),
