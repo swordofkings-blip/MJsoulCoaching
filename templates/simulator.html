@@ -1722,10 +1722,8 @@
                 const diffsEl = document.getElementById(`seatDiffs${realSeat}`);
                 if (pos === 'bottom') {
                     const myScore = engine.scores[realSeat];
-                    const otherSeats = relativeSeats.filter((_, i) => i !== 0);
-                    const dirLabels = ['右', '対', '左'];
-                    const dirMap = {};
-                    otherSeats.forEach((s, i) => { dirMap[s] = i; });
+                    const dirLabels = ['上家', '対面', '下家'];
+                    const otherSeats = [relativeSeats[3], relativeSeats[2], relativeSeats[1]];
                     const diffs = otherSeats.map(s => {
                         const diff = myScore - engine.scores[s];
                         return diff;
