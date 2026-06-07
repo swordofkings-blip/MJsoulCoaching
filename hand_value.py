@@ -70,16 +70,6 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
         if honitsu_check and one_suit:
             han += 3 if not is_open else 2
 
-    for i in SANGEN:
-        c = counts[i]
-        mc = 0
-        for m in melds:
-            mt = getattr(m, 'tiles', [])
-            if mt and tile_to_id(mt[0]) == i and getattr(m, 'is_open', True):
-                mc += 1
-        if c >= 3 or mc >= 1:
-            han += 1
-
     yakuhai_ids = {31, 32, 33}
     sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(seat)
     rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(chang % 4)
@@ -102,6 +92,25 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
         pairs = sum(1 for c in counts if c >= 2)
         if pairs >= 6:
             han += 2
+
+    # yaku_detector補完（二重計上防止のため既存計上役を除外）
+    _already_counted = {'yakuhai', 'honitsu', 'chinitsu', 'tanyao', 'chiitoitsu', 'dora'}
+    try:
+        from yaku_detector import analyze_all
+        yi = analyze_all(hand, melds, seat=seat, chang=chang, ju=ju)
+        for name, y in yi.items():
+            if name in _already_counted:
+                continue
+            if y.is_complete:
+                add = y.open_han if is_open else y.closed_han
+                if han < 13 and add > 0:
+                    han += add
+            elif y.progress > 0.3 and han < 13:
+                add = max(1, int((y.open_han if is_open else y.closed_han) * y.progress))
+                if add > 0:
+                    han += add
+    except Exception:
+        pass
 
     return han
 
