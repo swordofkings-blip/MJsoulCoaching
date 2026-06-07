@@ -558,11 +558,24 @@ class AttackEvaluator:
                     bonus -= self.params.get('HONOR_VALUE_PENALTY', 20)
                 elif is_double_wind:
                     pass
+                else:
+                    if not is_pair:
+                        bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
             if discard_id == jikaze:
                 if not is_pair and not is_double_wind:
                     bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
+
+            turn = self.state.tsumo_count
+            if is_honor(discard_id) and not is_pair:
+                turn_scale = max(0.1, 1.0 - turn / 18.0)
+                effective_bonus = self.params.get('HONOR_DISCARD_BONUS', 20)
+                bonus_add = int(effective_bonus * (turn_scale - 0.5))
+                if bonus_add > 0:
+                    bonus += bonus_add
+                elif bonus_add < 0:
+                    bonus += bonus_add
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:
