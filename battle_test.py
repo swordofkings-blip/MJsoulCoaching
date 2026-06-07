@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 
 from ai_player import AIPlayer
-from mahjong_simulator import MahjongSimulator, GameResult
+from mahjong_simulator import MahjongSimulator, GameResult, PlayerGameStats
 from evaluator import Evaluator
 
 
@@ -46,6 +46,8 @@ class BattleResult:
     test_placements: List[List[int]]
     baseline_scores: List[List[int]]
     test_scores: List[List[int]]
+    baseline_player_stats: List[PlayerGameStats] = field(default_factory=list)
+    test_player_stats: List[PlayerGameStats] = field(default_factory=list)
 
 
 def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
@@ -59,6 +61,7 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
     baseline_pts = []
     baseline_placements = []
     baseline_scores = []
+    baseline_player_stats = []
 
     for _ in range(4):
         players = [base_ai.clone(i) for i in range(4)]
@@ -68,10 +71,13 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
             baseline_pts.append(compute_pt(pl, gr.final_scores[s], room))
         baseline_placements.append(gr.final_placements)
         baseline_scores.append(gr.final_scores)
+        for ps in gr.player_stats:
+            baseline_player_stats.append(ps)
 
     test_pts = []
     test_placements = []
     test_scores = []
+    test_player_stats = []
 
     for test_seat in range(4):
         players = []
@@ -85,6 +91,7 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
         test_pts.append(compute_pt(pl, gr.final_scores[test_seat], room))
         test_placements.append(gr.final_placements)
         test_scores.append(gr.final_scores)
+        test_player_stats.append(gr.player_stats[test_seat])
 
     return BattleResult(
         seed=seed,
@@ -94,6 +101,8 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
         test_placements=test_placements,
         baseline_scores=baseline_scores,
         test_scores=test_scores,
+        baseline_player_stats=baseline_player_stats,
+        test_player_stats=test_player_stats,
     )
 
 
@@ -116,6 +125,10 @@ def main():
     parser.add_argument('--parallel', type=int, default=0,
                         help='並列実行ワーカー数 (0=自動, 1=逐次)')
     args = parser.parse_args()
+
+    import sys
+    if sys.stdout.encoding and sys.stdout.encoding.lower() in ('cp932', 'shift_jis', 'shift-jis'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
     if args.seeds and '-' in args.seeds and ',' not in args.seeds:
         parts = args.seeds.split('-')
@@ -222,6 +235,86 @@ def main():
         t_avg = sum(by_seat[seat]['test']) / len(by_seat[seat]['test'])
         print(f'  {["東","南","西","北"][seat]}家: base={b_avg:+5.1f}pt  test={t_avg:+5.1f}pt  '
               f'diff={t_avg - b_avg:+5.1f}pt')
+
+    # --- 詳細分析 ---
+    def merge_stats(stats_list: List[PlayerGameStats]) -> dict:
+        n = len(stats_list) if stats_list else 1
+        total_wins = sum(s.wins for s in stats_list)
+        total_kyoku = sum(s.num_kyoku for s in stats_list)
+        total_dealt = sum(s.dealt_in for s in stats_list)
+        total_reach = sum(s.reach_declarations for s in stats_list)
+        total_meld_kyoku = sum(s.kyoku_with_meld for s in stats_list)
+        placements = [s.placement for s in stats_list]
+        return {
+            'games': len(stats_list),
+            'total_kyoku': total_kyoku,
+            'wins': total_wins,
+            'win_rate': total_wins / total_kyoku * 100 if total_kyoku else 0,
+            'dealt_in': total_dealt,
+            'dealt_in_rate': total_dealt / total_kyoku * 100 if total_kyoku else 0,
+            'tsumo_wins': sum(s.tsumo_wins for s in stats_list),
+            'ron_wins': sum(s.ron_wins for s in stats_list),
+            'tsumo_rate': sum(s.tsumo_wins for s in stats_list) / total_wins * 100 if total_wins else 0,
+            'reach_declarations': total_reach,
+            'reach_rate': total_reach / total_kyoku * 100 if total_kyoku else 0,
+            'reach_wins': sum(s.reach_wins for s in stats_list),
+            'open_wins': sum(s.open_wins for s in stats_list),
+            'damaten_wins': sum(s.damaten_wins for s in stats_list),
+            'meld_rate': total_meld_kyoku / total_kyoku * 100 if total_kyoku else 0,
+            'total_han': sum(s.total_han for s in stats_list),
+            'total_win_points': sum(s.total_win_points for s in stats_list),
+            'avg_win_points': sum(s.total_win_points for s in stats_list) / total_wins if total_wins else 0,
+            'win_turns': [t for s in stats_list for t in s.win_turns],
+            'avg_win_turn': (sum(t for s in stats_list for t in s.win_turns) /
+                             sum(len(s.win_turns) for s in stats_list)) if total_wins else 0,
+            'busts': sum(1 for s in stats_list if s.busted),
+            'bust_rate': sum(1 for s in stats_list if s.busted) / len(stats_list) * 100 if stats_list else 0,
+            'placement_counts': {p: placements.count(p) for p in range(4)},
+            'placement_ratios': {p: placements.count(p) / len(placements) * 100 if placements else 0 for p in range(4)},
+            'avg_placement': sum(placements) / len(placements) if placements else 0,
+            'max_renchan': max(s.max_renchan for s in stats_list) if stats_list else 0,
+            'yaku_counts': {},
+        }
+
+    base_stats = merge_stats([ps for br in all_results for ps in br.baseline_player_stats])
+    test_stats = merge_stats([ps for br in all_results for ps in br.test_player_stats])
+
+    # yaku aggregation
+    all_yaku_keys = set()
+    for br in all_results:
+        for ps in br.baseline_player_stats:
+            all_yaku_keys.update(ps.yaku_counts.keys())
+        for ps in br.test_player_stats:
+            all_yaku_keys.update(ps.yaku_counts.keys())
+    for y in all_yaku_keys:
+        base_stats['yaku_counts'][y] = sum(ps.yaku_counts.get(y, 0) for br in all_results for ps in br.baseline_player_stats)
+        test_stats['yaku_counts'][y] = sum(ps.yaku_counts.get(y, 0) for br in all_results for ps in br.test_player_stats)
+
+    print()
+    print('=== 詳細分析 ===')
+    print(f'{"項目":<20} {"ベースライン(A)":>18} {"テスト(B)":>18}')
+    print('-' * 60)
+    print(f'{"試合数":<20} {base_stats["games"]:>6}戦{"":>12} {test_stats["games"]:>6}戦')
+    print(f'{"総局数":<20} {base_stats["total_kyoku"]:>6}局{"":>12} {test_stats["total_kyoku"]:>6}局')
+    print(f'{"和了率":<20} {base_stats["win_rate"]:>17.2f}% {test_stats["win_rate"]:>17.2f}%')
+    print(f'{"放銃率":<20} {base_stats["dealt_in_rate"]:>17.2f}% {test_stats["dealt_in_rate"]:>17.2f}%')
+    print(f'{"平均順位":<20} {base_stats["avg_placement"]:>17.3f} {test_stats["avg_placement"]:>17.3f}')
+    for p in range(4):
+        label = f'{p+1}位回数/比率'
+        print(f'{label:<20} {base_stats["placement_counts"][p]:>3}回({base_stats["placement_ratios"][p]:>5.1f}%){" " * 6} '
+              f'{test_stats["placement_counts"][p]:>3}回({test_stats["placement_ratios"][p]:>5.1f}%)')
+    print(f'{"平均和了点数":<20} {base_stats["avg_win_points"]:>17.1f} {test_stats["avg_win_points"]:>17.1f}')
+    print(f'{"和了平均巡数":<20} {base_stats["avg_win_turn"]:>17.2f} {test_stats["avg_win_turn"]:>17.2f}')
+    print(f'{"ツモ率":<20} {base_stats["tsumo_rate"]:>17.2f}% {test_stats["tsumo_rate"]:>17.2f}%')
+    print(f'{"リーチ率":<20} {base_stats["reach_rate"]:>17.2f}% {test_stats["reach_rate"]:>17.2f}%')
+    print(f'{"副露率":<20} {base_stats["meld_rate"]:>17.2f}% {test_stats["meld_rate"]:>17.2f}%')
+    print(f'{"飛び率":<20} {base_stats["bust_rate"]:>17.2f}% {test_stats["bust_rate"]:>17.2f}%')
+    print(f'{"最大連荘":<20} {base_stats["max_renchan"]:>6}局{"":>12} {test_stats["max_renchan"]:>6}局')
+
+    print()
+    print('役別達成回数:')
+    for y in sorted(all_yaku_keys):
+        print(f'  {y:<18} {base_stats["yaku_counts"][y]:>4}回  {test_stats["yaku_counts"][y]:>4}回')
 
     output = {
         'config': {

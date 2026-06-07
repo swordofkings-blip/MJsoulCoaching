@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 from str_converter import (
     HONOR_IDS, TERMINAL_IDS,
@@ -73,53 +73,67 @@ def calculate_fu(hand: List[str], melds: List, win_tile: str, is_tsumo: bool,
     return ((fu + 9) // 10) * 10
 
 
+YAKU_NAMES: Dict[str, str] = {
+    'reach': '立直', 'ippatsu': '一発', 'tsumo': '門前清自摸和',
+    'tanyao': 'タンヤオ', 'haku': '役牌-白', 'hatsu': '役牌-發', 'chun': '役牌-中',
+    'ton': '役牌-東', 'nan': '役牌-南', 'shaa': '役牌-西', 'pei': '役牌-北',
+}
+
+
 def estimate_han(hand: List[str], melds: List, doras: List[str],
                  is_open: bool, is_tsumo: bool, has_reach: bool,
-                 is_ippatsu: bool) -> int:
+                 is_ippatsu: bool) -> Tuple[int, List[str]]:
     han = 0
+    yaku_list: List[str] = []
     counts = hand_to_counts(hand)
 
     if has_reach:
         han += 1
+        yaku_list.append('立直')
     if is_ippatsu:
         han += 1
+        yaku_list.append('一発')
     if is_tsumo and not is_open:
         han += 1
+        yaku_list.append('門前清自摸和')
 
-    yakuhai_wind = {27: 'ton', 28: 'nan', 29: 'shaa', 30: 'pei'}
     for i in range(27, 34):
         c = counts[i]
         m_count = sum(1 for m in melds if m.is_open and hasattr(m, 'tiles') and len(m.tiles) >= 3 and tile_to_id(m.tiles[0]) == i)
         total = (c // 3) + m_count
         if total >= 1:
-            if i in (31, 32, 33):
-                han += total
-            elif i == 27:
-                han += total
-
-    if not is_open:
-        all_terminals = all(
-            is_terminal(tile_to_id(t)) or is_honor(tile_to_id(t))
-            for t in hand
-        )
-        if all_terminals:
-            pass
+            for _ in range(total):
+                if i == 27:
+                    han += 1
+                    yaku_list.append('役牌-東')
+                elif i == 31:
+                    han += 1
+                    yaku_list.append('役牌-白')
+                elif i == 32:
+                    han += 1
+                    yaku_list.append('役牌-發')
+                elif i == 33:
+                    han += 1
+                    yaku_list.append('役牌-中')
 
     has_honor = any(is_honor(tile_to_id(t)) for t in hand)
     has_terminal = any(is_terminal(tile_to_id(t)) for t in hand)
     if not is_open and not has_honor and not has_terminal:
         if len(hand) % 3 == 2:
             han += 1
+            yaku_list.append('タンヤオ')
 
     for t in hand:
         tid = tile_to_id(t)
         for d in doras:
             if tid == tile_to_id(d):
                 han += 1
+                yaku_list.append('ドラ')
         if is_red_five(t):
             han += 1
+            yaku_list.append('赤ドラ')
 
-    return han
+    return han, yaku_list
 
 
 def calculate_score(han: int, fu: int, is_dealer: bool, is_tsumo: bool,

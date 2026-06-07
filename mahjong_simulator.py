@@ -2,7 +2,7 @@
 from __future__ import annotations
 import random
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from game_state import GameState, Meld, ReachState
 from str_converter import id_to_tile, tile_to_id, hand_to_counts, is_honor
@@ -34,6 +34,38 @@ class KyokuResult:
     tenpai_seats: List[int]
     han: int
     fu: int
+    reach_seats: List[bool] = field(default_factory=lambda: [False] * 4)
+    meld_counts: List[int] = field(default_factory=lambda: [0] * 4)
+    open_meld_counts: List[int] = field(default_factory=lambda: [0] * 4)
+    win_tile: Optional[str] = None
+    win_score: int = 0
+    tsumo_turn: int = 0
+    yaku_list: List[str] = field(default_factory=list)
+    dealer_seat: int = 0
+
+
+@dataclass
+class PlayerGameStats:
+    seat: int = -1
+    wins: int = 0
+    tsumo_wins: int = 0
+    ron_wins: int = 0
+    dealt_in: int = 0
+    reach_declarations: int = 0
+    reach_wins: int = 0
+    open_wins: int = 0
+    damaten_wins: int = 0
+    tenpai_exhaustive: int = 0
+    busted: bool = False
+    total_han: int = 0
+    total_win_points: int = 0
+    win_turns: List[int] = field(default_factory=list)
+    yaku_counts: Dict[str, int] = field(default_factory=dict)
+    placement: int = -1
+    final_score: int = 0
+    num_kyoku: int = 0
+    kyoku_with_meld: int = 0
+    max_renchan: int = 0
 
 
 @dataclass
@@ -44,6 +76,7 @@ class GameResult:
     final_scores: List[int] = field(default_factory=lambda: [25000, 25000, 25000, 25000])
     final_placements: List[int] = field(default_factory=lambda: [0, 1, 2, 3])
     num_kyoku: int = 0
+    player_stats: List[PlayerGameStats] = field(default_factory=lambda: [PlayerGameStats(seat=i) for i in range(4)])
 
     def placement_of(self, seat: int) -> int:
         for p, s in enumerate(self.final_placements):
@@ -86,7 +119,60 @@ class MahjongSimulator:
 
         result.num_kyoku = len(result.kyoku_results)
         result.final_placements = self._compute_placements()
+        self._compute_player_stats(result)
         return result
+
+    def _compute_player_stats(self, result: GameResult):
+        dealer_streak = [0] * 4
+        max_dealer_streak = [0] * 4
+        for kr in result.kyoku_results:
+            for s in range(4):
+                ps = result.player_stats[s]
+                ps.num_kyoku += 1
+                if kr.reach_seats[s]:
+                    ps.reach_declarations += 1
+                if kr.open_meld_counts[s] > 0:
+                    ps.kyoku_with_meld += 1
+
+                if kr.winner_seat == s:
+                    ps.wins += 1
+                    ps.tsumo_wins += 1 if kr.is_tsumo else 0
+                    ps.ron_wins += 1 if not kr.is_tsumo else 0
+                    ps.total_han += kr.han
+                    ps.total_win_points += kr.win_score
+                    ps.win_turns.append(kr.tsumo_turn)
+                    if kr.reach_seats[s]:
+                        ps.reach_wins += 1
+                    if kr.open_meld_counts[s] > 0:
+                        ps.open_wins += 1
+                    elif not kr.reach_seats[s]:
+                        ps.damaten_wins += 1
+                    for y in kr.yaku_list:
+                        ps.yaku_counts[y] = ps.yaku_counts.get(y, 0) + 1
+
+                if kr.winner_seat is not None and not kr.is_tsumo and kr.winner_seat != s:
+                    if kr.delta_scores[s] < 0:
+                        ps.dealt_in += 1
+
+                if kr.is_exhaustive and s in kr.tenpai_seats:
+                    ps.tenpai_exhaustive += 1
+
+            for s in range(4):
+                if s == kr.dealer_seat:
+                    if kr.winner_seat == s:
+                        dealer_streak[s] += 1
+                    elif kr.is_exhaustive and s in kr.tenpai_seats:
+                        dealer_streak[s] += 1
+                    else:
+                        dealer_streak[s] = 0
+                    max_dealer_streak[s] = max(max_dealer_streak[s], dealer_streak[s])
+
+        for s in range(4):
+            ps = result.player_stats[s]
+            ps.final_score = result.final_scores[s]
+            ps.placement = result.placement_of(s)
+            ps.busted = result.final_scores[s] < 0
+            ps.max_renchan = max_dealer_streak[s]
 
     def _init_wall(self, rng: random.Random) -> List[str]:
         tiles = []
@@ -378,10 +464,10 @@ class MahjongSimulator:
         is_open = len(open_melds) > 0
         hand = self._hands[seat]
 
-        han = estimate_han(hand, self._melds[seat], self._dora_indicators,
-                           is_open=is_open, is_tsumo=True,
-                           has_reach=self._reach_states[seat].is_reach,
-                           is_ippatsu=self._reach_states[seat].is_ippatsu)
+        han, yaku_list = estimate_han(hand, self._melds[seat], self._dora_indicators,
+                                      is_open=is_open, is_tsumo=True,
+                                      has_reach=self._reach_states[seat].is_reach,
+                                      is_ippatsu=self._reach_states[seat].is_ippatsu)
 
         fu = calculate_fu(hand, self._melds[seat], drawn, is_tsumo=True,
                           is_open=is_open, is_dealer=is_dealer,
@@ -419,7 +505,13 @@ class MahjongSimulator:
                            honba=self._honba, riichi_sticks=self._riichi_sticks,
                            winner_seat=seat, is_tsumo=True, is_exhaustive=False,
                            delta_scores=delta, new_scores=new_scores,
-                           tenpai_seats=[seat], han=han, fu=fu)
+                           tenpai_seats=[seat], han=han, fu=fu,
+                           reach_seats=[rs.is_reach for rs in self._reach_states],
+                           meld_counts=[len(self._melds[s]) for s in range(4)],
+                           open_meld_counts=[len([m for m in self._melds[s] if m.type in (1, 2)]) for s in range(4)],
+                           win_tile=drawn, win_score=delta[seat],
+                           tsumo_turn=self._tsumo_count, yaku_list=yaku_list,
+                           dealer_seat=self._dealer_seat)
 
     def _ron_win(self, seat: int, discarder: int, tile: str) -> KyokuResult:
         from scoring import estimate_han, calculate_fu, calculate_score
@@ -428,10 +520,10 @@ class MahjongSimulator:
         is_open = len(open_melds) > 0
         hand = list(self._hands[seat]) + [tile]
 
-        han = estimate_han(hand, self._melds[seat], self._dora_indicators,
-                           is_open=is_open, is_tsumo=False,
-                           has_reach=self._reach_states[seat].is_reach,
-                           is_ippatsu=self._reach_states[seat].is_ippatsu)
+        han, yaku_list = estimate_han(hand, self._melds[seat], self._dora_indicators,
+                                      is_open=is_open, is_tsumo=False,
+                                      has_reach=self._reach_states[seat].is_reach,
+                                      is_ippatsu=self._reach_states[seat].is_ippatsu)
 
         fu = calculate_fu(hand, self._melds[seat], tile, is_tsumo=False,
                           is_open=is_open, is_dealer=is_dealer, wait_type='ron')
@@ -454,7 +546,13 @@ class MahjongSimulator:
                            honba=self._honba, riichi_sticks=self._riichi_sticks,
                            winner_seat=seat, is_tsumo=False, is_exhaustive=False,
                            delta_scores=delta, new_scores=new_scores,
-                           tenpai_seats=[seat], han=han, fu=fu)
+                           tenpai_seats=[seat], han=han, fu=fu,
+                           reach_seats=[rs.is_reach for rs in self._reach_states],
+                           meld_counts=[len(self._melds[s]) for s in range(4)],
+                           open_meld_counts=[len([m for m in self._melds[s] if m.type in (1, 2)]) for s in range(4)],
+                           win_tile=tile, win_score=delta[seat],
+                           tsumo_turn=self._tsumo_count, yaku_list=yaku_list,
+                           dealer_seat=self._dealer_seat)
 
     def _ryuukyoku(self) -> KyokuResult:
         from scoring import calculate_tenpai_payments
@@ -467,7 +565,12 @@ class MahjongSimulator:
                            honba=self._honba, riichi_sticks=self._riichi_sticks,
                            winner_seat=None, is_tsumo=False, is_exhaustive=True,
                            delta_scores=teban, new_scores=new_scores,
-                           tenpai_seats=tenpai, han=0, fu=0)
+                           tenpai_seats=tenpai, han=0, fu=0,
+                           reach_seats=[rs.is_reach for rs in self._reach_states],
+                           meld_counts=[len(self._melds[s]) for s in range(4)],
+                           open_meld_counts=[len([m for m in self._melds[s] if m.type in (1, 2)]) for s in range(4)],
+                           tsumo_turn=self._tsumo_count,
+                           dealer_seat=self._dealer_seat)
 
     def _build_state(self, seat: int, override_hand: List[str] = None) -> GameState:
         s = GameState()
