@@ -589,27 +589,17 @@ class StrategyManager:
         return True
 
     def get_strategy_mode(self) -> str:
-        """
-        @title 現在の戦略モード判定
-        @description 押し引き度・順位状況・シャンテン数の組み合わせから、現在の思考モード名（日本語ラベル）を返す。
-        @returns {str} 戦略モードの人間可読ラベル
-        """
-        # Why: オーラス特殊ルール（ゼンツ・トップ維持）は最優先で上書きする
-        if self.is_zenchi_mode():
-            return "ゼンツ (オーラス・ラス目)"
         push = self.compute_push_score()
+        if push >= 0.7 or self.is_zenchi_mode():
+            return "全ツ"
         if push <= 0.05:
-            return "ベタオリ (完全防御)"
-        a_base = self.compute_base_attack()
-        if a_base >= 1.0:
-            return "高打点押し (満貫以上)"
-        if a_base >= 0.7:
-            return "テンパイ (低打点含)"
-        if a_base >= 0.4:
-            return "1シャンテン (押せる手)"
-        if self._estimate_han() >= 3 and a_base <= 0.0:
-            return "手役不足 (構想中)"
-        return "通常プレイ (押引き判断中)"
+            return "ベタオリ"
+        return "回し打ち"
+
+    def is_zenchi_mode(self) -> bool:
+        if not self.state.is_last_round():
+            return False
+        return self.state.my_score_rank() == 3
 
     def get_strategy_details(self) -> dict:
         """

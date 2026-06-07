@@ -644,10 +644,22 @@ class Evaluator:
         v_attack = self.attack.attack_score_for_tile(tile)
         v_defense = self.defense.defense_score_for_tile(tile)
         push_score = self.strategy.compute_push_score()
-        if not self.state.is_any_opponent_reach() and not self._any_opponent_has_open_meld(self.state):
+        mode = self.strategy.get_strategy_mode()
+
+        if mode == "全ツ":
             v = float(v_attack)
+        elif mode == "ベタオリ":
+            safe_threshold = self.params.get('SCORE_SUJI', 500)
+            if v_defense >= safe_threshold:
+                v = float(v_defense * 2 + v_attack * 0.1)
+            else:
+                v = float(v_defense + v_attack * 0.05)
         else:
-            v = push_score * v_attack + (1.0 - push_score) * v_defense
+            if not self.state.is_any_opponent_reach() and not self._any_opponent_has_open_meld(self.state):
+                v = float(v_attack)
+            else:
+                v = push_score * v_attack + (1.0 - push_score) * v_defense
+
         v += self._get_keiten_bonus(tile)
         if self.params.get('USE_POSITIONAL_EV', True):
             v += self._positional_ev()
