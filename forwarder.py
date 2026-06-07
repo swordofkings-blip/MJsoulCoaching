@@ -247,8 +247,8 @@ def evaluate_state(payload: dict) -> dict:
     recommended = evaluations[0]["tile"] if evaluations else None
 
     best_score = evaluations[0]["score"] if evaluations else 0
-        near_tiles = []
-        for ev in evaluations:
+    near_tiles = []
+    for ev in evaluations:
             ev["blunder_score"] = round(best_score - ev["score"], 2)
             ev["is_blunder"] = ev["blunder_score"] > 200
             ev["reason"] = _build_decision_reason(ev, strategy_details, evaluator, is_best=(ev["tile"] == recommended))
