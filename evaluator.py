@@ -590,7 +590,7 @@ class AttackEvaluator:
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
 
-            ratio_base = self.params.get('VISIBLE_RATIO_BASE', 20)
+            ratio_base = self.params.get('VISIBLE_RATIO_HONOR', 80)
             visible_all = self.state.all_visible_counts()
             vis = visible_all[discard_id]
             if vis >= 1:
