@@ -79,7 +79,7 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
                     tiles=d.get(tiles_key, []),
                     scores=d.get('scores', [25000] * 4),
                     left_tile_count=d.get('leftTileCount', 70),
-                    doras=[d.get('dora', '')] if d.get('dora') else [],
+                    doras=d.get('doras', [d['dora']] if 'dora' in d else []),
                 )
             awaiting_discard = [True] * 4
 
@@ -108,20 +108,31 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
                     else:
                         evaluator = Evaluator(states[seat], params=params)
                         recommended, rec_score = evaluator.best_discard_with_score(hand)
-                        if recommended == tile:
-                            is_match = True
-                        else:
-                            unique = list(dict.fromkeys(hand))
-                            actual_score = None
-                            for t in unique:
-                                if t == tile:
-                                    actual_score = evaluator.evaluate_tile(t)
-                                    break
-                            if actual_score is not None and rec_score is not None:
-                                rel_tolerance = params.get('MATCH_TOLERANCE', 0.05)
-                                is_match = abs(rec_score - actual_score) / max(abs(rec_score), 1) <= rel_tolerance
-                            else:
-                                is_match = False
+                        unique = list(dict.fromkeys(hand))
+                        scores = {t: evaluator.evaluate_tile(t) for t in unique}
+                        max_score = rec_score
+                        min_score = min(scores.values()) if scores else 0.0
+                        actual_score = scores.get(tile, min_score)
+                        actual_score = min(actual_score, max_score)
+
+                        min_range = params.get('MATCH_MIN_RANGE', 400.0)
+                        score_range = max(max_score - min_score, min_range)
+                        diff = max(0.0, max_score - actual_score)
+                        ratio = max(0.0, 1.0 - diff / score_range)
+                        # 100.0: Mortalのレーティング形式に合わせ、最善手を100点満点とするスケーリング
+                        # 2: 最善手から少し外れた手のレーティングを厳しく減衰させるためのMortal準拠 of 2乗
+                        rating = 100.0 * (ratio ** 2)
+
+                        rating_threshold = params.get('MATCH_RATING_THRESHOLD', 90.0)
+
+                        rec_shanten = evaluator.attack.shanten_after_discard(recommended) if recommended else 99
+                        rec_defense = evaluator.defense.defense_score_for_tile(recommended) if recommended else -9999.0
+                        actual_shanten = evaluator.attack.shanten_after_discard(tile)
+                        actual_defense = evaluator.defense.defense_score_for_tile(tile)
+
+                        # 安全度が同等以下かつシャンテン数が後退する無駄な危険牌は一致とみなさない
+                        is_useless_discard = (actual_defense <= rec_defense and actual_shanten > rec_shanten)
+                        is_match = (recommended == tile or (rating >= rating_threshold and not is_useless_discard))
                     if is_match:
                         per_seat[seat]['matches'] += 1
                     else:
@@ -145,6 +156,7 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
             for s in range(4):
                 states[s].on_chi_peng_gang(d['type'], d['seat'], d['tiles'],
                                             d.get('froms', []), d.get('tileStates', []))
+            awaiting_discard[d['seat']] = True
 
         elif cls == 'RecordAnGangAddGang':
             for s in range(4):

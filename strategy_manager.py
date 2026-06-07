@@ -403,7 +403,7 @@ class StrategyManager:
         @returns {bool} 役牌またはドラのポン/大明槓を含むなら True
         """
         from str_converter import tile_to_id
-        dora_ids = {tile_to_id(d) for d in self.state.doras}
+        dora_ids = {tile_to_id(d) for d in self.state.actual_doras}
         chang_id = 27 + (self.state.chang - 1) if 0 <= self.state.chang - 1 < 4 else -1
         bakaze_id = 27 + (self.state.ju - 1) if 0 <= self.state.ju - 1 < 4 else -1
         honor_target_ids = set(range(27, 31)) | {27, 28, 29, 30} | {bakaze_id, chang_id}
@@ -444,10 +444,10 @@ class StrategyManager:
         return False
 
     def _is_dora_heavy_or_color_drain(self, seat: int) -> bool:
-        if not self.state.doras:
+        if not self.state.actual_doras:
             return False
         from str_converter import tile_to_id
-        dora_id = tile_to_id(self.state.doras[0])
+        dora_id = tile_to_id(self.state.actual_doras[0])
         seat_visible = 0
         for t in self.state.river[seat]:
             if tile_to_id(t) == dora_id:
@@ -472,10 +472,10 @@ class StrategyManager:
         return False
 
     def _is_dora_heavy_or_color_drain(self, seat: int) -> bool:
-        if not self.state.doras:
+        if not self.state.actual_doras:
             return False
         from str_converter import tile_to_id
-        dora_id = tile_to_id(self.state.doras[0])
+        dora_id = tile_to_id(self.state.actual_doras[0])
         seat_visible = 0
         for t in self.state.river[seat]:
             if tile_to_id(t) == dora_id:

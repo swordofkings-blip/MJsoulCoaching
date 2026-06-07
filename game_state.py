@@ -31,7 +31,7 @@ class Meld:
 
     @property
     def is_open(self) -> bool:
-        return self.type in (1, 2, 3)
+        return self.type in (0, 1, 2)
 
 
 @dataclass
@@ -190,6 +190,16 @@ class GameState:
         for dora in self.doras:
             visible[tile_to_id(dora)] += 1
         return visible
+
+    @property
+    def actual_doras(self) -> List[str]:
+        """
+        @title 実際のドラ牌のリスト取得
+        @description ドラ表示牌(self.doras)に対応する、実際のドラ牌の文字列リストを返します。
+        @returns {List[str]} 実際のドラ牌リスト
+        """
+        from str_converter import dora_indicator_to_dora
+        return [dora_indicator_to_dora(d) for d in self.doras]
 
     def remaining_counts(self) -> List[int]:
         return [max(0, TILES_PER_TYPE - c) for c in self.all_visible_counts()]

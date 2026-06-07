@@ -117,3 +117,27 @@ def validate_tiles(tiles: Iterable[str]) -> bool:
         if t not in _TILE_STR_TO_ID and t not in RED_FIVE_MAP:
             return False
     return True
+
+
+def dora_indicator_to_dora(indicator: str) -> str:
+    """
+    @title ドラ表示牌からドラ牌への変換
+    @description ドラ表示牌の文字列を受け取り、対応する実際のドラ牌の文字列を返します。
+    @param {str} indicator - ドラ表示牌 (例: "1p", "7z")
+    @returns {str} ドラ牌 (例: "2p", "5z")
+    """
+    tid = tile_to_id(indicator)
+    if tid < 27:
+        base = (tid // 9) * 9
+        offset = tid - base
+        next_offset = (offset + 1) % 9
+        dora_id = base + next_offset
+    elif tid < 31:
+        offset = tid - 27
+        next_offset = (offset + 1) % 4
+        dora_id = 27 + next_offset
+    else:
+        offset = tid - 31
+        next_offset = (offset + 1) % 3
+        dora_id = 31 + next_offset
+    return id_to_tile(dora_id)
