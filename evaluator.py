@@ -37,11 +37,9 @@ KEITEN_BONUS_18 = 3000
 
 
 class MeldSealTracker:
-    """配牌時点の役進行度から「副露封印モード」を判定"""
+    """配牌時点の役進行度と初期向聴数から「副露封印モード」を判定"""
 
-    # 鳴くと死ぬ役（閉局専用 or 飜数半減）
     _CLOSED_YAKU = {'pinfu', 'chiitoitsu', 'ryanpeikou', 'sanshoku', 'ittsuu'}
-    # 鳴いても生きる役（飜数不変または微減）
     _OPEN_YAKU = {'yakuhai', 'toitoi', 'honitsu', 'chinitsu', 'tanyao'}
 
     def __init__(self):
@@ -50,6 +48,13 @@ class MeldSealTracker:
     def evaluate(self, hand, melds, seat, chang, ju) -> bool:
         if self._sealed is not None:
             return self._sealed
+        # 初期向聴が4以上 = 手が極端に悪い → 門前維持（来るべき手を待つ）
+        from strategy_manager import ShantenCalculator
+        counts = hand_to_counts(hand)
+        initial_shanten = ShantenCalculator.calculate_closed(counts)
+        if initial_shanten >= 4:
+            self._sealed = True
+            return True
         try:
             from yaku_detector import analyze_all
             yi = analyze_all(hand, melds, seat=seat, chang=chang, ju=ju)
@@ -1704,6 +1709,10 @@ class Evaluator:
             after_counts[target] = max(0, after_counts[target] - 3)
         after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
         if after_shanten >= before_shanten:
+            return False
+
+        # ベタオリ時は副露禁止（テンパイ以外）
+        if self.strategy.get_strategy_mode() == '防御' and after_shanten > 0:
             return False
 
         turn = self.state.tsumo_count // 4
