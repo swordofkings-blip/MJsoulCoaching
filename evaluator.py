@@ -570,17 +570,6 @@ class AttackEvaluator:
                     bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 bonus += self.params.get('HONOR_DISCARD_BONUS', 20)
-
-            turn = self.state.tsumo_count
-            threat = self.strategy.compute_opponent_threat()
-            if is_honor(discard_id) and not is_pair:
-                threat_factor = max(0.0, 1.0 - threat * 2.5)
-                effective_bonus = self.params.get('HONOR_DISCARD_BONUS', 20)
-                bonus_add = int(effective_bonus * (threat_factor - 0.5))
-                if bonus_add > 0:
-                    bonus += bonus_add
-                elif bonus_add < 0:
-                    bonus += bonus_add
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.doras)
             if is_dora:
@@ -733,6 +722,10 @@ class Evaluator:
                     v -= penalty * (1.0 - push_score)
 
         v += self._get_keiten_bonus(tile)
+        threat = self.strategy.compute_opponent_threat()
+        if is_honor(tile_to_id(tile)) and threat > 0.1 and mode != "ベタオリ":
+            danger_scale = max(0.0, 1.0 - threat * 2.5)
+            v *= 0.3 + 0.7 * danger_scale
         if self.params.get('USE_POSITIONAL_EV', True):
             v += self._positional_ev()
             v += self._assist_squeeze_bonus(tile)
@@ -973,6 +966,13 @@ class Evaluator:
         if self._hand_is_winning():
             return None, float('inf')
         unique_tiles = list(dict.fromkeys(hand))
+        mode = self.strategy.get_strategy_mode()
+        if mode == "ベタオリ":
+            threshold = self.params.get('SCORE_SUJI', 500)
+            safe = [(self.evaluate_tile(t), t) for t in unique_tiles
+                    if self.defense.defense_score_for_tile(t) >= threshold]
+            if safe:
+                unique_tiles = [t for _, t in safe]
         scored = [(self.evaluate_tile(t), t) for t in unique_tiles]
         scored.sort(key=lambda x: (-x[0], x[1]))
         return scored[0][1], scored[0][0]
