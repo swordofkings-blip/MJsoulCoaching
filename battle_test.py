@@ -51,7 +51,7 @@ class BattleResult:
 
 
 def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
-              room: str, game_type: str) -> BattleResult:
+              room: str, game_type: str, quick: bool = False) -> BattleResult:
     from strategy_manager import ShantenCalculator
     ShantenCalculator.clear_cache()
 
@@ -63,23 +63,23 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
     baseline_scores = []
     baseline_player_stats = []
 
-    for _ in range(4):
-        players = [base_ai.clone(i) for i in range(4)]
-        gr = MahjongSimulator(wall_seed=seed, players=players, game_type=game_type).run_game()
-        for s in range(4):
-            pl = gr.placement_of(s)
-            baseline_pts.append(compute_pt(pl, gr.final_scores[s], room))
-        baseline_placements.append(gr.final_placements)
-        baseline_scores.append(gr.final_scores)
-        for ps in gr.player_stats:
-            baseline_player_stats.append(ps)
+    players = [base_ai.clone(i) for i in range(4)]
+    gr = MahjongSimulator(wall_seed=seed, players=players, game_type=game_type).run_game()
+    for s in range(4):
+        pl = gr.placement_of(s)
+        baseline_pts.append(compute_pt(pl, gr.final_scores[s], room))
+    baseline_placements.append(gr.final_placements)
+    baseline_scores.append(gr.final_scores)
+    for ps in gr.player_stats:
+        baseline_player_stats.append(ps)
 
     test_pts = []
     test_placements = []
     test_scores = []
     test_player_stats = []
 
-    for test_seat in range(4):
+    test_seats = range(1) if quick else range(4)
+    for test_seat in test_seats:
         players = []
         for s in range(4):
             if s == test_seat:
@@ -122,6 +122,8 @@ def main():
                         help='結果出力先')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='各ゲームの詳細を表示')
+    parser.add_argument('--quick', action='store_true',
+                        help='簡易モード: テストは東家のみ (1/4の試行)')
     parser.add_argument('--parallel', type=int, default=0,
                         help='並列実行ワーカー数 (0=自動, 1=逐次)')
     args = parser.parse_args()
@@ -152,6 +154,8 @@ def main():
         print(f'Logic A: {args.logic_a_params}')
         print(f'Logic B: {args.logic_b_params or "(same as A)"}')
         print(f'Workers: {n_workers}')
+        if args.quick:
+            print(f'Mode: quick (test seat 0 only)')
         print()
 
     start_time = time.time()
@@ -159,17 +163,22 @@ def main():
 
     if n_workers <= 1:
         for idx, seed in enumerate(seeds):
-            br = _run_seed(seed, logic_a_params, logic_b_params, args.room, args.game_type)
+            br = _run_seed(seed, logic_a_params, logic_b_params, args.room, args.game_type, quick=args.quick)
             all_results.append(br)
             if args.verbose:
-                base_seats = [sum(br.baseline_pts[game*4 + s] for game in range(4)) / 4 for s in range(4)]
-                test_seats = br.test_pts
+                base_seats = br.baseline_pts
                 seat_labels = ['東','南','西','北']
-                diffs = [test_seats[s] - base_seats[s] for s in range(4)]
-                diff_str = ' '.join(f'{seat_labels[s]}={diffs[s]:+.0f}' for s in range(4))
-                print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
-                      f'T[{",".join(f"{test_seats[s]:+.0f}" for s in range(4))}]  '
-                      f'diff: {diff_str}')
+                if args.quick:
+                    t = br.test_pts[0]
+                    d = t - base_seats[0]
+                    print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
+                          f'T[{t:+.0f}, --, --, --]  diff: {seat_labels[0]}={d:+.0f}')
+                else:
+                    diffs = [br.test_pts[s] - base_seats[s] for s in range(4)]
+                    diff_str = ' '.join(f'{seat_labels[s]}={diffs[s]:+.0f}' for s in range(4))
+                    print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
+                          f'T[{",".join(f"{br.test_pts[s]:+.0f}" for s in range(4))}]  '
+                          f'diff: {diff_str}')
             if (idx + 1) % 10 == 0 and args.verbose:
                 print(f'  ... {idx+1}/{len(seeds)}  ({time.time()-start_time:.1f}s)')
     else:
@@ -177,7 +186,8 @@ def main():
                          logic_a_params=logic_a_params,
                          logic_b_params=logic_b_params,
                          room=args.room,
-                         game_type=args.game_type)
+                         game_type=args.game_type,
+                         quick=args.quick)
 
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
             futures = {pool.submit(worker, seed): seed for seed in seeds}
@@ -188,14 +198,19 @@ def main():
                 all_results.append(br)
                 done_count += 1
                 if args.verbose:
-                    base_seats = [sum(br.baseline_pts[game*4 + s] for game in range(4)) / 4 for s in range(4)]
-                    test_seats = br.test_pts
+                    base_seats = br.baseline_pts
                     seat_labels = ['東','南','西','北']
-                    diffs = [test_seats[s] - base_seats[s] for s in range(4)]
-                    diff_str = ' '.join(f'{seat_labels[s]}={diffs[s]:+.0f}' for s in range(4))
-                    print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
-                          f'T[{",".join(f"{test_seats[s]:+.0f}" for s in range(4))}]  '
-                          f'diff: {diff_str}  ({done_count}/{len(seeds)})')
+                    if args.quick:
+                        t = br.test_pts[0]
+                        d = t - base_seats[0]
+                        print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
+                              f'T[{t:+.0f}, --, --, --]  diff: {seat_labels[0]}={d:+.0f}  ({done_count}/{len(seeds)})')
+                    else:
+                        diffs = [br.test_pts[s] - base_seats[s] for s in range(4)]
+                        diff_str = ' '.join(f'{seat_labels[s]}={diffs[s]:+.0f}' for s in range(4))
+                        print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
+                              f'T[{",".join(f"{br.test_pts[s]:+.0f}" for s in range(4))}]  '
+                              f'diff: {diff_str}  ({done_count}/{len(seeds)})')
                 if done_count % 10 == 0 and args.verbose:
                     print(f'  ... {done_count}/{len(seeds)}  ({time.time()-start_time:.1f}s)')
 
@@ -209,10 +224,9 @@ def main():
 
     by_seat = {s: {'base': [], 'test': []} for s in range(4)}
     for br in all_results:
-        for game in range(4):
-            for seat in range(4):
-                by_seat[seat]['base'].append(br.baseline_pts[game * 4 + seat])
         for seat in range(4):
+            by_seat[seat]['base'].append(br.baseline_pts[seat])
+        for seat in range(len(br.test_pts)):
             by_seat[seat]['test'].append(br.test_pts[seat])
 
     elapsed = time.time() - start_time
@@ -221,7 +235,8 @@ def main():
     print(f'=== バトルテスト結果 ===')
     print(f'シード: {seeds[0]}〜{seeds[-1]} ({len(seeds)}シード)')
     print(f'ゲーム: {args.game_type} / 部屋: {args.room}')
-    print(f'対戦数: ベースライン {len(seeds)*4}戦 / テスト {len(seeds)*4}戦')
+    num_test_games = len(seeds) if args.quick else len(seeds) * 4
+    print(f'対戦数: ベースライン {len(seeds)}戦 / テスト {num_test_games}戦')
     print(f'所要時間: {elapsed:.1f}s / ワーカー数: {n_workers}')
     print()
     print(f'ベースライン(A): 平均 {avg_base:+6.2f}pt/戦  (合計 {total_base:+8.0f}pt)')
@@ -232,9 +247,12 @@ def main():
     print()
     for seat in range(4):
         b_avg = sum(by_seat[seat]['base']) / len(by_seat[seat]['base'])
-        t_avg = sum(by_seat[seat]['test']) / len(by_seat[seat]['test'])
-        print(f'  {["東","南","西","北"][seat]}家: base={b_avg:+5.1f}pt  test={t_avg:+5.1f}pt  '
-              f'diff={t_avg - b_avg:+5.1f}pt')
+        if by_seat[seat]['test']:
+            t_avg = sum(by_seat[seat]['test']) / len(by_seat[seat]['test'])
+            print(f'  {["東","南","西","北"][seat]}家: base={b_avg:+5.1f}pt  test={t_avg:+5.1f}pt  '
+                  f'diff={t_avg - b_avg:+5.1f}pt')
+        else:
+            print(f'  {["東","南","西","北"][seat]}家: base={b_avg:+5.1f}pt  (quick mode)'  )
 
     # --- 詳細分析 ---
     def merge_stats(stats_list: List[PlayerGameStats]) -> dict:
@@ -256,11 +274,12 @@ def main():
             'ron_wins': sum(s.ron_wins for s in stats_list),
             'tsumo_rate': sum(s.tsumo_wins for s in stats_list) / total_wins * 100 if total_wins else 0,
             'reach_declarations': total_reach,
-            'reach_rate': total_reach / total_kyoku * 100 if total_kyoku else 0,
+            'reach_rate': sum(s.reach_wins for s in stats_list) / total_wins * 100 if total_wins else 0,
             'reach_wins': sum(s.reach_wins for s in stats_list),
             'open_wins': sum(s.open_wins for s in stats_list),
             'damaten_wins': sum(s.damaten_wins for s in stats_list),
-            'meld_rate': total_meld_kyoku / total_kyoku * 100 if total_kyoku else 0,
+            'meld_rate': sum(s.open_wins for s in stats_list) / total_wins * 100 if total_wins else 0,
+            'meld_kyoku_rate': total_meld_kyoku / total_kyoku * 100 if total_kyoku else 0,
             'total_han': sum(s.total_han for s in stats_list),
             'total_win_points': sum(s.total_win_points for s in stats_list),
             'avg_win_points': sum(s.total_win_points for s in stats_list) / total_wins if total_wins else 0,
@@ -307,7 +326,8 @@ def main():
     print(f'{"和了平均巡数":<20} {base_stats["avg_win_turn"]:>17.2f} {test_stats["avg_win_turn"]:>17.2f}')
     print(f'{"ツモ率":<20} {base_stats["tsumo_rate"]:>17.2f}% {test_stats["tsumo_rate"]:>17.2f}%')
     print(f'{"リーチ率":<20} {base_stats["reach_rate"]:>17.2f}% {test_stats["reach_rate"]:>17.2f}%')
-    print(f'{"副露率":<20} {base_stats["meld_rate"]:>17.2f}% {test_stats["meld_rate"]:>17.2f}%')
+    print(f'{"副露和了率":<20} {base_stats["meld_rate"]:>17.2f}% {test_stats["meld_rate"]:>17.2f}%')
+    print(f'{"副露発生率":<20} {base_stats["meld_kyoku_rate"]:>17.2f}% {test_stats["meld_kyoku_rate"]:>17.2f}%')
     print(f'{"飛び率":<20} {base_stats["bust_rate"]:>17.2f}% {test_stats["bust_rate"]:>17.2f}%')
     print(f'{"最大連荘":<20} {base_stats["max_renchan"]:>6}局{"":>12} {test_stats["max_renchan"]:>6}局')
 
@@ -323,6 +343,7 @@ def main():
             'game_type': args.game_type,
             'room': args.room,
             'workers': n_workers,
+            'quick': args.quick,
             'logic_a_params': args.logic_a_params,
             'logic_b_params': args.logic_b_params or '(same)',
         },
@@ -339,7 +360,7 @@ def main():
         'per_seat': {
             str(s): {
                 'baseline_avg': round(sum(by_seat[s]['base']) / len(by_seat[s]['base']), 2),
-                'test_avg': round(sum(by_seat[s]['test']) / len(by_seat[s]['test']), 2),
+                'test_avg': round(sum(by_seat[s]['test']) / len(by_seat[s]['test']), 2) if by_seat[s]['test'] else None,
             } for s in range(4)
         },
         'results': [asdict(br) for br in all_results],

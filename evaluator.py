@@ -1705,29 +1705,27 @@ class Evaluator:
             if def_penalty >= cond_th and push < cond_push:
                 return False
 
-        # === 小林理論ベースの副露判断 ===
-        # 「鳴きはツモと同じ」: 速度優先で手を進める
-        # 「愚形打点なしは避ける」: 価値なき鳴きはしない
+        # --- 門前vs副露の価値比較（yaku_detector補完つき） ---
+        from hand_value import estimate_han_advanced, estimate_win_score
+        is_dealer = self.state.my_seat == 0
 
-        is_yakuhai = False
-        if type_ == 1:
-            target_id = tile_to_id(tiles[0])
-            seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
-            round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
-            is_yakuhai = target_id in (31, 32, 33, seat_wind, round_wind)
-
-        my_rank = self.state.my_score_rank()
-
-        # --- 役牌ポン ---
-        if is_yakuhai:
-            if is_closed:
-                closed_shanten = ShantenCalculator.calculate_closed(hand_counts)
-                if closed_shanten <= 0:
-                    return False
-            else:
-                if after_shanten > 0:
-                    return False
-            return True
+        closed_han = estimate_han_advanced(
+            self.state.my_hand, self.state.my_melds, self.state.doras,
+            is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
+            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
+        try:
+            from yaku_detector import analyze_all
+            yi = analyze_all(self.state.my_hand, self.state.my_melds,
+                             seat=self.state.my_seat, chang=self.state.chang,
+                             ju=self.state.ju)
+            for name, y in yi.items():
+                if y.progress > 0.3:
+                    closed_han += max(0, y.closed_han - y.open_han)
+        except Exception:
+            pass
+        if before_shanten <= 1:
+            closed_han += 2
+        closed_score = estimate_win_score(closed_han, 30, is_dealer)
 
         # 大明槓
         if type_ == 2:
@@ -1741,45 +1739,27 @@ class Evaluator:
                 return True
             return False
 
-        # --- 鳴き下がりを考慮した価値比較（全ケース共通） ---
-        from hand_value import estimate_han_advanced, estimate_win_score
-
-        is_dealer = self.state.my_seat == 0
-        open_score = estimate_win_score(max(expected_han, 1), 30, is_dealer)
-
-        # 門前価値（リーチ価値は向聴が近い場合のみ加算）
+        # 門前維持価値（推定不能役の分+1飜の保守的補正）
         closed_han = estimate_han_advanced(
             self.state.my_hand, self.state.my_melds, self.state.doras,
             is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
             seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
-        reach_bonus = 2 if before_shanten <= 1 else 0
-        closed_score = estimate_win_score(closed_han + reach_bonus, 30, is_dealer)
+        if before_shanten <= 1:
+            closed_han += 2  # リーチ(1) + ツモ(1)
+        else:
+            closed_han += 1  # 門下位の潜在役価値
+        closed_score = estimate_win_score(closed_han, 30, is_dealer)
 
-        speed_gain = (before_shanten - after_shanten) * 300
+        # 副露価値（最低1飜で計算）
+        open_score = estimate_win_score(max(expected_han, 1), 30, is_dealer)
+        speed_bonus = (before_shanten - after_shanten) * 1000
 
-        # 門前維持の価値が認められる → 鳴かない
-        # （closed_scoreが明確に上回る場合のみ。同等なら速度優先）
-        if closed_score > open_score + speed_gain + 800:
+        # スコア差ベース判断
+        gap = closed_score - open_score
+        if gap <= 500:
+            return True
+        elif gap >= 3000:
             return False
-
-        # --- 価値比較を通過したものをさらに絞り込み ---
-
-        # 聴牌: 速度優先
-        if after_shanten <= 0:
-            return True
-
-        # 既開局かつ価値比較通過: 進行許可
-        if not is_closed:
-            return True
-
-        # 門前でも向聴が遠い: 手を進める価値がある
-        if before_shanten >= 3:
-            return True
-
-        # ラス目大差で残牌少: 逆転狙い門前維持
-        if my_rank == 3 and self.state.left_tile_count <= 50:
-            return False
-
-        # 門前1-2向聴で価値比較を僅差で通過: 門前維持優先
-        return False
+        else:
+            return speed_bonus > gap
 
