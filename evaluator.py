@@ -1711,11 +1711,34 @@ class Evaluator:
         if after_shanten >= before_shanten:
             return False
 
-        # ベタオリ時は副露禁止（テンパイ以外）
-        if self.strategy.get_strategy_mode() == '防御' and after_shanten > 0:
-            return False
-
         turn = self.state.tsumo_count // 4
+
+        # ベタオリ時は原則副露禁止
+        if self.strategy.get_strategy_mode() == '防御':
+            if after_shanten <= 0:
+                # 形式テンパイ: 12-15巡かつ必要性がある場合のみ許可
+                if turn < 12 or turn > 15:
+                    return False
+                rank = self.state.my_score_rank()
+                if rank < 2:
+                    return False
+                # 副露後に安全な捨て牌があるか
+                consumed = set()
+                if type_ == 0:
+                    consumed = {tile_to_id(t) for t in tiles[1:]}
+                elif type_ == 1:
+                    consumed = {tile_to_id(tiles[0])}
+                remain = [tid for tid in [tile_to_id(t) for t in self.state.my_hand]
+                          if tid not in consumed]
+                opp_discards = set()
+                for opp in range(4):
+                    if opp == self.state.my_seat: continue
+                    for t in self.state.river[opp]:
+                        opp_discards.add(tile_to_id(t))
+                if any(tid in opp_discards for tid in remain):
+                    return True
+                return False
+            return False
         is_closed = open_meld_count == 0
         expected_han = self._estimate_open_han()
 
