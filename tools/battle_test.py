@@ -236,14 +236,19 @@ def main():
                 if args.quick:
                     t = br.test_pts[0]
                     d = t - base_seats[0]
+                    br_reach = sum(ps.reach_declarations for ps in br.baseline_player_stats)
+                    tr_reach = sum(ps.reach_declarations for ps in br.test_player_stats if ps is not None)
                     print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
-                          f'T[{t:+.0f}, --, --, --]  diff: {seat_labels[0]}={d:+.0f}')
+                          f'T[{t:+.0f}, --, --, --]  diff: {seat_labels[0]}={d:+.0f}  '
+                          f'R:{br_reach}/{tr_reach}')
                 else:
                     diffs = [br.test_pts[s] - base_seats[s] for s in range(4)]
                     diff_str = ' '.join(f'{seat_labels[s]}={diffs[s]:+.0f}' for s in range(4))
+                    br_reach = sum(ps.reach_declarations for ps in br.baseline_player_stats)
+                    tr_reach = sum(ps.reach_declarations for ps in br.test_player_stats if ps is not None)
                     print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
                           f'T[{",".join(f"{br.test_pts[s]:+.0f}" for s in range(4))}]  '
-                          f'diff: {diff_str}')
+                          f'diff: {diff_str}  R:{br_reach}/{tr_reach}')
             if (idx + 1) % 10 == 0 and args.verbose:
                 print(f'  ... {idx+1}/{len(seeds)}  ({time.time()-start_time:.1f}s)')
     else:
@@ -268,17 +273,20 @@ def main():
                 if args.verbose:
                     base_seats = br.baseline_pts
                     seat_labels = ['東','南','西','北']
+                    br_reach = sum(ps.reach_declarations for ps in br.baseline_player_stats)
+                    tr_reach = sum(ps.reach_declarations for ps in br.test_player_stats if ps is not None)
                     if args.quick:
                         t = br.test_pts[0]
                         d = t - base_seats[0]
                         print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
-                              f'T[{t:+.0f}, --, --, --]  diff: {seat_labels[0]}={d:+.0f}  ({done_count}/{len(seeds)})')
+                              f'T[{t:+.0f}, --, --, --]  diff: {seat_labels[0]}={d:+.0f}  '
+                              f'R:{br_reach}/{tr_reach} ({done_count}/{len(seeds)})')
                     else:
                         diffs = [br.test_pts[s] - base_seats[s] for s in range(4)]
                         diff_str = ' '.join(f'{seat_labels[s]}={diffs[s]:+.0f}' for s in range(4))
                         print(f'Seed {seed:4d}: B[{",".join(f"{base_seats[s]:+.0f}" for s in range(4))}]  '
                               f'T[{",".join(f"{br.test_pts[s]:+.0f}" for s in range(4))}]  '
-                              f'diff: {diff_str}  ({done_count}/{len(seeds)})')
+                              f'diff: {diff_str}  R:{br_reach}/{tr_reach} ({done_count}/{len(seeds)})')
                 if done_count % 10 == 0 and args.verbose:
                     print(f'  ... {done_count}/{len(seeds)}  ({time.time()-start_time:.1f}s)')
 
@@ -393,10 +401,13 @@ def main():
         print(f'{label:<20} {base_stats["placement_counts"][p]:>3}回({base_stats["placement_ratios"][p]:>5.1f}%){" " * 6} '
               f'{test_stats["placement_counts"][p]:>3}回({test_stats["placement_ratios"][p]:>5.1f}%)')
     print(f'{"平均和了点数":<20} {base_stats["avg_win_points"]:>17.1f} {test_stats["avg_win_points"]:>17.1f}')
+    print(f'{"平均ハン数":<20} {base_stats["total_han"]/base_stats["wins"] if base_stats["wins"] else 0:>17.1f} {test_stats["total_han"]/test_stats["wins"] if test_stats["wins"] else 0:>17.1f}')
     print(f'{"和了平均巡数":<20} {base_stats["avg_win_turn"]:>17.2f} {test_stats["avg_win_turn"]:>17.2f}')
     print(f'{"ツモ率":<20} {base_stats["tsumo_rate"]:>17.2f}% {test_stats["tsumo_rate"]:>17.2f}%')
+    print(f'{"栄和率":<20} {base_stats["ron_wins"]/base_stats["total_kyoku"]*100 if base_stats["total_kyoku"] else 0:>17.2f}% {test_stats["ron_wins"]/test_stats["total_kyoku"]*100 if test_stats["total_kyoku"] else 0:>17.2f}%')
     print(f'{"リーチ率":<20} {base_stats["reach_rate"]:>17.2f}% {test_stats["reach_rate"]:>17.2f}%')
-    print(f'{"副露和了率":<20} {base_stats["meld_rate"]:>17.2f}% {test_stats["meld_rate"]:>17.2f}%')
+    print(f'{"リーチ宣言":<20} {base_stats["reach_declarations"]:>5}回 / {base_stats["reach_wins"]:>3}和了{"":>5} {test_stats["reach_declarations"]:>5}回 / {test_stats["reach_wins"]:>3}和了')
+    print(f'{"ダマ和了率":<20} {base_stats["damaten_wins"]/base_stats["wins"]*100 if base_stats["wins"] else 0:>17.2f}% {test_stats["damaten_wins"]/test_stats["wins"]*100 if test_stats["wins"] else 0:>17.2f}%')
     print(f'{"副露発生率":<20} {base_stats["meld_kyoku_rate"]:>17.2f}% {test_stats["meld_kyoku_rate"]:>17.2f}%')
     print(f'{"飛び率":<20} {base_stats["bust_rate"]:>17.2f}% {test_stats["bust_rate"]:>17.2f}%')
     print(f'{"最大連荘":<20} {base_stats["max_renchan"]:>6}局{"":>12} {test_stats["max_renchan"]:>6}局')

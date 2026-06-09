@@ -232,10 +232,33 @@ class DefenseEvaluator:
     def defense_score_for_tile(self, tile: str) -> int:
         tile_id = tile_to_id(tile)
         reach_seats = self._active_reach_seats()
-        if not reach_seats:
-            return 0
         n_reach = len(reach_seats)
         use_p1 = self.params.get('USE_PHASE1_DEFENSE', True)
+
+        # リーチ者がいなくても基本的な安全度を評価
+        if not reach_seats:
+            # 字牌の見え枚数で安全判定
+            if is_honor(tile_id):
+                visible = self.state.all_visible_counts()
+                count = visible[tile_id]
+                if count >= 2:
+                    score = self.params.get('SCORE_HONOR', SCORE_HONOR)
+                    self.record_detail(tile, f"字牌{count}枚見え安全 (+{score})")
+                    return score
+                if count == 0:
+                    score = self.params.get('SCORE_HONOR', SCORE_HONOR)
+                    self.record_detail(tile, f"字牌・生牌安全 (+{score})")
+                    return score
+            # 現物（誰かの河にある牌）は基本安全
+            for s in range(4):
+                if s == self.state.my_seat:
+                    continue
+                for t in self.state.river[s]:
+                    if tile_to_id(t) == tile_id:
+                        score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU) // 2
+                        self.record_detail(tile, f"現物安全 (+{score})")
+                        return score
+            return 0
 
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:

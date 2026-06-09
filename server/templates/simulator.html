@@ -829,6 +829,223 @@
             border-color: rgba(16, 185, 129, 0.8);
         }
 
+        /* 副露判断パネル */
+        .bot-coach-meld-panel {
+            display: none;
+            margin-bottom: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            border-left: 4px solid var(--accent-yellow);
+            background: rgba(251, 191, 36, 0.08);
+            flex-direction: column;
+            gap: 6px;
+            transition: opacity 0.25s ease;
+        }
+
+        .bot-coach-meld-panel.is-visible {
+            display: flex;
+        }
+
+        .bot-coach-meld-panel.is-loading {
+            opacity: 0.7;
+        }
+
+        .bot-coach-meld-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            color: var(--accent-yellow);
+            font-size: 0.88rem;
+        }
+
+        .bot-coach-meld-badge {
+            background: var(--accent-yellow);
+            color: #0b0c10;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            letter-spacing: 0.03em;
+        }
+
+        .bot-coach-meld-discard-info {
+            font-size: 0.82rem;
+            color: var(--text-main);
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 6px;
+            line-height: 1.4;
+        }
+
+        .bot-coach-meld-discard-info b {
+            color: var(--accent-yellow);
+        }
+
+        .bot-coach-meld-recommend-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: var(--accent-green);
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin: 4px 0;
+        }
+
+        .bot-coach-meld-reason-box {
+            padding: 8px 10px;
+            background: rgba(251, 191, 36, 0.06);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            border-radius: 6px;
+            font-size: 0.78rem;
+            line-height: 1.45;
+            color: var(--text-main);
+        }
+
+        .bot-coach-meld-eval-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 8px 12px;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            transition: all 0.15s ease;
+        }
+
+        .bot-coach-meld-eval-row:hover {
+            background: rgba(251, 191, 36, 0.08);
+            border-color: rgba(251, 191, 36, 0.35);
+            cursor: pointer;
+        }
+
+        .bot-coach-meld-eval-row.is-recommended {
+            border-color: rgba(16, 185, 129, 0.5);
+            background: rgba(16, 185, 129, 0.06);
+        }
+
+        .bot-coach-meld-eval-row.is-recommended:hover {
+            background: rgba(16, 185, 129, 0.12);
+        }
+
+        .bot-coach-meld-eval-row.is-skip {
+            border-color: rgba(156, 163, 175, 0.2);
+            background: rgba(156, 163, 175, 0.04);
+        }
+
+        .bot-coach-meld-eval-label {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .bot-coach-meld-eval-type {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            font-size: 0.82rem;
+        }
+
+        .bot-coach-meld-type-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .bot-coach-meld-type-icon.icon-pon {
+            background: rgba(52, 152, 219, 0.2);
+            color: #3498db;
+            border: 1px solid rgba(52, 152, 219, 0.4);
+        }
+
+        .bot-coach-meld-type-icon.icon-chi {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .bot-coach-meld-type-icon.icon-skip {
+            background: rgba(156, 163, 175, 0.15);
+            color: var(--text-muted);
+            border: 1px solid rgba(156, 163, 175, 0.3);
+        }
+
+        .bot-coach-meld-eval-sub {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            padding-left: 28px;
+        }
+
+        .bot-coach-meld-eval-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 120px;
+        }
+
+        .bot-coach-meld-eval-bar {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .bot-coach-meld-eval-bar-fill {
+            height: 100%;
+            background: linear-gradient(to right, var(--accent-yellow), var(--accent-green));
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+
+        .bot-coach-meld-eval-row.is-skip .bot-coach-meld-eval-bar-fill {
+            background: linear-gradient(to right, #6b7280, #9ca3af);
+        }
+
+        .bot-coach-meld-eval-score-box {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 1px;
+            min-width: 52px;
+        }
+
+        .bot-coach-meld-eval-score {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            font-size: 0.82rem;
+            color: var(--text-main);
+        }
+
+        .bot-coach-meld-eval-shanten {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        .bot-coach-meld-eval-shanten.is-tenpai {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .bot-coach-meld-eval-shanten.is-huura {
+            color: var(--accent-yellow);
+            font-weight: 600;
+        }
+
         /* コントロール・設定エリア */
         .control-section {
             margin-bottom: 1.5rem;
@@ -1204,7 +1421,16 @@
                     <div class="bot-coach-panel" id="botCoachPanel"
                         style="flex:1; display:flex; flex-direction:column;">
                         <div class="bot-coach-wait" id="botCoachWait">※手番ではありません</div>
-                        <div class="bot-coach-status" id="botCoachStatus"></div>
+                            <div class="bot-coach-meld-panel" id="botCoachMeldPanel">
+                                <div class="bot-coach-meld-header">
+                                    <span class="bot-coach-meld-badge">副露判断</span>
+                                    <span id="botCoachMeldStatus"></span>
+                                </div>
+                                <div class="bot-coach-meld-recommend-badge" id="botCoachMeldRecommendBadge" style="display:none;"></div>
+                                <div class="bot-coach-meld-reason-box" id="botCoachMeldReasonText" style="display:none;"></div>
+                                <div class="bot-coach-eval-list" id="botCoachMeldEvalList"></div>
+                            </div>
+<div class="bot-coach-status" id="botCoachStatus"></div>
                         <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
                             <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
                             <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
@@ -1255,8 +1481,8 @@
                             <div class="bot-coach-reason-title">推奨打牌の決定理由</div>
                             <div class="bot-coach-reason-text" id="botCoachReasonText">--</div>
                         </div>
-                        <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
-                    </div>
+                    <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
+                        </div>
                 </div>
             </div>
 
@@ -1857,9 +2083,29 @@
                 if (act && act.result && act.result.data) {
                     const cls = act.result.class_name;
                     const seat = act.result.data.seat;
+                    // 自分の手番
                     if ((cls === 'RecordDealTile' || cls === 'RecordDiscardTile') && seat === perspectiveSeat) {
                         jumpToAction(idx);
                         return;
+                    }
+                    // 自分の副露機会（他家の打牌直後、自分がポン/チー可能）
+                    if (cls === 'RecordDealTile' && seat !== perspectiveSeat) {
+                        for (let ri = rawIdx - 1; ri >= 0; ri--) {
+                            const pa = rawActionsList[ri];
+                            if (pa && pa.result && pa.result.class_name === 'RecordDiscardTile') {
+                                const pd = pa.result.data;
+                                if (pd && pd.seat !== undefined && pd.tile) {
+                                    if (pd.seat === perspectiveSeat) break;
+                                    const hand = engine ? engine.hands[perspectiveSeat] : null;
+                                    if (hand && hand.length >= 1) {
+                                        const cnt = {};
+                                        hand.forEach(t => { cnt[t] = (cnt[t] || 0) + 1; });
+                                        if ((cnt[pd.tile] || 0) >= 2) { jumpToAction(idx); return; }
+                                    }
+                                }
+                                break;
+                            }
+                        }
                     }
                 }
                 idx += direction;
@@ -2216,6 +2462,9 @@
             // (手番中のみ。視点プレイヤーの手牌が14枚のとき)
             if (typeof requestBotCoachEvaluation === 'function') {
                 requestBotCoachEvaluation();
+            }
+            if (typeof requestBotCoachMeldEvaluation === 'function') {
+                requestBotCoachMeldEvaluation();
             }
         }
 
@@ -2730,6 +2979,142 @@ ${riversStr}
                 .catch(err => {
                     console.warn('coach api error', err);
                 });
+        }
+
+        
+        function requestBotCoachMeldEvaluation() {
+            const mp = document.getElementById("botCoachMeldPanel");
+            const ml = document.getElementById("botCoachMeldEvalList");
+            if (!mp || !ml) return;
+            if (!engine || currentActionIndex < 0) { mp.classList.remove('is-visible'); mp.dataset.active = "0"; return; }
+            mp.classList.remove('is-visible');
+            mp.dataset.active = "0";
+            const mySeat = perspectiveSeat;
+            const hand = engine.hands[mySeat];
+            if (!hand || hand.length < 1) return;
+            if (currentActionIndex >= timelineSteps.length) return;
+            const cri = timelineSteps[currentActionIndex];
+            let di = -1, dt = null;
+            if (cri > 0) {
+                const a = rawActionsList[cri - 1];
+                if (a && a.result && a.result.class_name === "RecordDiscardTile") {
+                    const dd = a.result.data;
+                    if (dd && dd.seat !== undefined && dd.seat !== mySeat && dd.tile) { di = dd.seat; dt = dd.tile; }
+                }
+            }
+            if (di < 0) return;
+            const sl = ["東","南","西","北"];
+            const hc = {}; hand.forEach(t => { hc[t] = (hc[t] || 0) + 1; });
+            const candidates = [{ type: "skip", label: "スキップ（鳴かない）", tiles: [], froms: [] }];
+            let found = false;
+            if ((hc[dt] || 0) >= 2) {
+                candidates.push({ type: "pon", label: "ポン", tiles: [dt,dt,dt], froms: [di,mySeat,mySeat] });
+                found = true;
+            }
+            const cs = (di + 1) % 4;
+            if (cs === mySeat) {
+                const tt = dt.slice(-1);
+                if ("mps".includes(tt)) {
+                    const n = parseInt(dt[0]);
+                    if (!isNaN(n)) {
+                        for (let a = Math.max(1,n-2); a <= Math.min(7,n); a++) {
+                            if (![a,a+1,a+2].includes(n)) continue;
+                            const con = [a,a+1,a+2].filter(x => x !== n);
+                            const ta = con[0]+tt, tb = con[1]+tt;
+                            if ((hc[ta]||0) >= 1 && (hc[tb]||0) >= 1) {
+                                candidates.push({ type: "chi", label: "チー("+ta+tb+")", tiles: [dt,ta,tb], froms: [di,mySeat,mySeat] });
+                                found = true; break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!found) return;
+            const payload = buildCoachPayload();
+            if (!payload) return;
+            payload.meld_candidates = candidates;
+            const statusEl = document.getElementById('botCoachMeldStatus');
+            statusEl.innerHTML = '<span style="color:var(--text-muted);">評価中...</span>';
+            mp.dataset.active = "1";
+            mp.classList.add('is-loading');
+            mp.classList.add('is-visible');
+            fetch('/api/evaluate-meld', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(data => {
+                mp.classList.remove('is-loading');
+                if (data.status !== 'ok' || !data.candidates) { mp.classList.remove('is-visible'); return; }
+
+                const best = data.recommended;
+                let rec = best ? data.candidates.find(c => c.type === best) : null;
+
+                const statusEl = document.getElementById('botCoachMeldStatus');
+                const reasonEl = document.getElementById('botCoachMeldReasonText');
+                const evalEl = document.getElementById('botCoachMeldEvalList');
+                const badgeEl = document.getElementById('botCoachMeldRecommendBadge');
+
+                rec = rec || data.candidates[0];
+
+                statusEl.innerHTML = sl[di] + '家が <b>' + dt + '</b> を捨てました';
+
+                if (rec) {
+                    badgeEl.style.display = 'inline-flex';
+                    badgeEl.innerHTML = '★ 推奨: ' + rec.label;
+                } else {
+                    badgeEl.style.display = 'none';
+                }
+
+                if (rec && rec.reason) {
+                    reasonEl.style.display = 'block';
+                    reasonEl.innerText = rec.reason;
+                } else {
+                    reasonEl.style.display = 'none';
+                }
+
+                let evalHtml = '';
+                const maxScore = Math.max(1, ...data.candidates.map(c => typeof c.best_score === 'number' ? Math.abs(c.best_score) : 0));
+                data.candidates.forEach(c => {
+                    const isBest = c.type === best;
+                    const isSkip = c.type === 'skip';
+                    const sc = typeof c.best_score === 'number' ? c.best_score : 0;
+                    const sh = c.shanten !== undefined ? c.shanten : 99;
+                    const pct = Math.max(0, Math.min(100, (Math.abs(sc) / maxScore) * 100));
+
+                    let shantenText, shantenClass = '';
+                    if (sh <= -1) { shantenText = '和了'; shantenClass = 'is-huura'; }
+                    else if (sh === 0) { shantenText = '聴牌'; shantenClass = 'is-tenpai'; }
+                    else { shantenText = sh + '向聴'; }
+
+                    let iconClass, iconText;
+                    if (c.type === 'pon') { iconClass = 'icon-pon'; iconText = '碰'; }
+                    else if (c.type === 'chi') { iconClass = 'icon-chi'; iconText = '吃'; }
+                    else { iconClass = 'icon-skip'; iconText = 'pass'; }
+
+                    let rowClass = 'bot-coach-meld-eval-row';
+                    if (isBest) rowClass += ' is-recommended';
+                    if (isSkip) rowClass += ' is-skip';
+
+                    evalHtml += '<div class="' + rowClass + '">';
+                    evalHtml += '<div class="bot-coach-meld-eval-label">';
+                    evalHtml += '<div class="bot-coach-meld-eval-type">';
+                    evalHtml += '<div class="bot-coach-meld-type-icon ' + iconClass + '">' + iconText + '</div>';
+                    evalHtml += '<span>' + (isBest ? '★ ' : '') + c.label + '</span>';
+                    evalHtml += '</div>';
+                    if (c.sub_label) {
+                        evalHtml += '<div class="bot-coach-meld-eval-sub">' + c.sub_label + '</div>';
+                    }
+                    evalHtml += '</div>';
+                    evalHtml += '<div class="bot-coach-meld-eval-bar-wrap">';
+                    evalHtml += '<div class="bot-coach-meld-eval-bar"><div class="bot-coach-meld-eval-bar-fill" style="width:' + pct.toFixed(0) + '%;"></div></div>';
+                    evalHtml += '</div>';
+                    evalHtml += '<div class="bot-coach-meld-eval-score-box">';
+                    evalHtml += '<div class="bot-coach-meld-eval-score">' + sc.toFixed(0) + '</div>';
+                    evalHtml += '<div class="bot-coach-meld-eval-shanten ' + shantenClass + '">' + shantenText + '</div>';
+                    evalHtml += '</div>';
+                    evalHtml += '</div>';
+                });
+                evalEl.innerHTML = evalHtml;
+            }).catch(function() { mp.classList.remove('is-loading'); mp.classList.remove('is-visible'); });
         }
 
         /**

@@ -318,26 +318,37 @@ class StrategyManager:
 
     def _is_betaori(self, seat: int) -> bool:
         reach_seats = [i for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach]
-        if not reach_seats:
-            return False
         river = self.state.river[seat]
         if len(river) < 3:
             return False
         moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
         from str_converter import tile_to_id, is_honor
         betaori_count = 0
+        # 直近5枚の捨て牌をチェック
         for idx in range(max(0, len(river) - 5), len(river)):
             if idx >= len(river):
                 break
             tiles = river[idx]
             is_moqie = moqie[idx] if idx < len(moqie) else False
             tid = tile_to_id(tiles)
-            is_genbutsu = False
-            for rs in reach_seats:
-                for t in self.state.river[rs]:
-                    if tile_to_id(t) == tid:
-                        is_genbutsu = True
-                        break
+
+            if reach_seats:
+                # リーチ者がいる場合: リーチ者の現物かどうか
+                is_genbutsu = False
+                for rs in reach_seats:
+                    for t in self.state.river[rs]:
+                        if tile_to_id(t) == tid:
+                            is_genbutsu = True
+                            break
+            else:
+                # リーチ者がいない場合: 誰かの河にある牌 = 安全牌
+                is_genbutsu = any(
+                    tile_to_id(t) == tid
+                    for s in range(4)
+                    if s != seat
+                    for t in self.state.river[s]
+                )
+
             if is_moqie or is_genbutsu:
                 betaori_count += 1
         recent = min(5, len(river) - max(0, len(river) - 5))

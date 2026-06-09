@@ -335,6 +335,215 @@ def evaluate_state(payload: dict) -> dict:
     }
 
 
+def evaluate_meld(payload: dict) -> dict:
+    """
+    @title 副露判断評価
+    @description 局面JSONと副露候補のリストを受け取り、各候補（スキップ含む）を評価して最善を返す。
+    """
+    state = _restore_game_state(payload)
+    import json
+    config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters_ldea_v1.json')
+    if os.path.exists(config_path):
+        with open(config_path, encoding='utf-8') as f:
+            params = json.load(f)
+    else:
+        params = {}
+
+    my_seat = state.my_seat
+    candidates = payload.get("meld_candidates", [])
+    # candidates: [{type: "pon"/"chi"/"daiminkan"/"ankan"/"kakan"/"skip", tiles: [...], froms: [...], consumed: [...]}]
+
+    results = []
+    for cand in candidates:
+        if cand.get("type") == "skip":
+            hand = state.my_hand
+            unique_tiles = list(dict.fromkeys(hand))
+            ev = Evaluator(state, params=params)
+            best_score = float('-inf')
+            best_tile = None
+            best_eval = None
+            for tile in unique_tiles:
+                entry = _build_evaluation_entry(ev, tile)
+                if entry["score"] > best_score:
+                    best_score = entry["score"]
+                    best_tile = tile
+                    best_eval = entry
+            results.append({
+                "type": "skip",
+                "label": "スキップ（鳴かない）",
+                "best_discard": best_tile,
+                "best_score": best_score,
+                "best_eval": best_eval,
+                "shanten": best_eval["shanten"] if best_eval else 99,
+                "reason": _build_meld_reason("skip", best_eval, state, state, None),
+            })
+            continue
+
+        # Apply meld to a copy of state
+        import copy
+        st = copy.deepcopy(state)
+        ctype = cand["type"]
+        tiles = cand.get("tiles", [])
+        froms = cand.get("froms", [])
+
+        # Remove consumed tiles from hand
+        for t in tiles:
+            if t in st.my_hand:
+                st.my_hand.remove(t)
+
+        # Add meld
+        if ctype == "pon":
+            meld_type = 1
+        elif ctype == "chi":
+            meld_type = 0
+        elif ctype in ("daiminkan", "kakan"):
+            meld_type = 2
+        elif ctype == "ankan":
+            meld_type = 3
+        else:
+            continue
+
+        from core.game_state import Meld
+        st.my_melds.append(Meld(type=meld_type, tiles=list(tiles), froms=list(froms), tile_states=[]))
+
+        # Evaluate the resulting state
+        ev = Evaluator(st, params=params)
+        hand = st.my_hand
+        unique_tiles = list(dict.fromkeys(hand))
+        best_score = float('-inf')
+        best_tile = None
+        best_eval = None
+        for tile in unique_tiles:
+            entry = _build_evaluation_entry(ev, tile)
+            if entry["score"] > best_score:
+                best_score = entry["score"]
+                best_tile = tile
+                best_eval = entry
+
+        results.append({
+            "type": ctype,
+            "label": cand.get("label", ctype),
+            "tiles": tiles,
+            "best_discard": best_tile,
+            "best_score": best_score,
+            "best_eval": best_eval,
+            "shanten": best_eval["shanten"] if best_eval else 99,
+            "reason": _build_meld_reason(ctype, best_eval, state, st, cand),
+        })
+
+    if not results:
+        return {"status": "error", "message": "No candidates provided"}
+
+    # Find the option with the highest best_score
+    best = max(results, key=lambda x: x.get("best_score", 0)) if results else None
+
+    return {
+        "status": "ok",
+        "candidates": results,
+        "recommended": best["type"] if best else None,
+    }
+
+def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=None) -> str:
+    if best_eval is None:
+        return ""
+    tile = _fmt_tile(best_eval["tile"])
+    shanten = best_eval["shanten"]
+    attack = best_eval["attack"]
+    defense = best_eval["defense"]
+    hvb = best_eval.get("hvb", 0)
+    ukeire = best_eval.get("ukeire", 0)
+
+    open_meld_count = sum(1 for m in old_state.my_melds if m.is_open) if hasattr(old_state, 'my_melds') else 0
+    turn = (old_state.tsumo_count // 4) if hasattr(old_state, 'tsumo_count') else 0
+
+    lines = []
+
+    if ctype == "skip":
+        lines.append(f"鳴かずに{tile}を切ります。")
+        if open_meld_count == 0:
+            lines.append("門前を維持します。")
+        else:
+            lines.append("既に副露していますが、さらに鳴く価値がありません。")
+        if shanten > 0:
+            lines.append(f"{shanten}向聴と手が遠く、")
+        lines.append("判断を保留しました。")
+    else:
+        meld_tile_str = ""
+        if cand and cand.get("tiles"):
+            meld_tile_str = _fmt_tile(cand["tiles"][0])
+        meld_name = "ポン" if ctype == "pon" else "チー"
+        lines.append(f"{meld_name}して{tile}を切ります。")
+
+        # 役牌チェック
+        is_yakuhai = False
+        yakuhai_reason = ""
+        if ctype == "pon" and cand and cand.get("tiles"):
+            from str_converter import is_honor, tile_to_id
+            mt = cand["tiles"][0]
+            mtid = tile_to_id(mt)
+            if is_honor(mtid):
+                dealer = getattr(old_state, 'dealer_seat', 0)
+                seat_wind_id = 27 + (old_state.my_seat - dealer) % 4 if hasattr(old_state, 'my_seat') else 27
+                round_wind_id = 27 + ((old_state.chang % 4) if hasattr(old_state, 'chang') else 0)
+                if mtid in (31, 32, 33):
+                    is_yakuhai = True
+                    yakuhai_reason = "三元牌"
+                elif mtid == seat_wind_id:
+                    is_yakuhai = True
+                    yakuhai_reason = "自風"
+                elif mtid == round_wind_id:
+                    is_yakuhai = True
+                    yakuhai_reason = "場風"
+
+                if is_yakuhai:
+                    lines.append(f"役牌({yakuhai_reason})で1翻つくため価値が高いです。")
+                else:
+                    lines.append("役牌にならないため、手牌価値が低いと判断しました。")
+        elif ctype == "pon":
+            # 数牌ポン
+            from hand_value import estimate_han_advanced
+            old_han = estimate_han_advanced(old_state.my_hand, old_state.my_melds, old_state.doras,
+                                            is_open=(open_meld_count > 0), has_reach=False,
+                                            is_ippatsu=False, is_tsumo=False,
+                                            seat=old_state.my_seat, chang=old_state.chang,
+                                            ju=old_state.ju) if hasattr(old_state, 'my_hand') else 0
+            lines.append("タンヤオ・染め手・対々和など高打点が狙える場合に有効です。")
+
+        # シャンテン改善度
+        if shanten <= -1:
+            lines.append("副露後、和了形になります。積極的に仕掛けましょう。")
+        elif shanten == 0:
+            lines.append("副露後テンパイです。")
+        else:
+            lines.append(f"副露後{shanten}向聴です。")
+
+        # 打点と有効牌
+        if ukeire > 0:
+            lines.append(f"有効牌{ukeire}枚。")
+
+        # 安全性
+        if defense >= 500:
+            lines.append("安全な捨て牌があります。")
+        elif defense < 100:
+            lines.append("危険な牌を切る必要があり注意が必要です。")
+
+        # 巡目
+        if turn >= 10:
+            lines.append(f"終盤({turn}巡目)のためスピード優先です。")
+        elif turn <= 3:
+            lines.append(f"序盤({turn}巡目)のため無理に仕掛ける必要はありません。")
+
+    if hvb:
+        lines.append(f"手役評価+{hvb}。")
+
+    text = "".join(lines)
+    text += f" 【攻撃:{attack:.0f} 防御:{defense:.0f}"
+    if hvb:
+        text += f" 手役:{hvb}"
+    text += "】"
+    return text
+
+
 def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
     """
     @title 個別牌評価エントリ生成
@@ -766,6 +975,19 @@ class PacketHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_json({"status": "error", "message": str(e)}, status=500)
 
+    def _handle_evaluate_meld(self, post_data: bytes):
+        try:
+            payload = json.loads(post_data.decode('utf-8'))
+        except Exception as e:
+            self._send_json({"status": "error", "message": f"Invalid JSON: {e}"}, status=400)
+            return
+        try:
+            result = evaluate_meld(payload)
+            self._send_json(result)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json({"status": "error", "message": str(e)}, status=500)
+
     def _send_json(self, obj, status: int = 200):
         """
         @title JSONレスポンス送信
@@ -788,6 +1010,11 @@ class PacketHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
             self._handle_evaluate(post_data)
+            return
+        if self.path == '/api/evaluate-meld':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            self._handle_evaluate_meld(post_data)
             return
         if self.path == '/packet':
             content_length = int(self.headers['Content-Length'])
