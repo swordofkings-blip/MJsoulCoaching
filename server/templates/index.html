@@ -214,6 +214,29 @@
             margin-bottom: 1rem;
         }
 
+        .restart-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .restart-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #f87171;
+        }
+        .restart-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -226,22 +249,25 @@
             <div class="subtitle">自動中継サーバーによってキャプチャされた対局データ一覧</div>
         </div>
         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
-            <a href="/majsoul_hook.user.js" target="_blank" style="
-                background: rgba(16, 185, 129, 0.1);
-                border: 1px solid var(--accent-primary);
-                color: var(--accent-primary);
-                padding: 0.6rem 1.2rem;
-                border-radius: 8px;
-                font-size: 0.85rem;
-                font-weight: 600;
-                text-decoration: none;
-                transition: all 0.2s ease;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            " onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'" onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
-                🔧 Tampermonkey スクリプトを導入
-            </a>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="restart-btn" id="restartBtn" onclick="restartServer()">⟳ 再起動</button>
+                <a href="/majsoul_hook.user.js" target="_blank" style="
+                    background: rgba(16, 185, 129, 0.1);
+                    border: 1px solid var(--accent-primary);
+                    color: var(--accent-primary);
+                    padding: 0.6rem 1.2rem;
+                    border-radius: 8px;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    text-decoration: none;
+                    transition: all 0.2s ease;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                " onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'" onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
+                    🔧 Tampermonkey スクリプトを導入
+                </a>
+            </div>
             <div style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.85; text-align: right; line-height: 1.4;">
                 ※事前に拡張機能を導入してください (
                 <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja" target="_blank" style="color: var(--accent-purple); text-decoration: underline;">Chrome版</a> / 
@@ -362,6 +388,26 @@
                     </div>
                 `;
             }
+        }
+
+        async function restartServer() {
+            const btn = document.getElementById('restartBtn');
+            btn.disabled = true;
+            btn.textContent = '⟳ 再起動中...';
+            try {
+                await fetch('/api/restart', { method: 'POST' });
+                // サーバーが再起動するまで待ってからリロード
+                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                for (let i = 0; i < 30; i++) {
+                    await wait(1000);
+                    try {
+                        const res = await fetch('/');
+                        if (res.ok) { location.reload(); return; }
+                    } catch (_) {}
+                }
+            } catch (_) {}
+            btn.disabled = false;
+            btn.textContent = '⟳ 再起動';
         }
 
         // 読み込み実行

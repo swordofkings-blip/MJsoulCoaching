@@ -10,6 +10,7 @@ import traceback
 import glob
 import os
 import sys
+import subprocess
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from google.protobuf.json_format import MessageToDict
@@ -224,7 +225,9 @@ def evaluate_state(payload: dict) -> dict:
     my_seat = state.my_seat
     hand = list(state.my_hand)
 
-    if len(hand) % 3 != 2 or len(hand) < 2:
+    # 手牌 + 副露牌の合計で打牌判断を判定（副露後は手牌が14枚未満になる）
+    total_tiles = len(hand) + sum(len(m.tiles) for m in state.my_melds)
+    if total_tiles % 3 != 2 or len(hand) < 1:
         return {
             "status": "not_your_turn",
             "recommended": None,
@@ -1049,6 +1052,18 @@ class PacketHandler(BaseHTTPRequestHandler):
         @title POSTパケットレシーバー
         @description 受信したパケットデータを復号し、liqi.pyを用いて解析結果を出力します。また、牌譜パケットを検知した場合はJSON保存を実行します。/api/evaluate では局面評価を返します。
         """
+        if self.path == '/api/restart':
+            self._send_json({"status": "ok", "message": "Restarting server..."})
+            self.wfile.flush()
+            # Pythonはモジュールキャッシュを持つため、ファイル変更を反映するには完全なプロセス再起動が必要
+            if getattr(sys, 'frozen', False):
+                cmd = [sys.executable]
+            else:
+                cmd = [sys.executable, os.path.abspath(__file__)]
+            subprocess.Popen(cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
+            import time
+            time.sleep(1.0)
+            os._exit(0)
         if self.path == '/api/evaluate':
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
@@ -1129,7 +1144,7 @@ class PacketHandler(BaseHTTPRequestHandler):
 def run(server_class=HTTPServer, handler_class=PacketHandler, port=8080):
     """
     @title サーバー起動関数
-    @description HTTPサーバーを指定されたポートで待機起動します。
+    @description HTTPサーバーを指定されたポートで待機起動します。/api/restart POSTを受けると完全なプロセス再起動を行います。
     @param {type} server_class - HTTPServer クラス
     @param {type} handler_class - 処理用のハンドラークラス
     @param {int} port - サーバー待機ポート (デフォルト: 8080)
@@ -1142,6 +1157,7 @@ def run(server_class=HTTPServer, handler_class=PacketHandler, port=8080):
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping server...")
+    finally:
         httpd.server_close()
 
 if __name__ == '__main__':

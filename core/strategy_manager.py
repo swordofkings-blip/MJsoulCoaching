@@ -74,6 +74,22 @@ class ShantenCalculator:
         return best
 
     @staticmethod
+    def _count_extra_pairs(counts: List[int]) -> int:
+        n = 0
+        for i in range(34):
+            if counts[i] == 2:
+                if i >= 27:
+                    n += 1
+                else:
+                    base = (i // 9) * 9
+                    off = i - base
+                    has_l = off > 0 and counts[base + off - 1] > 0
+                    has_r = off < 8 and counts[base + off + 1] > 0
+                    if not has_l and not has_r:
+                        n += 1
+        return n
+
+    @staticmethod
     def _open_shanten(counts: List[int], open_meld_count: int) -> int:
         if open_meld_count >= 4:
             return -1
@@ -85,23 +101,29 @@ class ShantenCalculator:
             tmp[head] -= 2
             melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
             remaining = sum(tmp) - melds * 3
+            extra_pairs = ShantenCalculator._count_extra_pairs(tmp)
             extra = 0
             if remaining == 1:
                 extra = 1
             elif remaining >= 3:
                 leftover_melds = remaining // 3
-                extra = remaining - leftover_melds * 3
+                raw = remaining - leftover_melds * 3
+                extra = max(0, raw - extra_pairs)
             s = (4 - open_meld_count) * 2 - 2 * melds - 1 + extra
+            if extra_pairs >= 1:
+                s -= 1
             if s < best:
                 best = s
         melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
         remaining = sum(counts) - melds * 3
+        extra_pairs = ShantenCalculator._count_extra_pairs(counts)
         extra = 0
         if remaining == 1:
             extra = 1
         elif remaining >= 3:
             leftover_melds = remaining // 3
-            extra = remaining - leftover_melds * 3
+            raw = remaining - leftover_melds * 3
+            extra = max(0, raw - extra_pairs)
         s = (4 - open_meld_count) * 2 - 2 * melds + extra
         if s < best:
             best = s
@@ -240,7 +262,7 @@ class ShantenCalculator:
         pairs = sum(1 for c in counts if c >= 2)
         kinds = sum(1 for c in counts if c >= 1)
         if kinds < 7:
-            return 6 - kinds
+            return 8
         if pairs == 7:
             return -1
         return 6 - pairs
