@@ -914,7 +914,178 @@ class AttackEvaluator:
                         decayed_28 = int(bonus_28 * max(0.2, 1.0 - turn / 18.0))
                         bonus += decayed_28
                         self.record_detail(tile, f"孤立2/8牌整理ボーナス (+{decayed_28})")
+
+        # 役満ボーナス
+        yakuman_bonus = self._yakuman_bonus(tile)
+        if yakuman_bonus > 0:
+            bonus += yakuman_bonus
+
         return bonus
+
+    def _yakuman_bonus(self, tile: str) -> int:
+        """
+        @title 役満ボーナス計算
+        @description 各役満の進行度に応じてボーナスを加算する。
+        @param {str} tile - 捨てる牌の文字列
+        @returns {int} 役満ボーナス値
+        """
+        from yakuman_evaluator import YakumanEvaluator
+
+        evaluator = YakumanEvaluator(self.state)
+        results = evaluator.evaluate_all()
+
+        total_bonus = 0
+        turn = self.state.tsumo_count
+        tile_id = tile_to_id(tile)
+
+        # パラメータ読み込み
+        yakuman_cfg = self.params.get('yakuman_strategy', {})
+        top_necessity = yakuman_cfg.get('YAKUMAN_TOP_NECESSITY_FACTOR', 0.5)
+        mangan_factor = yakuman_cfg.get('YAKUMAN_MANGAN_FACTOR', 0.75)
+        over_mangan_factor = yakuman_cfg.get('YAKUMAN_OVER_MANGAN_FACTOR', 1.0)
+        turn_early_threshold = yakuman_cfg.get('YAKUMAN_TURN_EARLY_THRESHOLD', 6)
+        turn_mid_threshold = yakuman_cfg.get('YAKUMAN_TURN_MID_THRESHOLD', 12)
+        turn_early_factor = yakuman_cfg.get('YAKUMAN_TURN_EARLY_FACTOR', 1.0)
+        turn_mid_factor = yakuman_cfg.get('YAKUMAN_TURN_MID_FACTOR', 0.8)
+        turn_late_factor = yakuman_cfg.get('YAKUMAN_TURN_LATE_FACTOR', 0.5)
+
+        # 点数ラインの計算（GAで調整可能）
+        score_line_name = yakuman_cfg.get('YAKUMAN_SCORE_LINE', 'mangan')
+        score_lines = yakuman_cfg.get('YAKUMAN_SCORE_LINES', {
+            'mangan':    { 'child': 10000, 'dealer': 16000 },
+            'haneman':   { 'child': 15000, 'dealer': 24000 },
+            'baiman':    { 'child': 20000, 'dealer': 32000 },
+            'sanbaiman': { 'child': 30000, 'dealer': 48000 },
+            'yakuman':   { 'child': 40000, 'dealer': 64000 }
+        })
+        line_config = score_lines.get(score_line_name, score_lines['mangan'])
+        is_dealer = (self.state.my_seat % 4) == 0
+        mangan_line = line_config['dealer'] if is_dealer else line_config['child']
+
+        # 巡目補正
+        if turn <= turn_early_threshold:
+            turn_factor = turn_early_factor
+        elif turn <= turn_mid_threshold:
+            turn_factor = turn_mid_factor
+        else:
+            turn_factor = turn_late_factor
+
+        # 点数必要度補正
+        scores = self.state.scores
+        my_score = scores[self.state.my_seat]
+        top_score = max(scores)
+        gap = top_score - my_score
+        if gap <= 0:
+            necessity_factor = top_necessity
+        elif gap <= mangan_line:
+            necessity_factor = mangan_factor
+        else:
+            necessity_factor = over_mangan_factor
+
+        # 点差が大きい場合、遠い手でも役満を狙う（shanten上限を緩和）
+        min_shanten = yakuman_cfg.get('YAKUMAN_MIN_SHANTEN', 2)
+        relax_cfg = yakuman_cfg.get('YAKUMAN_SHANTEN_RELAX_LINES', {})
+        mult1 = relax_cfg.get('gap_multiplier_1', 1.5)
+        mult2 = relax_cfg.get('gap_multiplier_2', 2.5)
+        shanten_at1 = relax_cfg.get('shanten_at_multiplier_1', 3)
+        shanten_at2 = relax_cfg.get('shanten_at_multiplier_2', 4)
+        if gap > mangan_line * mult2:
+            min_shanten = max(min_shanten, shanten_at2)
+        elif gap > mangan_line * mult1:
+            min_shanten = max(min_shanten, shanten_at1)
+
+        max_yakuman_bonus = 0
+        best_yakuman_name = ''
+        best_selection_score = 0
+
+        for name, result in results.items():
+            if not result.is_possible:
+                continue
+            if result.shanten > min_shanten:
+                continue
+
+            # 牌貢献度判定: この牌が役満進行に貢献するか
+            if yakuman_cfg.get('YAKUMAN_TILE_CONTRIBUTION_ENABLED', True):
+                if not self._tile_contributes_to_yakuman(tile_id, name):
+                    continue
+
+            # シャンテン補正（二次関数）
+            shanten_factor = max(0.0, (4 - result.shanten) ** 2 / 16.0)
+
+            # 基本ボーナス
+            base_bonus = self.params.get('YAKUMAN_BONUS_SCALE', 200)
+
+            # 合計ボーナス（priority factorは選択用、ボーナス額には影響しない）
+            yakuman_bonus = int(base_bonus * shanten_factor * turn_factor * necessity_factor * result.progress)
+            if yakuman_bonus > 0:
+                # priority factorを加味したスコアで最良を選択
+                priority_factor = self._yakuman_priority_factor(name, result)
+                selection_score = yakuman_bonus * priority_factor
+                if selection_score > best_selection_score:
+                    best_selection_score = selection_score
+                    max_yakuman_bonus = yakuman_bonus
+                    best_yakuman_name = name
+
+        if max_yakuman_bonus > 0:
+            total_bonus += max_yakuman_bonus
+            self.record_detail(tile, f"役満ボーナス[{best_yakuman_name}] (+{max_yakuman_bonus})")
+            # 統計
+            ai = getattr(getattr(self, 'evaluator', None), '_ai_player', None)
+            if ai is not None:
+                ai.yakuman_bonus_count += 1
+                if min_shanten > yakuman_cfg.get('YAKUMAN_MIN_SHANTEN', 2):
+                    ai.gap_relaxation_count += 1
+
+        return total_bonus
+
+    def _yakuman_priority_factor(self, yakuman_name: str, result) -> float:
+        """役満の成立しやすさによる優先度補正（1.0が基準）"""
+        # GAで調整可能な優先度因子をJSONから読み込み
+        yakuman_cfg = self.params.get('yakuman_strategy', {})
+        priority_factors = yakuman_cfg.get('YAKUMAN_PRIORITY_FACTORS', {})
+        progress_bonus_rate = yakuman_cfg.get('YAKUMAN_PRIORITY_PROGRESS_BONUS', 0.2)
+
+        base_factor = priority_factors.get(yakuman_name, 1.0)
+
+        # 進行度が高いほど優先度を上げる
+        progress_bonus = result.progress * progress_bonus_rate
+
+        return base_factor + progress_bonus
+
+    def _tile_contributes_to_yakuman(self, tile_id: int, yakuman_type: str) -> bool:
+        """指定された牌が役牌が役満進行に貢献するか"""
+        from yakuman_evaluator import YAOCHU_IDS, SANGEN_IDS, KAZE_IDS, RYUU_ISOU_IDS
+
+        if yakuman_type == 'kokushi':
+            # 国士無双: 老頭・字牌なら貢献
+            return tile_id in YAOCHU_IDS
+        elif yakuman_type == 'suuankou':
+            # 四暗刻: 暗刻にできる牌（2枚以上持っている）なら貢献
+            hand_counts = self.state.my_hand_counts()
+            return hand_counts[tile_id] >= 2
+        elif yakuman_type == 'daisangen':
+            # 大三元: 三元牌なら貢献
+            return tile_id in SANGEN_IDS
+        elif yakuman_type == 'tsuuiisou':
+            # 字一色: 字牌なら貢献
+            return tile_id >= 27
+        elif yakuman_type == 'chinroutou':
+            # 清老頭: 老頭牌なら貢献
+            from str_converter import is_terminal
+            return is_terminal(tile_id)
+        elif yakuman_type == 'chuuren':
+            # 九蓮宝燈: 一色の牌なら貢献（简化版）
+            return tile_id < 27  # 数牌のみ
+        elif yakuman_type in ('daisuushii', 'shousuushii'):
+            # 大四喜・小四喜: 風牌なら貢献
+            return tile_id in KAZE_IDS
+        elif yakuman_type == 'ryuuiisou':
+            # 緑一色: 緑一色候補牌なら貢献
+            return tile_id in RYUU_ISOU_IDS
+        elif yakuman_type == 'suukantsu':
+            # 四槓子: どの牌でも貢献（槓にするため）
+            return True
+        return True
 
 
     def _get_furiten_tile_ids(self) -> set:
@@ -973,7 +1144,9 @@ class Evaluator:
         self.defense = DefenseEvaluator(state, params=self.params)
         self.defense.evaluator = self
         self.strategy = StrategyManager(state, params=self.params)
+        self.strategy.evaluator = self
         self.meld_seal = MeldSealTracker()
+        self._ai_player = None
 
     def record_detail(self, tile: str, msg: str):
         lst = self.details.setdefault(tile, [])

@@ -460,7 +460,12 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
 
     if ctype == "skip":
         lines.append(f"鳴かずに{tile}を切ります。")
-        if open_meld_count == 0:
+        # 副露封印チェック
+        from core.strategy_manager import StrategyManager
+        sm = StrategyManager(old_state, params={})
+        if not sm.is_meld_open_allowed():
+            lines.append("門前限定役満を狙っているため副露を封印します。")
+        elif open_meld_count == 0:
             lines.append("門前を維持します。")
         else:
             lines.append("既に副露していますが、さらに鳴く価値がありません。")
@@ -536,6 +541,16 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
     if hvb:
         lines.append(f"手役評価+{hvb}。")
 
+    # 役満ボーナス
+    yakuman_bonus = best_eval.get("yakuman_bonus", 0)
+    yakuman_name = best_eval.get("yakuman_name", "")
+    if yakuman_bonus > 0:
+        name_jp = {"kokushi":"国士無双","suuankou":"四暗刻","daisangen":"大三元",
+                   "tsuuiisou":"字一色","chinroutou":"清老頭","chuuren":"九蓮宝燈",
+                   "daisuushii":"大四喜","shousuushii":"小四喜","ryuuiisou":"緑一色",
+                   "suukantsu":"四槓子"}.get(yakuman_name, yakuman_name)
+        lines.append(f"{name_jp}狙いで打点向上+{yakuman_bonus}。")
+
     text = "".join(lines)
     text += f" 【攻撃:{attack:.0f} 防御:{defense:.0f}"
     if hvb:
@@ -573,6 +588,21 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
     except:
         hvb = 0
 
+    # 役満ボーナスの抽出
+    yakuman_bonus = 0
+    yakuman_name = ""
+    try:
+        details = evaluator.details.get(tile, [])
+        for d in details:
+            if "役満ボーナス" in d:
+                import re
+                m = re.search(r'\[(.+?)\] \(\+(\d+)\)', d)
+                if m:
+                    yakuman_name = m.group(1)
+                    yakuman_bonus = int(m.group(2))
+    except:
+        pass
+
     return {
         "tile": tile,
         "score": round(score, 2),
@@ -584,6 +614,8 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         "attack_desc": attack_desc,
         "keiten_bonus": keiten_bonus,
         "hvb": hvb,
+        "yakuman_bonus": yakuman_bonus,
+        "yakuman_name": yakuman_name,
         "reason": "",
     }
 
@@ -653,6 +685,8 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     attack_desc = entry["attack_desc"]
     hvb = entry.get("hvb", 0)
     keiten = entry.get("keiten_bonus", 0)
+    yakuman_bonus = entry.get("yakuman_bonus", 0)
+    yakuman_name = entry.get("yakuman_name", "")
 
     lines = []
     if is_best:
@@ -702,12 +736,21 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     if keiten:
         lines.append(f"終盤の形テンボーナス+{keiten}。")
 
+    if yakuman_bonus > 0:
+        name_jp = {"kokushi":"国士無双","suuankou":"四暗刻","daisangen":"大三元",
+                   "tsuuiisou":"字一色","chinroutou":"清老頭","chuuren":"九蓮宝燈",
+                   "daisuushii":"大四喜","shousuushii":"小四喜","ryuuiisou":"緑一色",
+                   "suukantsu":"四槓子"}.get(yakuman_name, yakuman_name)
+        lines.append(f"{name_jp}狙いで打点向上+{yakuman_bonus}。")
+
     text = "".join(lines)
     text += f" 【攻撃:{attack:.0f} 防御:{defense:.0f}"
     if hvb:
         text += f" 手役:{hvb}"
     if keiten:
         text += f" 形テン:{keiten}"
+    if yakuman_bonus:
+        text += f" 役満:{yakuman_bonus}"
     text += "】"
 
     return text

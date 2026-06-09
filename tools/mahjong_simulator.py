@@ -68,6 +68,10 @@ class PlayerGameStats:
     num_kyoku: int = 0
     kyoku_with_meld: int = 0
     max_renchan: int = 0
+    # 役満統計
+    yakuman_bonus_count: int = 0
+    meld_seal_count: int = 0
+    gap_relaxation_count: int = 0
 
 
 @dataclass

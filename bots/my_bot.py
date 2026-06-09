@@ -149,23 +149,24 @@ class MyBot(MajsoulHandler):
     def _handle_call_operations(self, discarder_seat: int, discard_tile: str, op_list: List[dict]):
         if not op_list:
             return
-        if not self.evaluator.strategy.is_meld_open_allowed():
-            return
         can_actions = {op['type']: op for op in op_list}
+        # 和了は常に許可
         if can_actions.get(Operation.Hu.value):
             self.actionHu()
+            return
+        # 副露封印: 門前限定役満を狙っている場合はチー・ポンをブロック
+        meld_allowed = self.evaluator.strategy.is_meld_open_allowed()
+        if not meld_allowed:
             return
         if can_actions.get(Operation.MingGang.value):
             self._execute_kang(can_actions[Operation.MingGang.value])
             return
         if can_actions.get(Operation.Peng.value):
-            if self.evaluator.strategy.is_meld_open_allowed():
-                self._execute_meld(Operation.Peng, can_actions[Operation.Peng.value])
-                return
+            self._execute_meld(Operation.Peng, can_actions[Operation.Peng.value])
+            return
         if can_actions.get(Operation.Chi.value):
-            if self.evaluator.strategy.is_meld_open_allowed():
-                self._execute_meld(Operation.Chi, can_actions[Operation.Chi.value])
-                return
+            self._execute_meld(Operation.Chi, can_actions[Operation.Chi.value])
+            return
 
     def _decide_and_discard(self):
         if not self._auto_discard_enabled:

@@ -310,6 +310,12 @@ class StrategyManager:
         # 他家リーチ後にベタオリしている相手は脅威度を大幅に下げる
         if self._is_betaori(seat):
             return self.params.get('BASE_THREAT', 0.0), f'{seat_name}: ベタオリ中（脅威低）'
+
+        # 役満脅威度の確認
+        yakuman_threat = self._yakuman_threat_for_seat(seat)
+        if yakuman_threat > 0.3:
+            return yakuman_threat, f'{seat_name}: 役満警戒（脅威度 {yakuman_threat:.2f}）'
+
         open_melds = [m for m in self.state.melds[seat] if m.is_open]
         n_open = len(open_melds)
         if n_open > 0:
@@ -355,6 +361,17 @@ class StrategyManager:
         if recent == 0:
             return False
         return betaori_count / recent >= 0.8
+
+    def _yakuman_threat_for_seat(self, seat: int) -> float:
+        """
+        @title 他家の役満脅威度算出
+        @description 国士無双・四槓子・大四喜・小四喜・大三元の警戒判断を行う。
+        @param {int} seat - 対象 seat
+        @returns {float} 脅威度（0.0〜1.0）
+        """
+        from yakuman_evaluator import YakumanEvaluator
+        evaluator = YakumanEvaluator(self.state)
+        return evaluator.opponent_yakuman_threat(seat)
 
     def _threat_open_player(self, seat: int, seat_name: str, n_open: int, open_melds: List[Meld]) -> Tuple[float, str]:
         """
@@ -546,7 +563,53 @@ class StrategyManager:
                 return min(0.2, 0.10 * block_factor)
             if shanten == 3:
                 return min(0.1, 0.05 * block_factor)
+
+        # 役満攻撃ブースト
+        yakuman_boost = self._yakuman_attack_boost()
+        if yakuman_boost > 0:
+            return min(1.0, yakuman_boost)
+
         return 0.0
+
+    def _yakuman_attack_boost(self) -> float:
+        """
+        @title 役満攻撃ブースト
+        @description 役満進行度が高い場合、攻撃度を引き上げる。
+                  他家が脅威の場合はブーストしない。
+        @returns {float} 攻撃ブースト値（0.0〜1.0）
+        """
+        from yakuman_evaluator import YakumanEvaluator
+
+        # パラメータ読み込み
+        yakuman_cfg = self.params.get('yakuman_strategy', {})
+        min_shanten = yakuman_cfg.get('YAKUMAN_MIN_SHANTEN', 2)
+        defense_threshold = yakuman_cfg.get('YAKUMAN_ATTACK_BOOST_DEFENSE_THRESHOLD', 0.5)
+
+        # 他家脅威度チェック: 高い場合はブーストしない
+        # 注意: compute_opponent_threat()は循環呼び出しを避けるため直接呼ばない
+        threat, _ = self._max_threat_with_reason()
+        if threat > defense_threshold:
+            return 0.0
+
+        evaluator = YakumanEvaluator(self.state)
+        results = evaluator.evaluate_all()
+
+        max_boost = 0.0
+        for name, result in results.items():
+            if not result.is_possible:
+                continue
+            if result.shanten > min_shanten:
+                continue
+
+            # シャンテン補正（二次関数）
+            shanten_factor = max(0.0, (4 - result.shanten) ** 2 / 16.0)
+
+            # 進行度に基づくブースト
+            boost = shanten_factor * result.progress
+            if boost > max_boost:
+                max_boost = boost
+
+        return min(1.0, max_boost)
 
     def _estimate_han(self) -> int:
         """
@@ -667,6 +730,16 @@ class StrategyManager:
         return self.state.my_score_rank() == 3
 
     def is_meld_open_allowed(self) -> bool:
+        # 門前限定役満（国士無双・四暗刻・九蓮宝燈）を狙っている場合は副露封印
+        from yakuman_evaluator import YakumanEvaluator
+        evaluator = YakumanEvaluator(self.state)
+        if evaluator.should_seal_melds():
+            # 統計
+            if hasattr(self, 'evaluator') and self.evaluator is not None:
+                ai = getattr(self.evaluator, '_ai_player', None)
+                if ai is not None:
+                    ai.meld_seal_count += 1
+            return False
         return True
 
     def get_strategy_mode(self) -> str:
@@ -697,8 +770,10 @@ class StrategyManager:
             "base_attack": round(a_base, 3),
             "max_threat": round(t_max, 3),
             "push_score": round(push, 3),
-            "mode": self.get_strategy_mode(),
-            "threat_reason": threat_reason,
-            "is_last_round": self.state.is_last_round(),
-            "my_rank": self.state.my_score_rank(),
-        }
+        "mode": self.get_strategy_mode(),
+        "threat_reason": threat_reason,
+        "is_last_round": self.state.is_last_round(),
+        "my_rank": self.state.my_score_rank(),
+        "yakuman_seal": not self.is_meld_open_allowed(),
+        "yakuman_boost": round(self._yakuman_attack_boost(), 3),
+    }

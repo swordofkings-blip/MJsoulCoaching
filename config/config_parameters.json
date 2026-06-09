@@ -81,5 +81,49 @@
       "conditional_threshold": 150,
       "conditional_push_min": 0.7
     }
+  },
+  "yakuman_strategy": {
+    "YAKUMAN_BONUS_SCALE": 200,
+    "YAKUMAN_PROGRESS_THRESHOLD": 0.6,
+    "YAKUMAN_MIN_SHANTEN": 2,
+    "YAKUMAN_ATTACK_BOOST": 0.3,
+    "YAKUMAN_THREAT_REDUCTION": 0.2,
+    "YAKUMAN_TOP_NECESSITY_FACTOR": 0.5,
+    "YAKUMAN_SCORE_LINE": "mangan",
+    "YAKUMAN_SCORE_LINES": {
+      "mangan":    { "child": 10000, "dealer": 16000 },
+      "haneman":   { "child": 15000, "dealer": 24000 },
+      "baiman":    { "child": 20000, "dealer": 32000 },
+      "sanbaiman": { "child": 30000, "dealer": 48000 },
+      "yakuman":   { "child": 40000, "dealer": 64000 }
+    },
+    "YAKUMAN_MANGAN_FACTOR": 0.75,
+    "YAKUMAN_OVER_MANGAN_FACTOR": 1.0,
+    "YAKUMAN_SHANTEN_RELAX_LINES": {
+      "gap_multiplier_1": 1.0,
+      "gap_multiplier_2": 2.0,
+      "shanten_at_multiplier_1": 3,
+      "shanten_at_multiplier_2": 4
+    },
+    "YAKUMAN_TILE_CONTRIBUTION_ENABLED": true,
+    "YAKUMAN_ATTACK_BOOST_DEFENSE_THRESHOLD": 0.5,
+    "YAKUMAN_ATTACK_BOOST_PUSH_THRESHOLD": 0.3,
+    "YAKUMAN_PRIORITY_FACTORS": {
+      "suuankou": 1.33,
+      "daisangen": 1.0,
+      "kokushi": 1.0,
+      "shousuushii": 0.33,
+      "tsuuiisou": 0.2,
+      "chinroutou": 0.033,
+      "ryuuiisou": 0.033,
+      "chuuren": 0.017,
+      "suukantsu": 0.007
+    },
+    "YAKUMAN_PRIORITY_PROGRESS_BONUS": 0.2,
+    "YAKUMAN_TURN_EARLY_THRESHOLD": 6,
+    "YAKUMAN_TURN_MID_THRESHOLD": 12,
+    "YAKUMAN_TURN_EARLY_FACTOR": 1.0,
+    "YAKUMAN_TURN_MID_FACTOR": 0.8,
+    "YAKUMAN_TURN_LATE_FACTOR": 0.5
   }
 }

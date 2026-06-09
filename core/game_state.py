@@ -65,8 +65,8 @@ class GameState:
         self.last_discard_seat: int = -1
         self.last_discard_tile: Optional[str] = None
         self.tenhou_chiihou_locked: bool = False
-        # Why: 捨牌が「手出し」か「ツモ切り」かを記録し、戦略側の手役進行度推定の基礎データとする
         self.river_moqie: List[List[bool]] = [[], [], [], []]
+        # Why: 捨牌が「手出し」か「ツモ切り」かを記録し、戦略側の手役進行度推定の基礎データとする
 
     def on_new_round(self, chang, ju, ben, liqibang, tiles, scores, left_tile_count, doras):
         self.chang = chang

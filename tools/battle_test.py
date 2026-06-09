@@ -108,7 +108,10 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
         baseline_pts.append(compute_pt(pl, gr.final_scores[s], room))
     baseline_placements.append(gr.final_placements)
     baseline_scores.append(gr.final_scores)
-    for ps in gr.player_stats:
+    for s, ps in enumerate(gr.player_stats):
+        ps.yakuman_bonus_count = players[s].yakuman_bonus_count
+        ps.meld_seal_count = players[s].meld_seal_count
+        ps.gap_relaxation_count = players[s].gap_relaxation_count
         baseline_player_stats.append(ps)
 
     test_pts = []
@@ -132,7 +135,12 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
         test_pts.append(compute_pt(pl, gr.final_scores[test_seat], room))
         test_placements.append(gr.final_placements)
         test_scores.append(gr.final_scores)
-        test_player_stats.append(gr.player_stats[test_seat] if test_seat < len(gr.player_stats) else None)
+        ps = gr.player_stats[test_seat] if test_seat < len(gr.player_stats) else None
+        if ps is not None:
+            ps.yakuman_bonus_count = players[test_seat].yakuman_bonus_count
+            ps.meld_seal_count = players[test_seat].meld_seal_count
+            ps.gap_relaxation_count = players[test_seat].gap_relaxation_count
+        test_player_stats.append(ps)
 
     return BattleResult(
         seed=seed,
@@ -416,6 +424,19 @@ def main():
     print('役別達成回数:')
     for y in sorted(all_yaku_keys):
         print(f'  {y:<18} {base_stats["yaku_counts"][y]:>4}回  {test_stats["yaku_counts"][y]:>4}回')
+
+    # 役満統計
+    base_yakuman = sum(ps.yakuman_bonus_count for br in all_results for ps in br.baseline_player_stats if ps is not None)
+    test_yakuman = sum(ps.yakuman_bonus_count for br in all_results for ps in br.test_player_stats if ps is not None)
+    base_seal = sum(ps.meld_seal_count for br in all_results for ps in br.baseline_player_stats if ps is not None)
+    test_seal = sum(ps.meld_seal_count for br in all_results for ps in br.test_player_stats if ps is not None)
+    base_gap = sum(ps.gap_relaxation_count for br in all_results for ps in br.baseline_player_stats if ps is not None)
+    test_gap = sum(ps.gap_relaxation_count for br in all_results for ps in br.test_player_stats if ps is not None)
+    print()
+    print('役満統計 (試行回数):')
+    print(f'  {"役満ボーナス適用":<20} {base_yakuman:>4}回  {test_yakuman:>4}回')
+    print(f'  {"副露封印発動":<20} {base_seal:>4}回  {test_seal:>4}回')
+    print(f'  {"点差緩和":<20} {base_gap:>4}回  {test_gap:>4}回')
 
     output = {
         'config': {

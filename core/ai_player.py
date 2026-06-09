@@ -13,6 +13,14 @@ class AIPlayer:
         self.evaluator_class = evaluator_class
         self.params = params
         self.seat = -1
+        self.yakuman_bonus_count = 0
+        self.meld_seal_count = 0
+        self.gap_relaxation_count = 0
+
+    def reset_stats(self):
+        self.yakuman_bonus_count = 0
+        self.meld_seal_count = 0
+        self.gap_relaxation_count = 0
 
     def clone(self, seat: int) -> AIPlayer:
         p = AIPlayer(self.name, self.evaluator_class, self.params)
@@ -20,7 +28,9 @@ class AIPlayer:
         return p
 
     def _make_evaluator(self, state: GameState):
-        return self.evaluator_class(state, params=self.params)
+        evaluator = self.evaluator_class(state, params=self.params)
+        evaluator._ai_player = self
+        return evaluator
 
     def decide_discard(self, state: GameState) -> Optional[str]:
         evaluator = self._make_evaluator(state)
