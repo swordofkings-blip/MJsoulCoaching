@@ -196,7 +196,7 @@ class DefenseEvaluator:
 
     def _one_chance_ids(self) -> set:
         visible = self._visible_counts()
-        return {i for i in range(27) if visible[i] == 3}
+        return {i for i in range(34) if visible[i] == 3}
 
     def _matagi_danger_ids(self, reach_seats: List[int]) -> set:
         result = set()
@@ -250,7 +250,7 @@ class DefenseEvaluator:
                 self.record_detail(tile, f"壁スジ安全 (+{score})")
                 return score
             no_chance = self._no_chance_ids()
-            if tile_id in no_chance and not is_honor(tile_id):
+            if tile_id in no_chance:
                 score = self.params.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
                 self.record_detail(tile, f"ノーチャンス安全 (+{score})")
                 return score
@@ -268,7 +268,7 @@ class DefenseEvaluator:
 
         if use_p1:
             one_chance = self._one_chance_ids()
-            if tile_id in one_chance and not is_honor(tile_id):
+            if tile_id in one_chance:
                 score = self.params.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
                 self.record_detail(tile, f"ワンチャンス安全 (+{score})")
                 return score
@@ -280,12 +280,17 @@ class DefenseEvaluator:
                 except Exception:
                     continue
                 if is_honor(tid) and tid == tile_id:
-                    score = self.params.get('SCORE_HONOR', SCORE_HONOR)
+                    score = self.params.get('SCORE_SUJI', SCORE_SUJI)
                     self.record_detail(tile, f"リーチ者河字牌安全 (+{score})")
                     return score
         if is_honor(tile_id):
             visible = self.state.all_visible_counts()
-            if visible[tile_id] == 0:
+            count = visible[tile_id]
+            if count >= 2:
+                score = self.params.get('SCORE_HONOR', SCORE_HONOR)
+                self.record_detail(tile, f"字牌{count}枚見え安全 (+{score})")
+                return score
+            if count == 0:
                 score = self.params.get('SCORE_HONOR', SCORE_HONOR)
                 self.record_detail(tile, f"字牌・生牌安全 (+{score})")
                 return score

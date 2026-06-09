@@ -6,10 +6,12 @@ import json
 import os
 import time
 from typing import List
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from game_state import GameState
-from evaluator import Evaluator
-from str_converter import tile_to_id
+from core.game_state import GameState
+from core.evaluator import Evaluator
+from core.str_converter import tile_to_id
 
 
 def load_params_from_args(args) -> dict:
@@ -207,7 +209,7 @@ def main():
     if args.records:
         record_files = args.records
     else:
-        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
         record_files = sorted(glob.glob(os.path.join(data_dir, 'record_*_trimmed.json')))
 
     if not record_files:

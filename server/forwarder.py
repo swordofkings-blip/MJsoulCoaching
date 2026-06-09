@@ -9,18 +9,19 @@ import json
 import traceback
 import glob
 import os
+import sys
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from google.protobuf.json_format import MessageToDict
-from liqi import LiqiProto
-from game_state import GameState, Meld, ReachState
-from evaluator import Evaluator
-from str_converter import validate_tiles
 
-try:
-    from proto import liqi_pb2 as pb
-except ImportError:
-    import liqi_pb2 as pb
+_FW_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+sys.path.insert(0, _FW_ROOT)
+
+from majsoul_wrapper.liqi import LiqiProto
+from core.game_state import GameState, Meld, ReachState
+from core.evaluator import Evaluator
+from core.str_converter import validate_tiles
+from majsoul_wrapper.proto import liqi_pb2 as pb
 
 # 雀魂のWebSocketデータを解析するためのパーサークラスを初期化
 liqi_parser = LiqiProto()
@@ -181,10 +182,10 @@ def save_game_record(data_dict):
     }
 
     # data フォルダが存在することを確認
-    os.makedirs('data', exist_ok=True)
+    os.makedirs(os.path.join(_FW_ROOT, 'data'), exist_ok=True)
 
     # 元の巨大デコード版を保存
-    filename = os.path.join('data', f"record_{uuid}.json")
+    filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}.json")
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
 
@@ -195,7 +196,7 @@ def save_game_record(data_dict):
 
     # トリミングした軽量版データを生成し、別ファイルとして保存
     trimmed_data = trim_game_record(output_data)
-    trimmed_filename = os.path.join('data', f"record_{uuid}_trimmed.json")
+    trimmed_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_trimmed.json")
     with open(trimmed_filename, 'w', encoding='utf-8') as f:
         json.dump(trimmed_data, f, ensure_ascii=False, indent=2)
 
@@ -212,8 +213,8 @@ def evaluate_state(payload: dict) -> dict:
     state = _restore_game_state(payload)
     params = payload.get("params", None)
     if params is None:
-        import os, json
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config_parameters_ldea_v1.json')
+        import json
+        config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters_ldea_v1.json')
         if os.path.exists(config_path):
             with open(config_path, encoding='utf-8') as f:
                 params = json.load(f)
@@ -666,13 +667,17 @@ class PacketHandler(BaseHTTPRequestHandler):
             try:
                 records = []
                 # 雀魂ラッパーフォルダ内のトリミング済みJSONを検索
-                files = glob.glob("data/record_*_trimmed.json")
+                files = glob.glob(os.path.join(_FW_ROOT, 'data', 'record_*_trimmed.json'))
                 for filepath in files:
                     try:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             data = json.load(f)
                         head = data.get('head', {})
-                        uuid = head.get('uuid', 'unknown')
+                        uuid = head.get('uuid')
+                        if not uuid:
+                            # ファイル名からUUIDを抽出: record_{uuid}_trimmed.json
+                            basename = os.path.basename(filepath)
+                            uuid = basename.replace('record_', '').replace('_trimmed.json', '')
                         start_time = head.get('startTime', 0)
                         category = head.get('config', {}).get('category', 2) # デフォルト四人戦
 
@@ -711,20 +716,25 @@ class PacketHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"API Error: {e}")
 
         elif path == '/api/record':
-            # 特定のuuidの trimmed 牌譜データを返す
+            uuid = query.get('uuid', [None])[0]
+            if not uuid:
+                self.send_error(400, "Missing uuid parameter")
+                return
+
+            filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_trimmed.json")
+            if not os.path.exists(filename):
+                filename = os.path.join(_FW_ROOT, 'logs', f'{uuid}.mjson')
+            if not os.path.exists(filename):
+                self.send_error(404, f"Record not found")
+                return
+
             try:
-                uuid = query.get('uuid', [None])[0]
-                if not uuid:
-                    self.send_error(400, "Missing uuid parameter")
-                    return
-
-                filename = os.path.join('data', f"record_{uuid}_trimmed.json")
-                if not os.path.exists(filename):
-                    self.send_error(404, f"Record not found: {filename}")
-                    return
-
                 with open(filename, 'r', encoding='utf-8') as f:
                     content = f.read()
+
+                if filename.endswith('.mjson'):
+                    majsoul = self._convert_mjson_to_majsoul(content)
+                    content = json.dumps(majsoul, ensure_ascii=False)
 
                 self.send_response(200)
                 self._set_cors_headers()

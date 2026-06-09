@@ -4,11 +4,11 @@ import sys
 import pickle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, '..'))
 
-from my_bot import MyBot
-from sdk import MajsoulHandler
-from liqi import LiqiProto
+from bots.my_bot import MyBot
+from majsoul_wrapper.sdk import MajsoulHandler
+from majsoul_wrapper.liqi import LiqiProto
 
 
 def replay_with_bot(filename: str):

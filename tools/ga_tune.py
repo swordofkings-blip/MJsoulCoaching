@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import json, random, copy, os, time, glob, sys, multiprocessing
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from evaluate_parameter_fitness import evaluate_all
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from tools.evaluate_parameter_fitness import evaluate_all
 
 def _eval_worker(args):
     params, record_paths = args
@@ -78,11 +78,12 @@ def load_state():
     return state['gen'], [(f, p) for f, p in state['pop']]
 
 def main():
-    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    data_dir = os.path.join(base_dir, 'data')
     all_records = sorted(glob.glob(os.path.join(data_dir, 'record_*_trimmed.json')))
     train_records = all_records[:2]
 
-    base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config_parameters_ldea_v1.json')
+    base_path = os.path.join(base_dir, 'config', 'config_parameters_ldea_v1.json')
     with open(base_path, encoding='utf-8') as f:
         base_params = json.load(f)
 

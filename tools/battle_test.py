@@ -9,16 +9,18 @@ from dataclasses import dataclass, field, asdict
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from ai_player import AIPlayer
-from mahjong_simulator import MahjongSimulator, GameResult, PlayerGameStats
-from evaluator import Evaluator
+from core.ai_player import AIPlayer
+from tools.mahjong_simulator import MahjongSimulator, GameResult, PlayerGameStats
+from core.evaluator import Evaluator
 
 
 PT_TABLES = {
-    'gold':  {0: 30, 1: 10, 2: -10, 3: -30},
-    'jade':  {0: 45, 1: 15, 2: -15, 3: -45},
-    'throne': {0: 60, 1: 20, 2: -20, 3: -60},
+    'gold':  {0: 55, 1: 25, 2: -5, 3: -55},
+    'jade':  {0: 75, 1: 35, 2: -5, 3: -95},
+    'throne': {0: 95, 1: 45, 2: -5, 3: -125},
 }
 
 BASE_SCORE = 25000
@@ -51,20 +53,56 @@ class BattleResult:
 
 
 def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
-              room: str, game_type: str, quick: bool = False) -> BattleResult:
+              room: str, game_type: str, quick: bool = False,
+              manue_base_dir: str = None, manue_test_dir: str = None,
+              mjson_dir: str = '') -> BattleResult:
     from strategy_manager import ShantenCalculator
     ShantenCalculator.clear_cache()
 
-    base_ai = AIPlayer("base", Evaluator, logic_a_params)
-    test_ai = AIPlayer("test", Evaluator, logic_b_params)
+    def make_manue(name, base_dir):
+        from tools.manue_battle import ManueAIPlayer
+        from core.manue.manue_ai import ManueAI
+        return ManueAIPlayer(name, ManueAI(base_dir))
+
+    if manue_base_dir:
+        base_ai = make_manue("manue-base", manue_base_dir)
+    else:
+        base_ai = AIPlayer("base", Evaluator, logic_a_params)
+
+    if manue_test_dir:
+        test_ai = make_manue("manue-test", manue_test_dir)
+    else:
+        test_ai = AIPlayer("test", Evaluator, logic_b_params)
 
     baseline_pts = []
     baseline_placements = []
     baseline_scores = []
     baseline_player_stats = []
 
+    def mjson_path(label):
+        if not mjson_dir:
+            return None
+        return os.path.join(mjson_dir, f'seed{seed}_{label}.mjson')
+
+    def majsoul_path(label):
+        if not mjson_dir:
+            return None
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+        return os.path.join(data_dir, f'record_seed{seed}_{label}_trimmed.json')
+
+    def make_names(seat, for_baseline=False):
+        if for_baseline:
+            return [f'{base_label}{i}' for i in range(4)]
+        return [f'{test_label}{s}' if s == seat else f'{base_label}{s}' for s in range(4)]
+
+    test_label = 'Manue' if manue_test_dir else 'Test'
+    base_label = 'Manue' if manue_base_dir else 'Base'
+
     players = [base_ai.clone(i) for i in range(4)]
-    gr = MahjongSimulator(wall_seed=seed, players=players, game_type=game_type).run_game()
+    gr = MahjongSimulator(wall_seed=seed, players=players, game_type=game_type,
+                          mjson_path=mjson_path('baseline'),
+                          majsoul_path=majsoul_path('baseline'),
+                          player_names=make_names(0, for_baseline=True)).run_game()
     for s in range(4):
         pl = gr.placement_of(s)
         baseline_pts.append(compute_pt(pl, gr.final_scores[s], room))
@@ -86,12 +124,15 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
                 players.append(test_ai.clone(s))
             else:
                 players.append(base_ai.clone(s))
-        gr = MahjongSimulator(wall_seed=seed, players=players, game_type=game_type).run_game()
+        gr = MahjongSimulator(wall_seed=seed, players=players, game_type=game_type,
+                              mjson_path=mjson_path(f'test_seat{test_seat}'),
+                              majsoul_path=majsoul_path(f'test_seat{test_seat}'),
+                              player_names=make_names(test_seat)).run_game()
         pl = gr.placement_of(test_seat)
         test_pts.append(compute_pt(pl, gr.final_scores[test_seat], room))
         test_placements.append(gr.final_placements)
         test_scores.append(gr.final_scores)
-        test_player_stats.append(gr.player_stats[test_seat])
+        test_player_stats.append(gr.player_stats[test_seat] if test_seat < len(gr.player_stats) else None)
 
     return BattleResult(
         seed=seed,
@@ -126,6 +167,12 @@ def main():
                         help='簡易モード: テストは東家のみ (1/4の試行)')
     parser.add_argument('--parallel', type=int, default=0,
                         help='並列実行ワーカー数 (0=自動, 1=逐次)')
+    parser.add_argument('--manue', action='store_true',
+                        help='LogicB を ManueAI に置き換え')
+    parser.add_argument('--manue-base', action='store_true',
+                        help='LogicA を ManueAI に置き換え (--manue と併用可)')
+    parser.add_argument('--mjson', default='',
+                        help='牌譜出力先ディレクトリ (例: logs/)')
     args = parser.parse_args()
 
     import sys
@@ -143,6 +190,15 @@ def main():
     logic_a_params = load_params(args.logic_a_params)
     logic_b_params = load_params(args.logic_b_params) if args.logic_b_params else dict(logic_a_params)
 
+    base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    manue_base_dir = base_dir if args.manue_base else None
+    manue_test_dir = base_dir if args.manue else None
+    mjson_dir = args.mjson
+    if args.manue:
+        logic_b_params = {}
+    if args.manue_base:
+        logic_a_params = {}
+
     n_workers = args.parallel
     if n_workers == 0:
         n_workers = min(multiprocessing.cpu_count(), len(seeds))
@@ -151,20 +207,29 @@ def main():
         print(f'Seeds: {len(seeds)} ({seeds[0]}-{seeds[-1]})')
         print(f'Game type: {args.game_type}')
         print(f'Room: {args.room}')
-        print(f'Logic A: {args.logic_a_params}')
-        print(f'Logic B: {args.logic_b_params or "(same as A)"}')
+        labels = []
+        labels.append(f'Logic A: {"ManueAI" if manue_base_dir else args.logic_a_params}')
+        labels.append(f'Logic B: {"ManueAI" if manue_test_dir else (args.logic_b_params or "(same as A)")}')
+        for l in labels:
+            print(l)
         print(f'Workers: {n_workers}')
         if args.quick:
             print(f'Mode: quick (test seat 0 only)')
-        print()
+        if args.manue_base and args.manue:
+            print("Info: 両方 ManueAI → 同士討ちモード")
+    print()
 
     start_time = time.time()
     all_results: List[BattleResult] = []
 
     if n_workers <= 1:
         for idx, seed in enumerate(seeds):
-            br = _run_seed(seed, logic_a_params, logic_b_params, args.room, args.game_type, quick=args.quick)
+            t0 = time.time()
+            br = _run_seed(seed, logic_a_params, logic_b_params, args.room, args.game_type,
+                           quick=args.quick, manue_base_dir=manue_base_dir, manue_test_dir=manue_test_dir,
+                           mjson_dir=mjson_dir)
             all_results.append(br)
+            t = time.time() - t0
             if args.verbose:
                 base_seats = br.baseline_pts
                 seat_labels = ['東','南','西','北']
@@ -187,7 +252,10 @@ def main():
                          logic_b_params=logic_b_params,
                          room=args.room,
                          game_type=args.game_type,
-                         quick=args.quick)
+                         quick=args.quick,
+                         manue_base_dir=manue_base_dir,
+                         manue_test_dir=manue_test_dir,
+                         mjson_dir=mjson_dir)
 
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
             futures = {pool.submit(worker, seed): seed for seed in seeds}
@@ -295,19 +363,21 @@ def main():
             'yaku_counts': {},
         }
 
-    base_stats = merge_stats([ps for br in all_results for ps in br.baseline_player_stats])
-    test_stats = merge_stats([ps for br in all_results for ps in br.test_player_stats])
+    base_stats = merge_stats([ps for br in all_results for ps in br.baseline_player_stats if ps is not None])
+    test_stats = merge_stats([ps for br in all_results for ps in br.test_player_stats if ps is not None])
 
     # yaku aggregation
     all_yaku_keys = set()
     for br in all_results:
         for ps in br.baseline_player_stats:
-            all_yaku_keys.update(ps.yaku_counts.keys())
+            if ps is not None:
+                all_yaku_keys.update(ps.yaku_counts.keys())
         for ps in br.test_player_stats:
-            all_yaku_keys.update(ps.yaku_counts.keys())
+            if ps is not None:
+                all_yaku_keys.update(ps.yaku_counts.keys())
     for y in all_yaku_keys:
-        base_stats['yaku_counts'][y] = sum(ps.yaku_counts.get(y, 0) for br in all_results for ps in br.baseline_player_stats)
-        test_stats['yaku_counts'][y] = sum(ps.yaku_counts.get(y, 0) for br in all_results for ps in br.test_player_stats)
+        base_stats['yaku_counts'][y] = sum(ps.yaku_counts.get(y, 0) for br in all_results for ps in br.baseline_player_stats if ps is not None)
+        test_stats['yaku_counts'][y] = sum(ps.yaku_counts.get(y, 0) for br in all_results for ps in br.test_player_stats if ps is not None)
 
     print()
     print('=== 詳細分析 ===')
@@ -371,6 +441,20 @@ def main():
 
     if args.verbose:
         print(f'\n結果を {args.output} に保存しました')
+
+    if mjson_dir and args.verbose:
+        from glob import glob as _glob
+        ms_files = _glob(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'record_seed*_trimmed.json'))
+        new_files = [f for f in ms_files 
+                     if os.path.getctime(f) > start_time]
+        if new_files:
+            print(f'\n=== 牌譜ファイル (data/ に {len(new_files)}個) ===')
+            for f in sorted(new_files):
+                base = os.path.basename(f).replace('record_', '').replace('_trimmed.json', '')
+                print(f'  simulator.html?uuid={base}')
+    elif manue_base_dir or manue_test_dir:
+        print(f'\n牌譜保存: --mjson logs を付けると data/ に保存されます')
 
 
 if __name__ == '__main__':

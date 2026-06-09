@@ -219,7 +219,7 @@ class GameState:
         return len(self.my_hand) + sum(len(m.tiles) for m in self.my_melds)
 
     def is_oya(self) -> bool:
-        return self.my_seat == 0
+        return self.my_seat == (getattr(self, 'dealer_seat', 0))
 
     def my_score_rank(self) -> int:
         ordered = sorted([(s, i) for i, s in enumerate(self.scores)], reverse=True)

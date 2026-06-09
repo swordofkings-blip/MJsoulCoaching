@@ -47,7 +47,9 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
 
     han += sum(1 for tid in all_ids if is_red_five(id_to_tile(tid)))
 
-    for d in doras:
+    from str_converter import dora_indicator_to_dora
+    actual_doras = [dora_indicator_to_dora(d) for d in doras]
+    for d in actual_doras:
         did = tile_to_id(d)
         han += sum(1 for tid in all_ids if tid == did)
 
@@ -55,9 +57,8 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
     has_honor = any(is_honor(tid) for tid in all_ids)
     all_2to8 = not has_term and not has_honor
 
-    if not is_open:
-        if all_2to8:
-            han += 1
+    if all_2to8:
+        han += 1
 
     n_suits = len(suits)
     if n_suits == 1 and not has_hon:

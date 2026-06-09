@@ -89,6 +89,9 @@ def estimate_han(hand: List[str], melds: List, doras: List[str],
                  is_ippatsu: bool, seat: int = 0, chang: int = 0, ju: int = 0,
                  win_tile: Optional[str] = None,
                  tsumo_turn: int = 0) -> Tuple[int, List[str]]:
+    from str_converter import is_red_five, tile_to_id, dora_indicator_to_dora
+    actual_doras = [dora_indicator_to_dora(d) for d in doras]
+
     han = 0
     yaku_list: List[str] = []
     all_ids = [tile_to_id(t) for t in hand]
@@ -105,13 +108,13 @@ def estimate_han(hand: List[str], melds: List, doras: List[str],
         han += 1
         yaku_list.append('門前清自摸和')
 
-    for t in hand:
-        tid = tile_to_id(t)
-        for d in doras:
+    for t in all_ids:
+        tid = t
+        for d in actual_doras:
             if tid == tile_to_id(d):
                 han += 1
                 yaku_list.append('ドラ')
-        if is_red_five(t):
+        if is_red_five(id_to_tile(t)):
             han += 1
             yaku_list.append('赤ドラ')
 
@@ -145,6 +148,8 @@ def calculate_score(han: int, fu: int, is_dealer: bool, is_tsumo: bool,
     else:
         base = fu * (2 ** (2 + han))
         base = ((base + 99) // 100) * 100
+        if base >= 2000:
+            base = 2000
 
     if is_dealer:
         if is_tsumo:
@@ -187,7 +192,7 @@ def calculate_score(han: int, fu: int, is_dealer: bool, is_tsumo: bool,
 def calculate_tenpai_payments(tenpai_seats: List[int]) -> List[int]:
     n_tenpai = len(tenpai_seats)
     n_noten = 4 - n_tenpai
-    if n_noten == 0:
+    if n_tenpai == 0 or n_noten == 0:
         return [0, 0, 0, 0]
 
     total = 3000

@@ -1,11 +1,11 @@
 import json, sys, glob, os
-sys.path.insert(0, 'C:/Users/Daikichi/Documents/code-workspace/雀魂ラッパー')
-from game_state import GameState, ReachState, Meld
-from evaluator import Evaluator
-from strategy_manager import ShantenCalculator
-from str_converter import tile_to_id, id_to_tile, is_honor
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from core.game_state import GameState, ReachState, Meld
+from core.evaluator import Evaluator
+from core.strategy_manager import ShantenCalculator
+from core.str_converter import tile_to_id, id_to_tile, is_honor
 
-with open('config_parameters.json') as f:
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'config_parameters.json')) as f:
     params = json.load(f)
 
 SEAT_NAMES = ['東', '南', '西', '北']

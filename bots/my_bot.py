@@ -4,12 +4,14 @@ import json
 import os
 import time
 from typing import List, Optional
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from sdk import MajsoulHandler, Operation, all_tiles
+from majsoul_wrapper.sdk import MajsoulHandler, Operation, all_tiles
 
-from game_state import GameState
-from evaluator import Evaluator
-from str_converter import is_red_five, tile_to_id
+from core.game_state import GameState
+from core.evaluator import Evaluator
+from core.str_converter import is_red_five, tile_to_id
 
 
 try:
@@ -268,7 +270,7 @@ class MyBot(MajsoulHandler):
 
     @staticmethod
     def _load_default_params() -> dict:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config_parameters.json')
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'config_parameters.json')
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:

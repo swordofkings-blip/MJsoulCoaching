@@ -1079,6 +1079,7 @@
                         <div class="center-info">
                             <span id="displayRound">東1局</span>
                             <span id="displayBen">0本場</span>
+                            <span id="displayLiqibang" style="margin-left:8px;color:#fbbf24;"></span>
                         </div>
                         <div class="center-info"
                             style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">
@@ -1695,8 +1696,41 @@
 
                 gameData = await response.json();
 
-                document.querySelector('h1').innerText = `雀魂 牌譜シミュレーター (UUID: ${uuid.slice(0, 8)})`;
-
+                // mjai形式の牌を内部形式に変換 (E→1z, 0m→0m etc.)
+                const mjaiToInternal = {
+                    'E':'1z','S':'2z','W':'3z','N':'4z','P':'5z','F':'6z','C':'7z'
+                };
+                function normTile(t) {
+                    if (!t || t.length === 0) return t;
+                    if (t === '?') return t;
+                    if (mjaiToInternal[t]) return mjaiToInternal[t];
+                    return t;
+                }
+                function normTiles(arr) {
+                    if (!arr) return arr;
+                    if (typeof arr === 'string') return normTile(arr);
+                    if (Array.isArray(arr)) return arr.map(t => typeof t === 'string' ? normTile(t) : t);
+                    return arr;
+                }
+                // 全アクションの牌データを変換
+                (gameData.detail_records.actions || []).forEach(act => {
+                    if (!act.result || !act.result.data) return;
+                    const d = act.result.data;
+                    if (d.tile) d.tile = normTile(d.tile);
+                    if (d.tiles) d.tiles = normTiles(d.tiles);
+                    if (d.pai) d.pai = normTile(d.pai);
+                    if (d.consumed) d.consumed = normTiles(d.consumed);
+                    for (let si = 0; si < 4; si++) {
+                        const key = 'tiles' + si;
+                        if (d[key]) d[key] = normTiles(d[key]);
+                    }
+                    if (d.hand) d.hand = normTiles(d.hand);
+                    if (d.huTile) d.huTile = normTile(d.huTile);
+                    if (d.doras) d.doras = normTiles(d.doras);
+                    if (d.liDoras) d.liDoras = normTiles(d.liDoras);
+                    if (d.dora_marker) d.dora_marker = normTile(d.dora_marker);
+                });
+                // 手牌を変換
                 if (gameData.head && gameData.head.accounts) {
                     gameData.head.accounts.forEach(acc => {
                         const nameEl = document.querySelector(`#seatInfo${acc.seat} .seat-name`);
@@ -1923,6 +1957,13 @@
         function renderBoard() {
             document.getElementById('displayRound').innerText = engine.roundName;
             document.getElementById('displayBen').innerText = `${engine.ben}本場`;
+            const lb = document.getElementById('displayLiqibang');
+            if (engine.liqibang > 0) {
+                lb.innerText = `供託${engine.liqibang}本棒`;
+                lb.style.display = '';
+            } else {
+                lb.style.display = 'none';
+            }
             document.getElementById('displayLeftTiles').innerText = engine.leftTileCount;
 
             const doraContainer = document.getElementById('displayDoras');

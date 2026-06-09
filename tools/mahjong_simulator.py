@@ -3,10 +3,12 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+import sys, os, json
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from game_state import GameState, Meld, ReachState
-from str_converter import id_to_tile, tile_to_id, hand_to_counts, is_honor
-from strategy_manager import ShantenCalculator
+from core.game_state import GameState, Meld, ReachState
+from core.str_converter import id_to_tile, tile_to_id, hand_to_counts, is_honor
+from core.strategy_manager import ShantenCalculator
 
 TILE_TYPES = 34
 TILES_PER_TYPE = 4
@@ -85,8 +87,19 @@ class GameResult:
         return 3
 
 
+HONOR_MJAI = {'1z': 'E', '2z': 'S', '3z': 'W', '4z': 'N', '5z': 'P', '6z': 'F', '7z': 'C'}
+REV_HONOR = {v: k for k, v in HONOR_MJAI.items()}
+
+def to_mjai_tile(t):
+    if t.startswith('0'):
+        return t
+    if t in HONOR_MJAI:
+        return HONOR_MJAI[t]
+    return t
+
+
 class MahjongSimulator:
-    def __init__(self, wall_seed: int, players: List, game_type: str = 'hanchan'):
+    def __init__(self, wall_seed: int, players: List, game_type: str = 'hanchan', mjson_path: str = None, majsoul_path: str = None, player_names: List[str] = None):
         self.wall_seed = wall_seed
         self.players = [p.clone(i) for i, p in enumerate(players)]
         self.game_type = game_type
@@ -94,6 +107,10 @@ class MahjongSimulator:
             self._rounds_per_game = 4
         else:
             self._rounds_per_game = 8
+        self._mjson_path = mjson_path
+        self._majsoul_path = majsoul_path
+        self._player_names = player_names or [f'P{i}' for i in range(4)]
+        self._mjson_log = []
 
     def run_game(self) -> GameResult:
         result = GameResult(seed=self.wall_seed, game_type=self.game_type)
@@ -105,6 +122,10 @@ class MahjongSimulator:
         self._ju = 0
         self._dealer_seat = 0
         self._kyoku_count = 0
+        self._mjson_log = []
+        self._ms_log = {'head': {'accounts': [{'seat': i, 'nickname': f'P{i}'} for i in range(4)]}, 'detail_records': {'actions': []}}
+
+        self._mjson({'type': 'start_game', 'id': 0})
 
         while self._kyoku_count < 50:
             kr = self._run_kyoku()
@@ -120,7 +141,193 @@ class MahjongSimulator:
         result.num_kyoku = len(result.kyoku_results)
         result.final_placements = self._compute_placements()
         self._compute_player_stats(result)
+        self._mjson_save()
+        self._ms_save()
         return result
+
+    def _mjson(self, msg):
+        self._mjson_log.append(msg)
+
+    def _mjson_save(self):
+        if not self._mjson_path:
+            return
+        os.makedirs(os.path.dirname(self._mjson_path) or '.', exist_ok=True)
+        with open(self._mjson_path, 'w', encoding='utf-8') as f:
+            for msg in self._mjson_log:
+                f.write(json.dumps(msg, ensure_ascii=False) + '\n')
+
+    def _mjson_start_kyoku(self):
+        bakaze = {0: 'E', 1: 'S', 2: 'W', 3: 'N'}.get(self._chang, 'E')
+        msg = {
+            'type': 'start_kyoku',
+            'bakaze': bakaze,
+            'kyoku': self._ju + 1,
+            'honba': self._honba,
+            'kyotaku': self._riichi_sticks,
+            'oya': self._dealer_seat,
+            'dora_marker': to_mjai_tile(self._dora_indicators[0]) if self._dora_indicators else '1m',
+            'scores': list(self._scores),
+        }
+        self._mjson(msg)
+
+    def _mjson_tsumo(self, seat, tile):
+        self._mjson({'type': 'tsumo', 'actor': seat, 'pai': to_mjai_tile(tile)})
+
+    def _mjson_dahai(self, seat, tile, moqie):
+        self._mjson({'type': 'dahai', 'actor': seat, 'pai': to_mjai_tile(tile), 'tsumogiri': moqie})
+
+    def _mjson_reach(self, seat):
+        self._mjson({'type': 'reach', 'actor': seat})
+
+    def _mjson_reach_accepted(self, seat):
+        self._mjson({'type': 'reach_accepted', 'actor': seat})
+
+    def _mjson_pon(self, seat, target, tile, consumed):
+        self._mjson({
+            'type': 'pon', 'actor': seat, 'target': target,
+            'pai': to_mjai_tile(tile),
+            'consumed': [to_mjai_tile(t) for t in consumed]
+        })
+
+    def _mjson_chi(self, seat, target, tile, consumed):
+        self._mjson({
+            'type': 'chi', 'actor': seat, 'target': target,
+            'pai': to_mjai_tile(tile),
+            'consumed': [to_mjai_tile(t) for t in consumed]
+        })
+
+    def _mjson_daiminkan(self, seat, target, tile):
+        self._mjson({
+            'type': 'daiminkan', 'actor': seat, 'target': target,
+            'pai': to_mjai_tile(tile),
+            'consumed': [to_mjai_tile(tile), to_mjai_tile(tile), to_mjai_tile(tile)]
+        })
+
+    def _mjson_ankan(self, seat, tile):
+        self._mjson({
+            'type': 'ankan', 'actor': seat,
+            'consumed': [to_mjai_tile(tile), to_mjai_tile(tile), to_mjai_tile(tile), to_mjai_tile(tile)]
+        })
+
+    def _mjson_kakan(self, seat, tile):
+        self._mjson({
+            'type': 'kakan', 'actor': seat,
+            'pai': to_mjai_tile(tile),
+            'consumed': [to_mjai_tile(tile)]
+        })
+
+    def _mjson_dora(self):
+        for di in self._dora_indicators:
+            self._mjson({'type': 'dora', 'dora_marker': to_mjai_tile(di)})
+
+    def _mjson_hora(self, winner, loser, tile, is_tsumo):
+        msg = {
+            'type': 'hora',
+            'actor': winner,
+        }
+        if is_tsumo:
+            msg['target'] = None
+        else:
+            msg['target'] = loser
+        msg['pai'] = to_mjai_tile(tile)
+        msg['scores'] = list(self._scores)
+        self._mjson(msg)
+
+    def _mjson_ryukyoku(self):
+        self._mjson({
+            'type': 'ryukyoku',
+            'scores': list(self._scores),
+        })
+
+    def _ms_action(self, class_name, data):
+        self._ms_log['detail_records']['actions'].append({
+            'type': 1,
+            'result': {'class_name': class_name, 'data': data}
+        })
+
+    def _ms_new_round(self):
+        data = {
+            'chang': self._chang, 'ju': self._ju,
+            'ben': self._honba, 'liqibang': self._riichi_sticks,
+            'scores': list(self._scores),
+            'doras': [to_mjai_tile(d) for d in self._dora_indicators],
+        }
+        for s in range(4):
+            data[f'tiles{s}'] = [to_mjai_tile(t) for t in self._hands[s]]
+        self._ms_action('RecordNewRound', data)
+
+    def _ms_add_dora(self):
+        if self._dora_indicators:
+            self._ms_action('RecordAddDora', {
+                'dora': to_mjai_tile(self._dora_indicators[-1]),
+            })
+
+    def _ms_deal_tile(self, seat, tile):
+        self._ms_action('RecordDealTile', {
+            'seat': seat, 'tile': to_mjai_tile(tile),
+            'leftTileCount': self._dead_wall_start - self._wall_pos,
+            'operation': {'seat': seat, 'operationList': [{'type': 1}]},
+        })
+
+    def _ms_discard(self, seat, tile, is_liqi=False, moqie=False):
+        self._ms_action('RecordDiscardTile', {
+            'seat': seat, 'tile': to_mjai_tile(tile),
+            'isLiqi': is_liqi, 'moqie': moqie, 'isWliqi': False,
+        })
+
+    def _ms_chi_peng_gang(self, seat, tiles, froms, meld_type):
+        self._ms_action('RecordChiPengGang', {
+            'seat': seat, 'type': meld_type,
+            'tiles': [to_mjai_tile(t) for t in tiles],
+            'froms': froms,
+            'tileStates': [0] * len(tiles),
+            'operation': {'seat': seat, 'operationList': [{'type': 1}]},
+        })
+
+    def _ms_an_gang_add_gang(self, seat, tile, gang_type):
+        self._ms_action('RecordAnGangAddGang', {
+            'seat': seat, 'tiles': to_mjai_tile(tile), 'type': gang_type,
+        })
+
+    def _ms_hule(self, seat, hules_data, old_scores, delta_scores):
+        new_scores = [old_scores[i] + delta_scores[i] for i in range(4)]
+        self._ms_action('RecordHule', {
+            'seat': seat,
+            'hules': hules_data,
+            'scores': [{
+                'scores': list(new_scores),
+                'oldScores': list(old_scores),
+                'deltaScores': list(delta_scores),
+            }],
+        })
+
+    def _ms_no_tile(self, old_scores, delta_scores):
+        new_scores = [old_scores[i] + delta_scores[i] for i in range(4)]
+        players = []
+        for s in range(4):
+            is_tenpai = self._is_tenpai(s)
+            entry = {'tingpai': is_tenpai}
+            if is_tenpai:
+                entry['hand'] = [to_mjai_tile(t) for t in self._hands[s]]
+                entry['tings'] = []
+            players.append(entry)
+        self._ms_action('RecordNoTile', {
+            'liujumanguan': False,
+            'players': players,
+            'scores': [{
+                'scores': list(new_scores),
+                'oldScores': list(old_scores),
+                'deltaScores': list(delta_scores),
+            }],
+        })
+
+    def _ms_save(self):
+        path = self._majsoul_path or (self._mjson_path.replace('.mjson', '_ms.json') if self._mjson_path else None)
+        if not path:
+            return
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(self._ms_log, f, ensure_ascii=False, indent=2)
 
     def _compute_player_stats(self, result: GameResult):
         dealer_streak = [0] * 4
@@ -179,10 +386,9 @@ class MahjongSimulator:
         for tid in range(TILE_TYPES):
             for _ in range(TILES_PER_TYPE):
                 tiles.append(id_to_tile(tid))
-        tiles[4] = '0m'
-        tiles[4 + 34] = '0m'
-        tiles[4 + 68] = '0p'
-        tiles[4 + 102] = '0p'
+        tiles[4 * TILES_PER_TYPE + 0] = '0m'  # first 5m → 赤5m
+        tiles[13 * TILES_PER_TYPE + 0] = '0p'  # first 5p → 赤5p
+        tiles[22 * TILES_PER_TYPE + 0] = '0s'  # first 5s → 赤5s
         rng.shuffle(tiles)
         return tiles
 
@@ -194,10 +400,10 @@ class MahjongSimulator:
         return t
 
     def _draw_dead(self) -> Optional[str]:
-        if self._wall_pos >= WALL_SIZE:
+        if self._dead_wall_pos < self._dead_wall_start:
             return None
-        t = self._wall[self._wall_pos]
-        self._wall_pos += 1
+        t = self._wall[self._dead_wall_pos]
+        self._dead_wall_pos -= 1
         return t
 
     def _reveal_dora(self):
@@ -210,6 +416,7 @@ class MahjongSimulator:
         self._wall = self._init_wall(kyoku_rng)
         self._wall_pos = 0
         self._dead_wall_start = WALL_SIZE - DEAD_WALL_SIZE
+        self._dead_wall_pos = WALL_SIZE - 1
 
         self._hands = [[], [], [], []]
         self._melds: List[List[Meld]] = [[], [], [], []]
@@ -222,6 +429,7 @@ class MahjongSimulator:
         self._last_discard = None
         self._last_discard_seat = -1
         self._current_player = self._dealer_seat
+        self._skip_draw = False
 
         for _ in range(3):
             for s in range(4):
@@ -237,9 +445,13 @@ class MahjongSimulator:
         self._dora_indicators = []
         self._reveal_dora()
 
+        self._mjson_start_kyoku()
+
         t = self._draw_live()
         if t:
             self._hands[self._current_player].append(t)
+
+        self._ms_new_round()
 
     def _run_kyoku(self) -> KyokuResult:
         self._deal_round()
@@ -262,13 +474,17 @@ class MahjongSimulator:
                         return self._tsumo_win(seat, drawn)
 
                 self._discard(seat, drawn, moqie=True)
-                self._clear_ippatsu()
+                self._mjson_dahai(seat, drawn, True)
+                self._ms_discard(seat, drawn, moqie=True)
                 if self._wall_pos >= self._dead_wall_start:
                     return self._ryuukyoku()
                 self._current_player = (seat + 1) % 4
                 continue
 
             needs_draw = not (dealer_first_action and seat == self._dealer_seat)
+            if self._skip_draw:
+                needs_draw = False
+                self._skip_draw = False
             if needs_draw:
                 drawn = self._draw_live()
                 if drawn is None:
@@ -276,6 +492,8 @@ class MahjongSimulator:
                 self._hands[seat].append(drawn)
                 self._tsumo_count += 1
                 self._player_tsumo[seat] += 1
+                self._mjson_tsumo(seat, drawn)
+                self._ms_deal_tile(seat, drawn)
 
                 if self._is_tenpai(seat):
                     st = self._build_state(seat)
@@ -287,8 +505,66 @@ class MahjongSimulator:
                     st = self._build_state(seat)
                     if self.players[seat].should_kan(st):
                         self._do_ankan(seat, ankan_candidate)
+                        self._mjson_ankan(seat, ankan_candidate)
+                        self._ms_an_gang_add_gang(seat, ankan_candidate, 3)
+                        self._mjson_dora()
+                        self._ms_add_dora()
                         self._clear_ippatsu()
                         dealer_first_action = False
+                        st = self._build_state(seat)
+                        discard = self.players[seat].decide_discard(st)
+                        if discard is None or discard not in self._hands[seat]:
+                            discard = self._hands[seat][-1] if self._hands[seat] else None
+                            if discard is None:
+                                return self._ryuukyoku()
+                        declare_riichi = self.players[seat].should_riichi(st)
+                        self._discard(seat, discard, moqie=False)
+                        self._mjson_dahai(seat, discard, False)
+                        self._ms_discard(seat, discard, False, declare_riichi)
+                        if declare_riichi and self._scores[seat] >= 1000:
+                            self._scores[seat] -= 1000
+                            self._riichi_sticks += 1
+                            rs = self._reach_states[seat]
+                            rs.is_reach = True
+                            rs.reach_turn = self._tsumo_count
+                            rs.is_ippatsu = True
+                            self._reach_locked[seat] = True
+                            self._mjson_reach(seat)
+                        self._current_player = (seat + 1) % 4
+                        continue
+
+                # 加槓チェック
+                if self._find_kakan(seat, drawn):
+                    st = self._build_state(seat)
+                    if self.players[seat].should_kan(st):
+                        self._do_kakan(seat, drawn)
+                        self._mjson_kakan(seat, drawn)
+                        self._ms_an_gang_add_gang(seat, drawn, 2)
+                        self._mjson_dora()
+                        self._ms_add_dora()
+                        self._clear_ippatsu()
+                        dealer_first_action = False
+                        # After kakan + rinshan, go directly to discard
+                        st = self._build_state(seat)
+                        discard = self.players[seat].decide_discard(st)
+                        if discard is None or discard not in self._hands[seat]:
+                            discard = self._hands[seat][-1] if self._hands[seat] else None
+                            if discard is None:
+                                return self._ryuukyoku()
+                        declare_riichi = self.players[seat].should_riichi(st)
+                        self._discard(seat, discard, moqie=False)
+                        self._mjson_dahai(seat, discard, False)
+                        self._ms_discard(seat, discard, False, declare_riichi)
+                        if declare_riichi and self._scores[seat] >= 1000:
+                            self._scores[seat] -= 1000
+                            self._riichi_sticks += 1
+                            rs = self._reach_states[seat]
+                            rs.is_reach = True
+                            rs.reach_turn = self._tsumo_count
+                            rs.is_ippatsu = True
+                            self._reach_locked[seat] = True
+                            self._mjson_reach(seat)
+                        self._current_player = (seat + 1) % 4
                         continue
 
             dealer_first_action = False
@@ -303,6 +579,8 @@ class MahjongSimulator:
             declare_riichi = self.players[seat].should_riichi(st)
 
             self._discard(seat, discard, moqie=False)
+            self._mjson_dahai(seat, discard, False)
+            self._ms_discard(seat, discard, False, declare_riichi)
 
             if declare_riichi and self._scores[seat] >= 1000:
                 self._scores[seat] -= 1000
@@ -312,19 +590,44 @@ class MahjongSimulator:
                 rs.reach_turn = self._tsumo_count
                 rs.is_ippatsu = True
                 self._reach_locked[seat] = True
+                self._mjson_reach(seat)
 
             call = self._resolve_call(seat, discard)
-            self._clear_ippatsu()
             if call is not None:
                 if call['type'] == 'ron':
                     return self._ron_win(call['seat'], seat, discard)
                 elif call['type'] == 'pon':
                     self._do_pon(call['seat'], seat, discard)
+                    self._mjson_pon(call['seat'], seat, discard, [discard, discard])
+                    self._ms_chi_peng_gang(call['seat'], [discard, discard, discard], [seat, call['seat'], call['seat']], 1)
+                    self._clear_ippatsu()
+                    self._skip_draw = True
                     self._current_player = call['seat']
                     continue
                 elif call['type'] == 'chi':
                     self._do_chi(call['seat'], seat, discard, call['consumed'])
+                    self._mjson_chi(call['seat'], seat, discard, call['consumed'])
+                    full_tiles = [discard] + call['consumed']
+                    self._ms_chi_peng_gang(call['seat'], full_tiles, [seat, call['seat'], call['seat']], 0)
+                    self._clear_ippatsu()
+                    self._skip_draw = True
                     self._current_player = call['seat']
+                    continue
+                elif call['type'] == 'kan':
+                    cs = call['seat']
+                    self._do_pon(cs, seat, discard)  # Use pon logic for 3 tiles
+                    self._mjson_daiminkan(cs, seat, discard)
+                    self._ms_chi_peng_gang(cs, [discard]*3, [seat, cs, cs], 2)
+                    self._clear_ippatsu()
+                    # Draw rinshan and reveal dora
+                    dead = self._draw_dead()
+                    if dead:
+                        self._hands[cs].append(dead)
+                    self._reveal_dora()
+                    self._mjson_dora()
+                    self._ms_add_dora()
+                    self._skip_draw = True
+                    self._current_player = cs
                     continue
 
             if self._wall_pos >= self._dead_wall_start:
@@ -350,6 +653,28 @@ class MahjongSimulator:
                     if tile_to_id(t) == i:
                         return t
         return None
+
+    def _find_kakan(self, seat: int, drawn: str) -> bool:
+        tid = tile_to_id(drawn)
+        for m in self._melds[seat]:
+            if m.type == 1 and len(m.tiles) >= 3:
+                if tile_to_id(m.tiles[0]) == tid:
+                    return True
+        return False
+
+    def _do_kakan(self, seat: int, tile: str):
+        tid = tile_to_id(tile)
+        for m in self._melds[seat]:
+            if m.type == 1 and len(m.tiles) >= 3 and tile_to_id(m.tiles[0]) == tid:
+                m.type = 2
+                m.tiles = m.tiles + [tile]
+                m.froms = m.froms + [seat]
+                self._hands[seat].remove(tile)
+                break
+        dead = self._draw_dead()
+        if dead:
+            self._hands[seat].append(dead)
+        self._reveal_dora()
 
     def _do_ankan(self, seat: int, tile: str):
         tid = tile_to_id(tile)
@@ -384,6 +709,10 @@ class MahjongSimulator:
             cnt = hand_to_counts(self._hands[s])
             cnt[tid] += 1
             mc = len(self._melds[s])
+            # 多牌チェック: 手牌+副露の合計が14を超える場合は和了不可
+            meld_tiles = sum(len(m.tiles) for m in self._melds[s])
+            if sum(cnt) + meld_tiles > 14:
+                continue
             if mc == 0:
                 if ShantenCalculator.calculate_closed_effective(cnt) <= -1:
                     ron_candidates.append(s)
@@ -462,7 +791,7 @@ class MahjongSimulator:
 
     def _tsumo_win(self, seat: int, drawn: str) -> KyokuResult:
         from scoring import estimate_han, calculate_fu, calculate_score
-        is_dealer = (seat % 4) == 0
+        is_dealer = seat == self._dealer_seat
         open_melds = [m for m in self._melds[seat] if m.type in (1, 2)]
         is_open = len(open_melds) > 0
         hand = self._hands[seat]
@@ -472,7 +801,7 @@ class MahjongSimulator:
                                       has_reach=self._reach_states[seat].is_reach,
                                       is_ippatsu=self._reach_states[seat].is_ippatsu,
                                       seat=seat, chang=self._chang, ju=self._ju,
-                                      win_tile=drawn, tsumo_turn=self._tsumo_count)
+                                       win_tile=drawn, tsumo_turn=self._player_tsumo[seat])
 
         fu = calculate_fu(hand, self._melds[seat], drawn, is_tsumo=True,
                           is_open=is_open, is_dealer=is_dealer,
@@ -504,7 +833,12 @@ class MahjongSimulator:
                     delta[s] = -(from_non + honba_pay // 3)
 
         new_scores = [self._scores[s] + delta[s] for s in range(4)]
+        old_scores = list(self._scores)
         self._scores = list(new_scores)
+
+        self._ms_hule(seat, [{
+            'seat': seat, 'zimo': True, 'liqi': self._reach_states[seat].is_reach,
+        }], old_scores, delta)
 
         return KyokuResult(seed=self.wall_seed, chang=self._chang, ju=self._ju,
                            honba=self._honba, riichi_sticks=self._riichi_sticks,
@@ -520,7 +854,7 @@ class MahjongSimulator:
 
     def _ron_win(self, seat: int, discarder: int, tile: str) -> KyokuResult:
         from scoring import estimate_han, calculate_fu, calculate_score
-        is_dealer = (seat % 4) == 0
+        is_dealer = seat == self._dealer_seat
         open_melds = [m for m in self._melds[seat] if m.type in (1, 2)]
         is_open = len(open_melds) > 0
         hand = list(self._hands[seat]) + [tile]
@@ -532,8 +866,10 @@ class MahjongSimulator:
                                       seat=seat, chang=self._chang, ju=self._ju,
                                       win_tile=tile, tsumo_turn=self._tsumo_count)
 
+        from core.str_converter import hand_to_counts
+        ron_wait = 'tanki' if hand_to_counts(list(self._hands[seat]) + [tile])[tile_to_id(tile)] >= 2 else 'ryanmen'
         fu = calculate_fu(hand, self._melds[seat], tile, is_tsumo=False,
-                          is_open=is_open, is_dealer=is_dealer, wait_type='ron')
+                          is_open=is_open, is_dealer=is_dealer, wait_type=ron_wait)
 
         si = calculate_score(han, fu, is_dealer, is_tsumo=False,
                              honba=0, riichi_sticks=0)
@@ -547,7 +883,12 @@ class MahjongSimulator:
         delta[discarder] = -(total_pay + honba_pay)
 
         new_scores = [self._scores[s] + delta[s] for s in range(4)]
+        old_scores = list(self._scores)
         self._scores = list(new_scores)
+
+        self._ms_hule(seat, [{
+            'seat': seat, 'zimo': False, 'liqi': self._reach_states[seat].is_reach,
+        }], old_scores, delta)
 
         return KyokuResult(seed=self.wall_seed, chang=self._chang, ju=self._ju,
                            honba=self._honba, riichi_sticks=self._riichi_sticks,
@@ -565,8 +906,11 @@ class MahjongSimulator:
         from scoring import calculate_tenpai_payments
         tenpai = [s for s in range(4) if self._is_tenpai(s)]
         teban = calculate_tenpai_payments(tenpai)
+        old_scores = list(self._scores)
         new_scores = [self._scores[s] + teban[s] for s in range(4)]
         self._scores = list(new_scores)
+
+        self._ms_no_tile(old_scores, teban)
 
         return KyokuResult(seed=self.wall_seed, chang=self._chang, ju=self._ju,
                            honba=self._honba, riichi_sticks=self._riichi_sticks,
@@ -586,6 +930,7 @@ class MahjongSimulator:
         s.ben = self._honba
         s.liqibang = self._riichi_sticks
         s.my_seat = seat
+        s.dealer_seat = self._dealer_seat
         s.my_hand = list(override_hand if override_hand is not None else self._hands[seat])
         s.my_melds = list(self._melds[seat])
         s.river = [list(r) for r in self._rivers]
@@ -614,16 +959,16 @@ class MahjongSimulator:
         if kr.winner_seat is not None:
             if kr.winner_seat == self._dealer_seat:
                 self._honba += 1
-                return
-            self._riichi_sticks = 0
-            self._honba = 0
+            else:
+                self._honba = 0
+            self._riichi_sticks = 0  # 和了時はリーチ棒を全て精算
         else:
             is_dealer_tenpai = self._dealer_seat in kr.tenpai_seats
             if is_dealer_tenpai:
                 self._honba += 1
                 return
-            self._riichi_sticks = 0
             self._honba = 0
+            # 流局時はリーチ棒を持ち越し（リセットしない）
         self._ju += 1
         if self._ju >= 4:
             self._ju = 0

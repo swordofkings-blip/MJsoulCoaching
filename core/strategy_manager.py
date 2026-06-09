@@ -84,11 +84,25 @@ class ShantenCalculator:
             tmp = list(counts)
             tmp[head] -= 2
             melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
-            s = (4 - open_meld_count) * 2 - 2 * melds - 1
+            remaining = sum(tmp) - melds * 3
+            extra = 0
+            if remaining == 1:
+                extra = 1
+            elif remaining >= 3:
+                leftover_melds = remaining // 3
+                extra = remaining - leftover_melds * 3
+            s = (4 - open_meld_count) * 2 - 2 * melds - 1 + extra
             if s < best:
                 best = s
         melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
-        s = (4 - open_meld_count) * 2 - 2 * melds
+        remaining = sum(counts) - melds * 3
+        extra = 0
+        if remaining == 1:
+            extra = 1
+        elif remaining >= 3:
+            leftover_melds = remaining // 3
+            extra = remaining - leftover_melds * 3
+        s = (4 - open_meld_count) * 2 - 2 * melds + extra
         if s < best:
             best = s
         return best
@@ -404,9 +418,10 @@ class StrategyManager:
         """
         from str_converter import tile_to_id
         dora_ids = {tile_to_id(d) for d in self.state.actual_doras}
-        chang_id = 27 + (self.state.chang - 1) if 0 <= self.state.chang - 1 < 4 else -1
-        bakaze_id = 27 + (self.state.ju - 1) if 0 <= self.state.ju - 1 < 4 else -1
-        honor_target_ids = set(range(27, 31)) | {27, 28, 29, 30} | {bakaze_id, chang_id}
+        dealer_seat = getattr(self.state, 'dealer_seat', 0)
+        bakaze_id = 27 + (self.state.chang % 4)
+        jikaze_id = 27 + ((self.state.my_seat - dealer_seat) % 4)
+        honor_target_ids = set(range(27, 31)) | {27, 28, 29, 30} | {bakaze_id, jikaze_id}
         for m in open_melds:
             for t in m.tiles:
                 try:

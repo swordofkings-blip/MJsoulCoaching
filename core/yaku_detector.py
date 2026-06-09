@@ -286,8 +286,16 @@ def analyze_pinfu(hand: List[str], melds: List, seat: int, chang: int, ju: int,
     if win_tile:
         win_id = tile_to_id(win_tile)
         for b in dec['blocks']:
-            if b.is_sequence() and win_id in (b.tile_ids[1],):
-                return None  # 嵌張 or 辺張の場合
+            if not b.is_sequence():
+                continue
+            for pos, pid in enumerate(b.tile_ids):
+                if pid == win_id:
+                    if pos == 1:
+                        return None  # 嵌張
+                    if pos == 0 and (win_id % 9) <= 1:
+                        return None  # 辺張 (1-2待ち3)
+                    if pos == 2 and (win_id % 9) >= 7:
+                        return None  # 辺張 (8-9待ち7)
     return YakuInfo('pinfu', progress=1.0, closed_han=1, open_han=0, is_complete=True)
 
 
@@ -522,7 +530,7 @@ def analyze_honitsu(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo
     honor_count = counts.get(SUIT_HONOR, 0)
     total_non_honor = sum(non_honor.values())
 
-    if dominant_count > 0 and dominant_count + honor_count == len(all_ids):
+    if dominant_count > 0 and honor_count > 0 and dominant_count + honor_count == len(all_ids):
         is_open = any(m.is_open for m in melds if hasattr(m, 'is_open'))
         return YakuInfo('honitsu', progress=1.0, closed_han=3, open_han=2,
                         is_complete=True, main_suit=dominant, suit_count=dominant_count)
@@ -606,7 +614,7 @@ def analyze_yakuhai(hand: List[str], melds: List, seat: int, chang: int, ju: int
 
 
 def analyze_daburi(hand: List[str], melds: List, tsumo_turn: int = 0, **kwargs) -> Optional[YakuInfo]:
-    if tsumo_turn == 1 and not melds:
+    if tsumo_turn <= 1 and not melds:
         return YakuInfo('daburi', progress=1.0, closed_han=2, open_han=0, is_complete=True)
     return None
 

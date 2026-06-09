@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import sys, json, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from game_state import GameState, ReachState, Meld
-from evaluator import Evaluator
-from strategy_manager import ShantenCalculator
-from str_converter import tile_to_id
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from core.game_state import GameState, ReachState, Meld
+from core.evaluator import Evaluator
+from core.strategy_manager import ShantenCalculator
+from core.str_converter import tile_to_id
 
 HONOR_MAP = {'E':'1z','S':'2z','W':'3z','N':'4z','5':'5z','6':'6z','7':'7z'}
 REV_HONOR = {v:k for k,v in HONOR_MAP.items()}
