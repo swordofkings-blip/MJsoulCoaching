@@ -431,8 +431,8 @@ def evaluate_meld(payload: dict) -> dict:
 
         # Evaluate the resulting state
         ev = Evaluator(st, params=params)
-        if ctype == "kakan":
-            # 加槓後は嶺上牌が来るため、特定の切り牌を評価できない
+        if ctype in ("kakan", "ankan"):
+            # 加槓/暗槓後は嶺上牌が来るため、特定の切り牌を評価できない
             # 手牌のシャンテン数のみ表示
             shanten_after = 99
             if st.my_hand:
@@ -441,14 +441,14 @@ def evaluate_meld(payload: dict) -> dict:
                 open_cnt = sum(1 for m in st.my_melds if m.is_open)
                 cnts = hand_to_counts(st.my_hand)
                 shanten_after = ShantenCalculator.calculate_open(cnts, open_cnt)
-            # 加槓はシャンテンが進まないため、スキップより低いスコアに
-            kakan_score = -max(1, shanten_after) * 500 if shanten_after < 99 else -9999
+            # 槓はシャンテンが進まないため、スキップより低いスコアに
+            kan_score = -max(1, shanten_after) * 500 if shanten_after < 99 else -9999
             results.append({
                 "type": ctype,
                 "label": cand.get("label", ctype),
                 "tiles": tiles,
                 "best_discard": None,
-                "best_score": kakan_score,
+                "best_score": kan_score,
                 "best_eval": None,
                 "shanten": shanten_after,
                 "reason": _build_meld_reason(ctype, None, state, st, cand),
@@ -490,7 +490,7 @@ def evaluate_meld(payload: dict) -> dict:
     }
 
 def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=None) -> str:
-    if best_eval is None and ctype != "kakan":
+    if best_eval is None and ctype not in ("kakan", "ankan"):
         return ""
 
     open_meld_count = sum(1 for m in old_state.my_melds if m.is_open) if hasattr(old_state, 'my_melds') else 0
@@ -498,24 +498,23 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
 
     lines = []
 
-    if ctype == "kakan":
-        kakan_tile = ""
-        if cand and cand.get("tiles"):
-            kakan_tile = _fmt_tile(cand["tiles"][0])
-        lines.append(f"{kakan_tile}を加槓します。")
-        lines.append("加槓はシャンテンが進みません。")
+    if ctype in ("kakan", "ankan"):
+        name = "加槓" if ctype == "kakan" else "暗槓"
+        lines.append(f"{name}はシャンテンが進みません。")
         lines.append("嶺上牌をツモった後に判断します。")
-        # シャンテン数（加槓前）を別途計算
         from core.strategy_manager import ShantenCalculator
         from core.str_converter import hand_to_counts
         if hasattr(old_state, 'my_hand') and old_state.my_hand:
             cnts = hand_to_counts(old_state.my_hand)
             old_shanten = ShantenCalculator.calculate_open(cnts, open_meld_count)
             if old_shanten == 0:
-                lines.append("現在聴牌のため、加槓で放銃リスクが高まります。")
+                lines.append(f"現在聴牌のため、{name}で放銃リスクが高まります。")
             else:
                 lines.append(f"現在{old_shanten}向聴です。")
-        lines.append("加槓によりドラ表示牌が増える可能性があります。")
+        if ctype == "ankan":
+            lines.append("暗槓は門前役（四暗刻など）に影響します。")
+        else:
+            lines.append("加槓によりドラ表示牌が増える可能性があります。")
         return " ".join(lines)
 
     tile = _fmt_tile(best_eval["tile"])

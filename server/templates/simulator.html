@@ -3034,6 +3034,17 @@ ${riversStr}
                     }
                 }
             }
+            // 暗槓チェック: 手牌に4枚同じ牌がある場合
+            const ankanTile = _find_ankan_tile(hand);
+            if (ankanTile) {
+                const candidates = [{ type: "skip", label: "スキップ", tiles: [], froms: [] }];
+                candidates.push({ type: "ankan", label: "暗槓", tiles: [ankanTile, ankanTile, ankanTile, ankanTile], froms: [mySeat, mySeat, mySeat, mySeat] });
+                const payload = buildCoachPayload(true);
+                if (!payload) return;
+                payload.meld_candidates = candidates;
+                _send_meld_eval(payload, '暗槓可能です', mp);
+                return;
+            }
             if (di < 0) return;
             // 現在のタイムラインステップが自家の副露（ChiPengGang）の場合、手牌は既に消費された状態にある。
             // 副露前に戻すため、消費された牌を手牌コピーに戻す。
@@ -3120,6 +3131,15 @@ ${riversStr}
                     el.classList.add('tile-near');
                 }
             });
+        }
+
+        function _find_ankan_tile(hand) {
+            const cnt = {};
+            hand.forEach(t => { const k = t[0] === '0' ? '5' + t[1] : t; cnt[k] = (cnt[k] || 0) + 1; });
+            for (const tile in cnt) {
+                if (cnt[tile] >= 4) return tile;
+            }
+            return null;
         }
 
         function _send_meld_eval(payload, statusText, mp) {
