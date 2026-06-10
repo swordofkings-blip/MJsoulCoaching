@@ -2628,14 +2628,14 @@ ${riversStr}
          * @description 現在の engine / perspectiveSeat から POST /api/evaluate のリクエストボディを組み立てる。
          * @returns {object|null} リクエストボディ。組み立て不可なら null。
          */
-        function buildCoachPayload() {
+        function buildCoachPayload(includeTsumo) {
             if (!engine) return null;
             const mySeat = perspectiveSeat;
             const hand = [...engine.hands[mySeat]];
             const tsumo = engine.lastTsumo[mySeat];
             const tsumoCount = engine.discards[mySeat].length + (tsumo ? 1 : 0);
 
-            if (tsumo) {
+            if (includeTsumo !== false && tsumo) {
                 const idx = hand.indexOf(tsumo);
                 if (idx !== -1) hand.splice(idx, 1);
                 hand.push(tsumo);
@@ -2687,6 +2687,7 @@ ${riversStr}
             return {
                 my_seat: mySeat,
                 hand: hand,
+                tsumo: (includeTsumo !== false) ? null : tsumo,
                 melds: melds,
                 river: river,
                 river_moqie: river_moqie,
@@ -3018,7 +3019,25 @@ ${riversStr}
                     if (dd && dd.seat !== undefined && dd.seat !== mySeat && dd.tile) { di = dd.seat; dt = dd.tile; }
                 }
             }
-            if (di < 0) return;
+            if (di < 0) {
+                // 相手の捨て牌がない場合、加槓（自模）をチェック
+                const tsumo = engine.lastTsumo ? engine.lastTsumo[mySeat] : null;
+                if (tsumo && engine.melds && engine.melds[mySeat]) {
+                    for (const meld of engine.melds[mySeat]) {
+                        if (meld.type === 1 && meld.tiles && meld.tiles[0] === tsumo) {
+                            // 加槓候補: ツモ牌を既存のポンに追加
+                            const candidates = [{ type: "skip", label: "スキップ", tiles: [], froms: [] }];
+                            candidates.push({ type: "kakan", label: "加槓", tiles: [tsumo], froms: [mySeat] });
+                            const payload = buildCoachPayload(true);
+                            if (!payload) return;
+                            payload.meld_candidates = candidates;
+                            _send_meld_eval(payload, '加槓可能です', mp);
+                            return;
+                        }
+                    }
+                }
+                return;
+            }
             // 現在のタイムラインステップが自家の副露（ChiPengGang）の場合、手牌は既に消費された状態にある。
             // 副露前に戻すため、消費された牌を手牌コピーに戻す。
             const curAct = rawActionsList[cri];
@@ -3065,7 +3084,7 @@ ${riversStr}
                 found = true;
             }
             if (!found) return;
-            const payload = buildCoachPayload();
+            const payload = buildCoachPayload(false);
             if (!payload) return;
             // 副露後の手牌ではなく副露前の手牌で評価するため、ペイロードも修正する
             if (curAct && curAct.result && curAct.result.class_name === 'RecordChiPengGang') {
@@ -3080,6 +3099,36 @@ ${riversStr}
                 }
             }
             payload.meld_candidates = candidates;
+            _send_meld_eval(payload, sl[di] + '家が <b>' + dt + '</b> を捨てました', mp);
+        }
+
+        /**
+         * @title 推奨牌の手牌ハイライト
+         * @description 現在の手牌描画のうち、推奨牌に .tile-recommended クラスを付与する。
+         * @param {string|null} tile - 推奨牌文字列
+         */
+        function highlightRecommendedTile(tile, nearTiles) {
+            const handEl = document.getElementById('hand' + perspectiveSeat);
+            if (!handEl) return;
+            handEl.querySelectorAll('.tile-recommended').forEach(el => el.classList.remove('tile-recommended'));
+            handEl.querySelectorAll('.tile-near').forEach(el => el.classList.remove('tile-near'));
+            if (!tile) return;
+            const nearSet = new Set((nearTiles || []).map(t => getTileText(t)));
+            handEl.querySelectorAll('.tile').forEach(el => {
+                if (el.classList.contains('tile-back') || el.classList.contains('tsumo-gap')) return;
+                const txt = el.innerText;
+                if (txt === getTileText(tile)) {
+                    el.classList.add('tile-recommended');
+                } else if (nearSet.has(txt)) {
+                    el.classList.add('tile-near');
+                }
+            });
+        }
+
+        function _send_meld_eval(payload, statusText, mp) {
+            const ml = document.getElementById("botCoachMeldEvalList");
+            if (!ml) return;
+            payload.meld_candidates = payload.meld_candidates || [];
             const statusEl = document.getElementById('botCoachMeldStatus');
             statusEl.innerHTML = '<span style="color:var(--text-muted);">評価中...</span>';
             mp.dataset.active = "1";
@@ -3101,8 +3150,7 @@ ${riversStr}
                 const badgeEl = document.getElementById('botCoachMeldRecommendBadge');
 
                 rec = rec || data.candidates[0];
-
-                statusEl.innerHTML = sl[di] + '家が <b>' + dt + '</b> を捨てました';
+                statusEl.innerHTML = statusText;
 
                 if (rec) {
                     badgeEl.style.display = 'inline-flex';
@@ -3165,29 +3213,6 @@ ${riversStr}
                 });
                 evalEl.innerHTML = evalHtml;
             }).catch(function () { mp.classList.remove('is-loading'); mp.classList.remove('is-visible'); });
-        }
-
-        /**
-         * @title 推奨牌の手牌ハイライト
-         * @description 現在の手牌描画のうち、推奨牌に .tile-recommended クラスを付与する。
-         * @param {string|null} tile - 推奨牌文字列
-         */
-        function highlightRecommendedTile(tile, nearTiles) {
-            const handEl = document.getElementById('hand' + perspectiveSeat);
-            if (!handEl) return;
-            handEl.querySelectorAll('.tile-recommended').forEach(el => el.classList.remove('tile-recommended'));
-            handEl.querySelectorAll('.tile-near').forEach(el => el.classList.remove('tile-near'));
-            if (!tile) return;
-            const nearSet = new Set((nearTiles || []).map(t => getTileText(t)));
-            handEl.querySelectorAll('.tile').forEach(el => {
-                if (el.classList.contains('tile-back') || el.classList.contains('tsumo-gap')) return;
-                const txt = el.innerText;
-                if (txt === getTileText(tile)) {
-                    el.classList.add('tile-recommended');
-                } else if (nearSet.has(txt)) {
-                    el.classList.add('tile-near');
-                }
-            });
         }
     </script>
 </body>

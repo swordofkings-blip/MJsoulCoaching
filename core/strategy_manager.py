@@ -122,6 +122,9 @@ class ShantenCalculator:
         s = still_needed + max(0, still_needed - meld_blocks)
         if s < best:
             best = s
+        # still_needed==0 でも雀頭（恰好2枚の対子）が手牌になければ聴牌できない
+        if best <= 0 and not any(c == 2 for c in counts):
+            best = max(best, 1)
         return best
 
     @staticmethod

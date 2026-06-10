@@ -366,9 +366,9 @@ def evaluate_meld(payload: dict) -> dict:
     results = []
     for cand in candidates:
         if cand.get("type") == "skip":
+            ev = Evaluator(state, params=params)
             hand = state.my_hand
             unique_tiles = list(dict.fromkeys(hand))
-            ev = Evaluator(state, params=params)
             best_score = float('-inf')
             best_tile = None
             best_eval = None
@@ -414,32 +414,68 @@ def evaluate_meld(payload: dict) -> dict:
             continue
 
         from core.game_state import Meld
-        st.my_melds.append(Meld(type=meld_type, tiles=list(tiles), froms=list(froms), tile_states=[]))
+        if ctype == "kakan":
+            # 加槓: 既存のポンを槓に変更（新しい副露を追加しない）
+            kakan_tile = list(tiles)[0] if tiles else None
+            found_meld = False
+            for m in st.my_melds:
+                if m.type == 1 and m.tiles and m.tiles[0] == kakan_tile:
+                    m.tiles.append(kakan_tile)
+                    m.type = meld_type
+                    found_meld = True
+                    break
+            if not found_meld:
+                st.my_melds.append(Meld(type=meld_type, tiles=list(tiles), froms=list(froms), tile_states=[]))
+        else:
+            st.my_melds.append(Meld(type=meld_type, tiles=list(tiles), froms=list(froms), tile_states=[]))
 
         # Evaluate the resulting state
         ev = Evaluator(st, params=params)
-        hand = st.my_hand
-        unique_tiles = list(dict.fromkeys(hand))
-        best_score = float('-inf')
-        best_tile = None
-        best_eval = None
-        for tile in unique_tiles:
-            entry = _build_evaluation_entry(ev, tile)
-            if entry["score"] > best_score:
-                best_score = entry["score"]
-                best_tile = tile
-                best_eval = entry
+        if ctype == "kakan":
+            # 加槓後は嶺上牌が来るため、特定の切り牌を評価できない
+            # 手牌のシャンテン数のみ表示
+            shanten_after = 99
+            if st.my_hand:
+                from core.strategy_manager import ShantenCalculator
+                from core.str_converter import hand_to_counts
+                open_cnt = sum(1 for m in st.my_melds if m.is_open)
+                cnts = hand_to_counts(st.my_hand)
+                shanten_after = ShantenCalculator.calculate_open(cnts, open_cnt)
+            # 加槓はシャンテンが進まないため、スキップより低いスコアに
+            kakan_score = -max(1, shanten_after) * 500 if shanten_after < 99 else -9999
+            results.append({
+                "type": ctype,
+                "label": cand.get("label", ctype),
+                "tiles": tiles,
+                "best_discard": None,
+                "best_score": kakan_score,
+                "best_eval": None,
+                "shanten": shanten_after,
+                "reason": _build_meld_reason(ctype, None, state, st, cand),
+            })
+        else:
+            hand = st.my_hand
+            unique_tiles = list(dict.fromkeys(hand))
+            best_score = float('-inf')
+            best_tile = None
+            best_eval = None
+            for tile in unique_tiles:
+                entry = _build_evaluation_entry(ev, tile)
+                if entry["score"] > best_score:
+                    best_score = entry["score"]
+                    best_tile = tile
+                    best_eval = entry
 
-        results.append({
-            "type": ctype,
-            "label": cand.get("label", ctype),
-            "tiles": tiles,
-            "best_discard": best_tile,
-            "best_score": best_score,
-            "best_eval": best_eval,
-            "shanten": best_eval["shanten"] if best_eval else 99,
-            "reason": _build_meld_reason(ctype, best_eval, state, st, cand),
-        })
+            results.append({
+                "type": ctype,
+                "label": cand.get("label", ctype),
+                "tiles": tiles,
+                "best_discard": best_tile,
+                "best_score": best_score,
+                "best_eval": best_eval,
+                "shanten": best_eval["shanten"] if best_eval else 99,
+                "reason": _build_meld_reason(ctype, best_eval, state, st, cand),
+            })
 
     if not results:
         return {"status": "error", "message": "No candidates provided"}
@@ -454,19 +490,40 @@ def evaluate_meld(payload: dict) -> dict:
     }
 
 def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=None) -> str:
-    if best_eval is None:
+    if best_eval is None and ctype != "kakan":
         return ""
+
+    open_meld_count = sum(1 for m in old_state.my_melds if m.is_open) if hasattr(old_state, 'my_melds') else 0
+    turn = (old_state.tsumo_count // 4) if hasattr(old_state, 'tsumo_count') else 0
+
+    lines = []
+
+    if ctype == "kakan":
+        kakan_tile = ""
+        if cand and cand.get("tiles"):
+            kakan_tile = _fmt_tile(cand["tiles"][0])
+        lines.append(f"{kakan_tile}を加槓します。")
+        lines.append("加槓はシャンテンが進みません。")
+        lines.append("嶺上牌をツモった後に判断します。")
+        # シャンテン数（加槓前）を別途計算
+        from core.strategy_manager import ShantenCalculator
+        from core.str_converter import hand_to_counts
+        if hasattr(old_state, 'my_hand') and old_state.my_hand:
+            cnts = hand_to_counts(old_state.my_hand)
+            old_shanten = ShantenCalculator.calculate_open(cnts, open_meld_count)
+            if old_shanten == 0:
+                lines.append("現在聴牌のため、加槓で放銃リスクが高まります。")
+            else:
+                lines.append(f"現在{old_shanten}向聴です。")
+        lines.append("加槓によりドラ表示牌が増える可能性があります。")
+        return " ".join(lines)
+
     tile = _fmt_tile(best_eval["tile"])
     shanten = best_eval["shanten"]
     attack = best_eval["attack"]
     defense = best_eval["defense"]
     hvb = best_eval.get("hvb", 0)
     ukeire = best_eval.get("ukeire", 0)
-
-    open_meld_count = sum(1 for m in old_state.my_melds if m.is_open) if hasattr(old_state, 'my_melds') else 0
-    turn = (old_state.tsumo_count // 4) if hasattr(old_state, 'tsumo_count') else 0
-
-    lines = []
 
     if ctype == "skip":
         lines.append(f"鳴かずに{tile}を切ります。")
