@@ -486,7 +486,16 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
         meld_tile_str = ""
         if cand and cand.get("tiles"):
             meld_tile_str = _fmt_tile(cand["tiles"][0])
-        meld_name = "ポン" if ctype == "pon" else "チー"
+        if ctype == "pon":
+            meld_name = "ポン"
+        elif ctype == "daiminkan":
+            meld_name = "大明槓"
+        elif ctype == "ankan":
+            meld_name = "暗槓"
+        elif ctype == "kakan":
+            meld_name = "加槓"
+        else:
+            meld_name = "チー"
         lines.append(f"{meld_name}して{tile}を切ります。")
 
         # 役牌チェック

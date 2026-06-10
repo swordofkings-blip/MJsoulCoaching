@@ -1,0 +1,18 @@
+{
+  "chang": 0, "ju": 1, "ben": 0,
+  "my_seat": 3,
+  "liqibang": 0,
+  "scores": [25000, 33000, 17000, 25000],
+  "hand": ["6m","7m","7m","7m","4p","4p","5p","5p","6p","3s","5s","7s","7s"],
+  "tsumo": "9s",
+  "dora_indicator": "8s",
+  "left_tile_count": 42,
+  "tsumo_count": 7,
+  "river": [
+    ["4z","1m","1p","4m","4z","6m","8m"],
+    ["8p","8p","1z","6s","2z","2p","7m"],
+    ["9p","9p","2p","1z","2z","3z","2z"],
+    ["4z","3z","1z","2m","8p","1m"]
+  ],
+  "reach_states": [false, false, false, false]
+}

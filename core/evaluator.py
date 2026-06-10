@@ -1359,7 +1359,9 @@ class Evaluator:
             parts.append("ドラ牌")
         if any("フリテン" in d for d in tile_details):
             parts.append("フリテン懸念")
-        if any("役満" in d for d in tile_details):
+        has_yakuman_bonus = any("役満ボーナス" in d for d in tile_details)
+        is_breaking_ankou = hand_counts[tile_id] >= 3
+        if has_yakuman_bonus and not is_breaking_ankou:
             parts.append("役満狙い")
 
         if not parts:

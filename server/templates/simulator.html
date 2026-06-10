@@ -978,6 +978,12 @@
             border: 1px solid rgba(16, 185, 129, 0.4);
         }
 
+        .bot-coach-meld-type-icon.icon-kan {
+            background: rgba(168, 85, 247, 0.2);
+            color: #a855f7;
+            border: 1px solid rgba(168, 85, 247, 0.4);
+        }
+
         .bot-coach-meld-type-icon.icon-skip {
             background: rgba(156, 163, 175, 0.15);
             color: var(--text-muted);
@@ -3052,6 +3058,11 @@ ${riversStr}
                     }
                 }
             }
+            // DAIMINKAN: 手牌に3枚以上ある場合、大明槓が可能
+            if ((hc[dtBase] || 0) >= 3) {
+                candidates.push({ type: "daiminkan", label: "大明槓", tiles: [dtBase, dtBase, dtBase, dtBase], froms: [di, mySeat, mySeat, mySeat] });
+                found = true;
+            }
             if (!found) return;
             const payload = buildCoachPayload();
             if (!payload) return;
@@ -3123,6 +3134,9 @@ ${riversStr}
                     let iconClass, iconText;
                     if (c.type === 'pon') { iconClass = 'icon-pon'; iconText = 'ポン'; }
                     else if (c.type === 'chi') { iconClass = 'icon-chi'; iconText = 'チー'; }
+                    else if (c.type === 'daiminkan') { iconClass = 'icon-kan'; iconText = '明槓'; }
+                    else if (c.type === 'ankan') { iconClass = 'icon-kan'; iconText = '暗槓'; }
+                    else if (c.type === 'kakan') { iconClass = 'icon-kan'; iconText = '加槓'; }
                     else { iconClass = 'icon-skip'; iconText = 'パス'; }
 
                     let rowClass = 'bot-coach-meld-eval-row';
