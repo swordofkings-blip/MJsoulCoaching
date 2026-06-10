@@ -3024,7 +3024,7 @@ ${riversStr}
                 const tsumo = engine.lastTsumo ? engine.lastTsumo[mySeat] : null;
                 if (tsumo && engine.melds && engine.melds[mySeat]) {
                     for (const meld of engine.melds[mySeat]) {
-                        if (meld.type === 1 && meld.tiles && meld.tiles[0] === tsumo) {
+                        if (meld.tiles && meld.tiles.length === 3 && meld.tiles[0] === tsumo) {
                             // 加槓候補: ツモ牌を既存のポンに追加
                             const candidates = [{ type: "skip", label: "スキップ", tiles: [], froms: [] }];
                             candidates.push({ type: "kakan", label: "加槓", tiles: [tsumo], froms: [mySeat] });
