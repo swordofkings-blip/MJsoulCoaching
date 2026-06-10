@@ -1,0 +1,18 @@
+{
+  "chang": 0, "ju": 3, "ben": 0,
+  "my_seat": 1,
+  "liqibang": 0,
+  "scores": [29200, 28300, 18500, 24000],
+  "hand": ["2m","4m","2p","2p","3p","0p","5p","9p","2s","3s","7s","7s","4z"],
+  "tsumo": "1p",
+  "dora_indicator": "1s",
+  "left_tile_count": 64,
+  "tsumo_count": 2,
+  "river": [
+    ["2z","3z"],
+    ["3z"],
+    ["9m"],
+    ["9s"]
+  ],
+  "reach_states": [false, false, false, false]
+}

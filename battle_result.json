@@ -2,41 +2,41 @@
   "config": {
     "seeds": [
       1,
-      12
+      36
     ],
-    "num_seeds": 12,
+    "num_seeds": 36,
     "game_type": "tonpu",
     "room": "jade",
     "workers": 6,
     "quick": true,
-    "logic_a_params": "config_parameters.json",
-    "logic_b_params": "(same)"
+    "logic_a_params": "config\\config_baseline.json",
+    "logic_b_params": "config\\config_parameters.json"
   },
   "summary": {
-    "baseline_avg_pt": 1.73,
-    "test_avg_pt": -22.58,
-    "pt_difference": -24.31,
-    "baseline_total_pt": 83,
-    "test_total_pt": -271,
-    "num_baseline_games": 48,
-    "num_test_games": 12,
-    "elapsed_sec": 208.7
+    "baseline_avg_pt": 2.27,
+    "test_avg_pt": 9.42,
+    "pt_difference": 7.15,
+    "baseline_total_pt": 327,
+    "test_total_pt": 339,
+    "num_baseline_games": 144,
+    "num_test_games": 36,
+    "elapsed_sec": 74.2
   },
   "per_seat": {
     "0": {
-      "baseline_avg": -15.67,
-      "test_avg": -22.58
+      "baseline_avg": 11.78,
+      "test_avg": 9.42
     },
     "1": {
-      "baseline_avg": 14.17,
+      "baseline_avg": -3.67,
       "test_avg": null
     },
     "2": {
-      "baseline_avg": -0.75,
+      "baseline_avg": 16.22,
       "test_avg": null
     },
     "3": {
-      "baseline_avg": 9.17,
+      "baseline_avg": -15.25,
       "test_avg": null
     }
   },
@@ -45,43 +45,43 @@
       "seed": 2,
       "baseline_pts": [
         -103,
-        83,
-        -6,
-        35
+        35,
+        86,
+        -9
       ],
       "test_pts": [
-        -107
+        -103
       ],
       "baseline_placements": [
         [
+          2,
           1,
           3,
-          2,
           0
         ]
       ],
       "test_placements": [
         [
           2,
-          3,
           1,
+          3,
           0
         ]
       ],
       "baseline_scores": [
         [
           17000,
-          33000,
-          24000,
-          25000
+          25000,
+          36000,
+          21000
         ]
       ],
       "test_scores": [
         [
-          13000,
-          24000,
-          38000,
-          25000
+          17000,
+          25000,
+          36000,
+          21000
         ]
       ],
       "baseline_player_stats": [
@@ -90,7 +90,7 @@
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 1,
+          "dealt_in": 0,
           "reach_declarations": 0,
           "reach_wins": 0,
           "open_wins": 0,
@@ -104,223 +104,76 @@
           "placement": 3,
           "final_score": 17000,
           "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 1,
           "wins": 1,
-          "tsumo_wins": 0,
-          "ron_wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
           "dealt_in": 0,
-          "reach_declarations": 1,
+          "reach_declarations": 2,
           "reach_wins": 1,
           "open_wins": 0,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 5,
-          "total_win_points": 9000,
+          "total_han": 3,
+          "total_win_points": 5000,
           "win_turns": [
-            16
+            14
           ],
           "yaku_counts": {
             "立直": 1,
             "一発": 1,
-            "ドラ": 1,
-            "混老頭": 1
+            "門前清自摸和": 1
           },
-          "placement": 0,
-          "final_score": 33000,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 2,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 1,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 2,
-          "final_score": 24000,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 3,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
           "placement": 1,
           "final_score": 25000,
           "num_kyoku": 4,
           "kyoku_with_meld": 1,
-          "max_renchan": 0
-        }
-      ],
-      "test_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 13000,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        }
-      ]
-    },
-    {
-      "seed": 4,
-      "baseline_pts": [
-        -7,
-        86,
-        -104,
-        35
-      ],
-      "test_pts": [
-        -100
-      ],
-      "baseline_placements": [
-        [
-          1,
-          3,
-          0,
-          2
-        ]
-      ],
-      "test_placements": [
-        [
-          2,
-          1,
-          3,
-          0
-        ]
-      ],
-      "baseline_scores": [
-        [
-          23000,
-          36000,
-          16000,
-          25000
-        ]
-      ],
-      "test_scores": [
-        [
-          20000,
-          25000,
-          30000,
-          25000
-        ]
-      ],
-      "baseline_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 2,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 2,
-          "final_score": 23000,
-          "num_kyoku": 7,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
-          "seat": 1,
+          "seat": 2,
           "wins": 1,
-          "tsumo_wins": 0,
-          "ron_wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
           "dealt_in": 0,
-          "reach_declarations": 3,
+          "reach_declarations": 1,
           "reach_wins": 1,
           "open_wins": 0,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 4,
-          "total_win_points": 14000,
+          "total_han": 7,
+          "total_win_points": 13000,
           "win_turns": [
-            12
+            9
           ],
           "yaku_counts": {
             "立直": 1,
             "一発": 1,
+            "門前清自摸和": 1,
+            "タンヤオ": 1,
+            "一盃口": 1,
             "七対子": 1
           },
           "placement": 0,
           "final_score": 36000,
-          "num_kyoku": 7,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 2,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 1,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 16000,
-          "num_kyoku": 7,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 3,
@@ -338,11 +191,14 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 1,
-          "final_score": 25000,
-          "num_kyoku": 7,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "placement": 2,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
@@ -351,8 +207,8 @@
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
           "reach_wins": 0,
           "open_wins": 0,
           "damaten_wins": 0,
@@ -363,30 +219,33 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 3,
-          "final_score": 20000,
-          "num_kyoku": 6,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 17000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 5,
+      "seed": 1,
       "baseline_pts": [
-        -99,
-        33,
-        -7,
-        74
+        86,
+        32,
+        -8,
+        -100
       ],
       "test_pts": [
-        87
+        85
       ],
       "baseline_placements": [
         [
-          3,
+          0,
           1,
           2,
-          0
+          3
         ]
       ],
       "test_placements": [
@@ -399,64 +258,79 @@
       ],
       "baseline_scores": [
         [
-          21000,
-          23000,
-          23000,
-          24000
+          36400,
+          22600,
+          22200,
+          20800
         ]
       ],
       "test_scores": [
         [
-          37000,
-          21000,
-          21000,
-          21000
+          35000,
+          25400,
+          24000,
+          15600
         ]
       ],
       "baseline_player_stats": [
         {
           "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
+          "wins": 2,
+          "tsumo_wins": 2,
           "ron_wins": 0,
           "dealt_in": 0,
-          "reach_declarations": 4,
+          "reach_declarations": 0,
           "reach_wins": 0,
-          "open_wins": 0,
+          "open_wins": 2,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 21000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 5,
-          "max_renchan": 0
+          "total_han": 6,
+          "total_win_points": 11400,
+          "win_turns": [
+            17,
+            12
+          ],
+          "yaku_counts": {
+            "ドラ": 3,
+            "一気通貫": 1,
+            "対々和": 1
+          },
+          "placement": 0,
+          "final_score": 36400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 1,
-          "wins": 0,
+          "wins": 1,
           "tsumo_wins": 0,
-          "ron_wins": 0,
+          "ron_wins": 1,
           "dealt_in": 0,
-          "reach_declarations": 2,
+          "reach_declarations": 0,
           "reach_wins": 0,
-          "open_wins": 0,
+          "open_wins": 1,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
           "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
+          "total_win_points": 400,
+          "win_turns": [
+            9
+          ],
           "yaku_counts": {},
           "placement": 1,
-          "final_score": 23000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
+          "final_score": 22600,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 2,
@@ -464,7 +338,7 @@
           "tsumo_wins": 0,
           "ron_wins": 0,
           "dealt_in": 0,
-          "reach_declarations": 2,
+          "reach_declarations": 0,
           "reach_wins": 0,
           "open_wins": 0,
           "damaten_wins": 0,
@@ -475,17 +349,20 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 2,
-          "final_score": 23000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 22200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 3,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 0,
+          "dealt_in": 1,
           "reach_declarations": 1,
           "reach_wins": 0,
           "open_wins": 0,
@@ -496,244 +373,90 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 0,
-          "final_score": 24000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "placement": 3,
+          "final_score": 20800,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
         {
           "seat": 0,
           "wins": 1,
-          "tsumo_wins": 1,
-          "ron_wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
           "dealt_in": 0,
-          "reach_declarations": 1,
-          "reach_wins": 1,
-          "open_wins": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 4,
-          "total_win_points": 13000,
+          "total_han": 3,
+          "total_win_points": 10000,
           "win_turns": [
-            7
+            16
           ],
           "yaku_counts": {
-            "立直": 1,
-            "一発": 1,
-            "門前清自摸和": 1,
-            "役牌": 1
+            "一気通貫": 1,
+            "対々和": 1
           },
           "placement": 0,
-          "final_score": 37000,
+          "final_score": 35000,
           "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 1
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 1,
-      "baseline_pts": [
-        -8,
-        -98,
-        75,
-        34
-      ],
-      "test_pts": [
-        -101
-      ],
-      "baseline_placements": [
-        [
-          2,
-          3,
-          0,
-          1
-        ]
-      ],
-      "test_placements": [
-        [
-          1,
-          2,
-          3,
-          0
-        ]
-      ],
-      "baseline_scores": [
-        [
-          22000,
-          22000,
-          25000,
-          24000
-        ]
-      ],
-      "test_scores": [
-        [
-          19800,
-          32200,
-          24000,
-          24000
-        ]
-      ],
-      "baseline_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 3,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 2,
-          "final_score": 22000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 1,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 3,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 22000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 2,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 0,
-          "final_score": 25000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
-        },
-        {
-          "seat": 3,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 1,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 1,
-          "final_score": 24000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
-        }
-      ],
-      "test_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 19800,
-          "num_kyoku": 8,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        }
-      ]
-    },
-    {
-      "seed": 3,
+      "seed": 5,
       "baseline_pts": [
         81,
-        35,
-        -103,
-        -5
+        -5,
+        37,
+        -105
       ],
       "test_pts": [
-        -104
+        81
       ],
       "baseline_placements": [
         [
           0,
+          2,
           1,
-          3,
-          2
+          3
         ]
       ],
       "test_placements": [
         [
+          0,
           2,
-          3,
           1,
-          0
+          3
         ]
       ],
       "baseline_scores": [
         [
           31000,
           25000,
-          17000,
-          25000
+          27600,
+          15400
         ]
       ],
       "test_scores": [
         [
-          16700,
-          19000,
-          38100,
-          26200
+          31000,
+          25000,
+          27600,
+          15400
         ]
       ],
       "baseline_player_stats": [
@@ -757,60 +480,19 @@
           "yaku_counts": {
             "立直": 1,
             "一発": 1,
-            "ドラ": 1
+            "役牌": 1
           },
           "placement": 0,
           "final_score": 31000,
           "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 1
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 1,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 1,
-          "final_score": 25000,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 2,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 2,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 17000,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 3,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
@@ -828,13 +510,44 @@
           "placement": 2,
           "final_score": 25000,
           "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        }
-      ],
-      "test_player_stats": [
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
         {
-          "seat": 0,
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 9600,
+          "win_turns": [
+            11
+          ],
+          "yaku_counts": {
+            "一気通貫": 1,
+            "混一色": 1
+          },
+          "placement": 1,
+          "final_score": 27600,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
@@ -850,64 +563,129 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 3,
-          "final_score": 16700,
-          "num_kyoku": 8,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 15400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 7000,
+          "win_turns": [
+            10
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "役牌": 1
+          },
+          "placement": 0,
+          "final_score": 31000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 6,
+      "seed": 3,
       "baseline_pts": [
-        -101,
-        -6,
-        79,
-        35
+        37,
+        -5,
+        83,
+        -107
       ],
       "test_pts": [
-        -107
+        37
       ],
       "baseline_placements": [
         [
           2,
-          3,
+          0,
           1,
-          0
+          3
         ]
       ],
       "test_placements": [
         [
-          3,
-          1,
           2,
-          0
+          0,
+          1,
+          3
         ]
       ],
       "baseline_scores": [
         [
-          19800,
-          24000,
-          29200,
-          25000
+          27900,
+          25000,
+          33500,
+          13600
         ]
       ],
       "test_scores": [
         [
-          13000,
+          27900,
           25000,
-          25000,
-          37000
+          33500,
+          13600
         ]
       ],
       "baseline_player_stats": [
         {
           "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 2900,
+          "win_turns": [
+            14
+          ],
+          "yaku_counts": {
+            "一気通貫": 1
+          },
+          "placement": 1,
+          "final_score": 27900,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 4,
+          "dealt_in": 0,
+          "reach_declarations": 0,
           "reach_wins": 0,
           "open_wins": 0,
           "damaten_wins": 0,
@@ -917,14 +695,153 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 3,
-          "final_score": 19800,
-          "num_kyoku": 12,
+          "placement": 2,
+          "final_score": 25000,
+          "num_kyoku": 4,
           "kyoku_with_meld": 2,
-          "max_renchan": 0
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
-          "seat": 1,
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 2,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 12000,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {
+            "ドラ": 3,
+            "対々和": 1
+          },
+          "placement": 0,
+          "final_score": 33500,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 1600,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {
+            "一気通貫": 1
+          },
+          "placement": 3,
+          "final_score": 13600,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 2900,
+          "win_turns": [
+            14
+          ],
+          "yaku_counts": {
+            "一気通貫": 1
+          },
+          "placement": 1,
+          "final_score": 27900,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 6,
+      "baseline_pts": [
+        34,
+        82,
+        -8,
+        -98
+      ],
+      "test_pts": [
+        34
+      ],
+      "baseline_placements": [
+        [
+          1,
+          0,
+          2,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          0,
+          2,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          24000,
+          32000,
+          22000,
+          22000
+        ]
+      ],
+      "test_scores": [
+        [
+          24000,
+          32000,
+          22000,
+          22000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
@@ -939,44 +856,51 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 2,
+          "placement": 1,
           "final_score": 24000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
+          "num_kyoku": 6,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
-          "seat": 2,
+          "seat": 1,
           "wins": 1,
           "tsumo_wins": 0,
           "ron_wins": 1,
           "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
           "open_wins": 0,
-          "damaten_wins": 1,
+          "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 1,
-          "total_win_points": 4200,
+          "total_han": 2,
+          "total_win_points": 8000,
           "win_turns": [
-            5
+            6
           ],
           "yaku_counts": {
-            "ドラ": 1
+            "立直": 1,
+            "一発": 1
           },
           "placement": 0,
-          "final_score": 29200,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 32000,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
-          "seat": 3,
+          "seat": 2,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 0,
+          "dealt_in": 1,
           "reach_declarations": 0,
           "reach_wins": 0,
           "open_wins": 0,
@@ -987,16 +911,140 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 1,
-          "final_score": 25000,
-          "num_kyoku": 12,
+          "placement": 2,
+          "final_score": 22000,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 3,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 22000,
+          "num_kyoku": 6,
           "kyoku_with_meld": 1,
-          "max_renchan": 0
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
         {
           "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 24000,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 8,
+      "baseline_pts": [
+        34,
+        -107,
+        89,
+        -6
+      ],
+      "test_pts": [
+        34
+      ],
+      "baseline_placements": [
+        [
+          2,
+          0,
+          3,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          0,
+          3,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          24000,
+          13000,
+          39000,
+          24000
+        ]
+      ],
+      "test_scores": [
+        [
+          24000,
+          13000,
+          39000,
+          24000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 24000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
@@ -1013,128 +1061,45 @@
           "yaku_counts": {},
           "placement": 3,
           "final_score": 13000,
-          "num_kyoku": 7,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        }
-      ]
-    },
-    {
-      "seed": 8,
-      "baseline_pts": [
-        -99,
-        33,
-        84,
-        -8
-      ],
-      "test_pts": [
-        32
-      ],
-      "baseline_placements": [
-        [
-          2,
-          1,
-          3,
-          0
-        ]
-      ],
-      "test_placements": [
-        [
-          2,
-          0,
-          1,
-          3
-        ]
-      ],
-      "baseline_scores": [
-        [
-          21000,
-          23000,
-          34000,
-          22000
-        ]
-      ],
-      "test_scores": [
-        [
-          22000,
-          22000,
-          34000,
-          22000
-        ]
-      ],
-      "baseline_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 21000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 1,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 1,
-          "final_score": 23000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "num_kyoku": 4,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 2,
           "wins": 1,
-          "tsumo_wins": 1,
-          "ron_wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
           "dealt_in": 0,
-          "reach_declarations": 1,
+          "reach_declarations": 2,
           "reach_wins": 1,
           "open_wins": 0,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 5,
-          "total_win_points": 10000,
+          "total_han": 7,
+          "total_win_points": 16000,
           "win_turns": [
-            17
+            9
           ],
           "yaku_counts": {
             "立直": 1,
             "一発": 1,
-            "門前清自摸和": 1,
+            "ドラ": 2,
+            "一盃口": 1,
             "七対子": 1
           },
           "placement": 0,
-          "final_score": 34000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 39000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 3,
@@ -1153,10 +1118,13 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 2,
-          "final_score": 22000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 24000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
@@ -1177,23 +1145,211 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 1,
-          "final_score": 22000,
-          "num_kyoku": 7,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 24000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 10,
+      "seed": 4,
       "baseline_pts": [
-        37,
-        -99,
-        77,
-        -8
+        -8,
+        -101,
+        81,
+        36
       ],
       "test_pts": [
-        -7
+        -8
+      ],
+      "baseline_placements": [
+        [
+          2,
+          3,
+          0,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          3,
+          0,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          22400,
+          19900,
+          31200,
+          26500
+        ]
+      ],
+      "test_scores": [
+        [
+          22400,
+          19900,
+          31200,
+          26500
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22400,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 2,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 19900,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 8200,
+          "win_turns": [
+            5
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1
+          },
+          "placement": 0,
+          "final_score": 31200,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 2,
+          "tsumo_wins": 0,
+          "ron_wins": 2,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 2800,
+          "win_turns": [
+            15,
+            7
+          ],
+          "yaku_counts": {
+            "タンヤオ": 1,
+            "ドラ": 1
+          },
+          "placement": 1,
+          "final_score": 26500,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22400,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 7,
+      "baseline_pts": [
+        35,
+        -99,
+        80,
+        -6
+      ],
+      "test_pts": [
+        34
       ],
       "baseline_placements": [
         [
@@ -1205,304 +1361,29 @@
       ],
       "test_placements": [
         [
-          1,
           2,
           0,
-          3
+          3,
+          1
         ]
       ],
       "baseline_scores": [
-        [
-          27400,
-          21600,
-          27800,
-          22200
-        ]
-      ],
-      "test_scores": [
-        [
-          23000,
-          33000,
-          27000,
-          16000
-        ]
-      ],
-      "baseline_player_stats": [
-        {
-          "seat": 0,
-          "wins": 1,
-          "tsumo_wins": 0,
-          "ron_wins": 1,
-          "dealt_in": 2,
-          "reach_declarations": 1,
-          "reach_wins": 1,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 3,
-          "total_win_points": 7000,
-          "win_turns": [
-            8
-          ],
-          "yaku_counts": {
-            "立直": 1,
-            "一発": 1,
-            "タンヤオ": 1
-          },
-          "placement": 1,
-          "final_score": 27400,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 1,
-          "wins": 1,
-          "tsumo_wins": 0,
-          "ron_wins": 1,
-          "dealt_in": 0,
-          "reach_declarations": 5,
-          "reach_wins": 0,
-          "open_wins": 1,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 1,
-          "total_win_points": 1600,
-          "win_turns": [
-            9
-          ],
-          "yaku_counts": {
-            "役牌": 1
-          },
-          "placement": 3,
-          "final_score": 21600,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
-        },
-        {
-          "seat": 2,
-          "wins": 2,
-          "tsumo_wins": 0,
-          "ron_wins": 2,
-          "dealt_in": 1,
-          "reach_declarations": 2,
-          "reach_wins": 1,
-          "open_wins": 1,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 2,
-          "total_win_points": 8800,
-          "win_turns": [
-            8,
-            16
-          ],
-          "yaku_counts": {
-            "立直": 1,
-            "一発": 1
-          },
-          "placement": 0,
-          "final_score": 27800,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 2,
-          "max_renchan": 0
-        },
-        {
-          "seat": 3,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 2,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 2,
-          "final_score": 22200,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
-        }
-      ],
-      "test_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 2,
-          "final_score": 23000,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        }
-      ]
-    },
-    {
-      "seed": 12,
-      "baseline_pts": [
-        -8,
-        80,
-        38,
-        -102
-      ],
-      "test_pts": [
-        35
-      ],
-      "baseline_placements": [
-        [
-          1,
-          2,
-          0,
-          3
-        ]
-      ],
-      "test_placements": [
-        [
-          2,
-          0,
-          1,
-          3
-        ]
-      ],
-      "baseline_scores": [
-        [
-          22300,
-          30500,
-          28800,
-          18400
-        ]
-      ],
-      "test_scores": [
         [
           25000,
+          21000,
+          30000,
+          24000
+        ]
+      ],
+      "test_scores": [
+        [
           24000,
-          30200,
-          19800
+          21000,
+          31000,
+          24000
         ]
       ],
       "baseline_player_stats": [
-        {
-          "seat": 0,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 0,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 2,
-          "final_score": 22300,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 1,
-          "wins": 1,
-          "tsumo_wins": 1,
-          "ron_wins": 0,
-          "dealt_in": 0,
-          "reach_declarations": 1,
-          "reach_wins": 1,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 3,
-          "total_win_points": 6500,
-          "win_turns": [
-            17
-          ],
-          "yaku_counts": {
-            "立直": 1,
-            "一発": 1,
-            "門前清自摸和": 1
-          },
-          "placement": 0,
-          "final_score": 30500,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        },
-        {
-          "seat": 2,
-          "wins": 1,
-          "tsumo_wins": 0,
-          "ron_wins": 1,
-          "dealt_in": 0,
-          "reach_declarations": 1,
-          "reach_wins": 1,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 2,
-          "total_win_points": 6200,
-          "win_turns": [
-            11
-          ],
-          "yaku_counts": {
-            "立直": 1,
-            "一発": 1
-          },
-          "placement": 1,
-          "final_score": 28800,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 1
-        },
-        {
-          "seat": 3,
-          "wins": 0,
-          "tsumo_wins": 0,
-          "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 1,
-          "reach_wins": 0,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 0,
-          "total_win_points": 0,
-          "win_turns": [],
-          "yaku_counts": {},
-          "placement": 3,
-          "final_score": 18400,
-          "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
-        }
-      ],
-      "test_player_stats": [
         {
           "seat": 0,
           "wins": 0,
@@ -1522,21 +1403,513 @@
           "placement": 1,
           "final_score": 25000,
           "num_kyoku": 4,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 6000,
+          "win_turns": [
+            11
+          ],
+          "yaku_counts": {
+            "ドラ": 2,
+            "タンヤオ": 1
+          },
+          "placement": 0,
+          "final_score": 30000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 24000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 24000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 7,
+      "seed": 10,
       "baseline_pts": [
-        92,
-        35,
-        -110,
+        94,
+        -102,
+        29,
+        -11
+      ],
+      "test_pts": [
+        94
+      ],
+      "baseline_placements": [
+        [
+          0,
+          2,
+          3,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          0,
+          2,
+          3,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          44000,
+          18000,
+          19000,
+          19000
+        ]
+      ],
+      "test_scores": [
+        [
+          44000,
+          18000,
+          19000,
+          19000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 7,
+          "total_win_points": 20000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1,
+            "タンヤオ": 1,
+            "一盃口": 1,
+            "七対子": 1
+          },
+          "placement": 0,
+          "final_score": 44000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 18000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 19000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 19000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 7,
+          "total_win_points": 20000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1,
+            "タンヤオ": 1,
+            "一盃口": 1,
+            "七対子": 1
+          },
+          "placement": 0,
+          "final_score": 44000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 11,
+      "baseline_pts": [
+        39,
+        -9,
+        -101,
+        82
+      ],
+      "test_pts": [
+        39
+      ],
+      "baseline_placements": [
+        [
+          3,
+          0,
+          1,
+          2
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          0,
+          1,
+          2
+        ]
+      ],
+      "baseline_scores": [
+        [
+          29000,
+          21000,
+          19000,
+          32000
+        ]
+      ],
+      "test_scores": [
+        [
+          29000,
+          21000,
+          19000,
+          32000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 9000,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {
+            "ドラ": 2,
+            "役牌": 1,
+            "対々和": 1
+          },
+          "placement": 1,
+          "final_score": 29000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 19000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 9000,
+          "win_turns": [
+            12
+          ],
+          "yaku_counts": {
+            "門前清自摸和": 1,
+            "ドラ": 2,
+            "三暗刻": 1
+          },
+          "placement": 0,
+          "final_score": 32000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 0,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 9000,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {
+            "ドラ": 2,
+            "役牌": 1,
+            "対々和": 1
+          },
+          "placement": 1,
+          "final_score": 29000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 14,
+      "baseline_pts": [
+        83,
+        33,
+        -99,
         -7
       ],
       "test_pts": [
-        -9
+        83
       ],
       "baseline_placements": [
         [
@@ -1548,31 +1921,1397 @@
       ],
       "test_placements": [
         [
-          2,
-          1,
           0,
-          3
+          1,
+          3,
+          2
         ]
       ],
       "baseline_scores": [
         [
-          42000,
-          25000,
-          10000,
+          33000,
+          23000,
+          21000,
           23000
         ]
       ],
       "test_scores": [
         [
+          33000,
+          23000,
           21000,
-          22000,
-          36000,
+          23000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 9000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1,
+            "ドラ": 1
+          },
+          "placement": 0,
+          "final_score": 33000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 0,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 23000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 23000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 9000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1,
+            "ドラ": 1
+          },
+          "placement": 0,
+          "final_score": 33000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 0,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 13,
+      "baseline_pts": [
+        -104,
+        -9,
+        36,
+        86
+      ],
+      "test_pts": [
+        -9
+      ],
+      "baseline_placements": [
+        [
+          3,
+          2,
+          1,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          3,
+          0,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          16000,
+          21800,
+          26000,
+          36200
+        ]
+      ],
+      "test_scores": [
+        [
+          21000,
+          19800,
+          34000,
+          25200
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 16000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 21800,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 3200,
+          "win_turns": [
+            11
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 1,
+          "final_score": 26000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 2,
+          "tsumo_wins": 0,
+          "ron_wins": 2,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 2,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 11200,
+          "win_turns": [
+            9,
+            16
+          ],
+          "yaku_counts": {
+            "タンヤオ": 1,
+            "役牌": 1,
+            "対々和": 1
+          },
+          "placement": 0,
+          "final_score": 36200,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 21000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 12,
+      "baseline_pts": [
+        85,
+        35,
+        -105,
+        -5
+      ],
+      "test_pts": [
+        85
+      ],
+      "baseline_placements": [
+        [
+          0,
+          1,
+          3,
+          2
+        ]
+      ],
+      "test_placements": [
+        [
+          0,
+          1,
+          3,
+          2
+        ]
+      ],
+      "baseline_scores": [
+        [
+          35000,
+          25000,
+          15000,
+          25000
+        ]
+      ],
+      "test_scores": [
+        [
+          35000,
+          25000,
+          15000,
+          25000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 10000,
+          "win_turns": [
+            13
+          ],
+          "yaku_counts": {
+            "ドラ": 2,
+            "対々和": 1
+          },
+          "placement": 0,
+          "final_score": 35000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 25000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 2,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 15000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 25000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 10000,
+          "win_turns": [
+            13
+          ],
+          "yaku_counts": {
+            "ドラ": 2,
+            "対々和": 1
+          },
+          "placement": 0,
+          "final_score": 35000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 16,
+      "baseline_pts": [
+        -99,
+        80,
+        34,
+        -7
+      ],
+      "test_pts": [
+        -99
+      ],
+      "baseline_placements": [
+        [
+          1,
+          2,
+          3,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          2,
+          3,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          21800,
+          30600,
+          24400,
+          23200
+        ]
+      ],
+      "test_scores": [
+        [
+          21800,
+          30600,
+          24400,
+          23200
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21800,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 2,
+          "tsumo_wins": 1,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 2,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 5600,
+          "win_turns": [
+            13,
+            11
+          ],
+          "yaku_counts": {
+            "ドラ": 2,
+            "一気通貫": 1
+          },
+          "placement": 0,
+          "final_score": 30600,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 24400,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 1600,
+          "win_turns": [
+            8
+          ],
+          "yaku_counts": {
+            "タンヤオ": 1,
+            "三色同順": 1
+          },
+          "placement": 2,
+          "final_score": 23200,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21800,
+          "num_kyoku": 6,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 18,
+      "baseline_pts": [
+        -102,
+        89,
+        31,
+        -9
+      ],
+      "test_pts": [
+        -102
+      ],
+      "baseline_placements": [
+        [
+          1,
+          2,
+          3,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          2,
+          3,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          18200,
+          39800,
+          21000,
+          21000
+        ]
+      ],
+      "test_scores": [
+        [
+          18200,
+          39800,
+          21000,
           21000
         ]
       ],
       "baseline_player_stats": [
         {
           "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 18200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 2,
+          "tsumo_wins": 1,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 7,
+          "total_win_points": 15800,
+          "win_turns": [
+            9,
+            14
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "門前清自摸和": 1,
+            "タンヤオ": 1,
+            "三暗刻": 1,
+            "ドラ": 1,
+            "役牌": 1
+          },
+          "placement": 0,
+          "final_score": 39800,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 18200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 9,
+      "baseline_pts": [
+        80,
+        36,
+        -7,
+        -100
+      ],
+      "test_pts": [
+        -98
+      ],
+      "baseline_placements": [
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          1,
+          2,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          30000,
+          26000,
+          23100,
+          20900
+        ]
+      ],
+      "test_scores": [
+        [
+          22000,
+          24000,
+          24000,
+          25000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 6000,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {
+            "ドラ": 1,
+            "タンヤオ": 1
+          },
+          "placement": 0,
+          "final_score": 30000,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 3000,
+          "win_turns": [
+            8
+          ],
+          "yaku_counts": {
+            "混一色": 1
+          },
+          "placement": 1,
+          "final_score": 26000,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 6,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 2100,
+          "win_turns": [
+            18
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 2,
+          "final_score": 23100,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 5,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 20900,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 3,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 22000,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 15,
+      "baseline_pts": [
+        -7,
+        -98,
+        81,
+        34
+      ],
+      "test_pts": [
+        -7
+      ],
+      "baseline_placements": [
+        [
+          2,
+          3,
+          0,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          3,
+          0,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          23000,
+          22000,
+          31000,
+          24000
+        ]
+      ],
+      "test_scores": [
+        [
+          23000,
+          22000,
+          31000,
+          24000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 23000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 22000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 2,
+          "tsumo_wins": 0,
+          "ron_wins": 2,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 2,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 7000,
+          "win_turns": [
+            5,
+            14
+          ],
+          "yaku_counts": {
+            "役牌": 1,
+            "一気通貫": 1
+          },
+          "placement": 0,
+          "final_score": 31000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 24000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 23000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 19,
+      "baseline_pts": [
+        -106,
+        37,
+        -6,
+        82
+      ],
+      "test_pts": [
+        -106
+      ],
+      "baseline_placements": [
+        [
+          3,
+          1,
+          2,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          1,
+          2,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          14600,
+          27800,
+          24800,
+          32800
+        ]
+      ],
+      "test_scores": [
+        [
+          14600,
+          27800,
+          24800,
+          32800
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 2,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 14600,
+          "num_kyoku": 7,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 2,
+          "tsumo_wins": 1,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 2800,
+          "win_turns": [
+            4,
+            13
+          ],
+          "yaku_counts": {
+            "三色同順": 1
+          },
+          "placement": 1,
+          "final_score": 27800,
+          "num_kyoku": 7,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 24800,
+          "num_kyoku": 7,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
           "wins": 1,
           "tsumo_wins": 0,
           "ron_wins": 1,
@@ -1584,20 +3323,125 @@
           "tenpai_exhaustive": 0,
           "busted": false,
           "total_han": 4,
-          "total_win_points": 18000,
+          "total_win_points": 9000,
           "win_turns": [
-            8
+            16
           ],
           "yaku_counts": {
             "立直": 1,
-            "一発": 1,
+            "一盃口": 1,
             "七対子": 1
           },
           "placement": 0,
-          "final_score": 42000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 1
+          "final_score": 32800,
+          "num_kyoku": 7,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 2,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 14600,
+          "num_kyoku": 7,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 17,
+      "baseline_pts": [
+        78,
+        -6,
+        34,
+        -100
+      ],
+      "test_pts": [
+        78
+      ],
+      "baseline_placements": [
+        [
+          0,
+          2,
+          1,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          0,
+          2,
+          1,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          28000,
+          24400,
+          24600,
+          20400
+        ]
+      ],
+      "test_scores": [
+        [
+          28000,
+          24400,
+          24600,
+          20400
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 5600,
+          "win_turns": [
+            7
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 0,
+          "final_score": 28000,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 1,
@@ -1615,19 +3459,52 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 1,
-          "final_score": 25000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "placement": 2,
+          "final_score": 24400,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 2,
+          "wins": 2,
+          "tsumo_wins": 1,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 4,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 4000,
+          "win_turns": [
+            13,
+            8
+          ],
+          "yaku_counts": {
+            "一盃口": 1
+          },
+          "placement": 1,
+          "final_score": 24600,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 1,
-          "reach_declarations": 3,
+          "dealt_in": 0,
+          "reach_declarations": 4,
           "reach_wins": 0,
           "open_wins": 0,
           "damaten_wins": 0,
@@ -1638,18 +3515,156 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 3,
-          "final_score": 10000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 20400,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 5600,
+          "win_turns": [
+            7
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 0,
+          "final_score": 28000,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 21,
+      "baseline_pts": [
+        83,
+        -104,
+        -7,
+        36
+      ],
+      "test_pts": [
+        83
+      ],
+      "baseline_placements": [
+        [
+          0,
+          3,
+          2,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          0,
+          3,
+          2,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          33000,
+          16800,
+          23300,
+          26900
+        ]
+      ],
+      "test_scores": [
+        [
+          33000,
+          16800,
+          23300,
+          26900
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 10000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "役牌": 1,
+            "一気通貫": 1,
+            "混一色": 1
+          },
+          "placement": 0,
+          "final_score": 33000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
-          "seat": 3,
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 1200,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 16800,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
           "dealt_in": 0,
-          "reach_declarations": 2,
+          "reach_declarations": 1,
           "reach_wins": 0,
           "open_wins": 0,
           "damaten_wins": 0,
@@ -1660,10 +3675,225 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 2,
-          "final_score": 23000,
-          "num_kyoku": 5,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 23300,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 3200,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 26900,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 10000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "役牌": 1,
+            "一気通貫": 1,
+            "混一色": 1
+          },
+          "placement": 0,
+          "final_score": 33000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 25,
+      "baseline_pts": [
+        -98,
+        81,
+        -8,
+        33
+      ],
+      "test_pts": [
+        -98
+      ],
+      "baseline_placements": [
+        [
+          1,
+          3,
+          2,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          3,
+          2,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          22400,
+          31200,
+          22700,
+          23700
+        ]
+      ],
+      "test_scores": [
+        [
+          22400,
+          31200,
+          22700,
+          23700
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 22400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 3,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 9200,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "門前清自摸和": 1,
+            "役牌": 1
+          },
+          "placement": 0,
+          "final_score": 31200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22700,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 23700,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
@@ -1683,55 +3913,434 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 2,
-          "final_score": 21000,
-          "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "placement": 3,
+          "final_score": 22400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 11,
+      "seed": 20,
       "baseline_pts": [
-        35,
-        89,
-        -109,
-        -5
+        36,
+        77,
+        -6,
+        -101
       ],
       "test_pts": [
-        35
+        36
       ],
       "baseline_placements": [
         [
           1,
           0,
-          3,
-          2
+          2,
+          3
         ]
       ],
       "test_placements": [
         [
           1,
           0,
-          3,
-          2
+          2,
+          3
         ]
       ],
       "baseline_scores": [
         [
-          25000,
-          39000,
-          11000,
-          25000
+          26700,
+          27800,
+          24600,
+          19900
         ]
       ],
       "test_scores": [
         [
-          25000,
-          38000,
-          12000,
-          25000
+          26700,
+          27800,
+          24600,
+          19900
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 2300,
+          "win_turns": [
+            13
+          ],
+          "yaku_counts": {
+            "ドラ": 1,
+            "タンヤオ": 1
+          },
+          "placement": 1,
+          "final_score": 26700,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 8,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 2,
+          "tsumo_wins": 0,
+          "ron_wins": 2,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 4800,
+          "win_turns": [
+            17,
+            14
+          ],
+          "yaku_counts": {
+            "立直": 1
+          },
+          "placement": 0,
+          "final_score": 27800,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 7,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 3,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 3800,
+          "win_turns": [
+            11
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "役牌": 1
+          },
+          "placement": 2,
+          "final_score": 24600,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 2,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 19900,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 8,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 2300,
+          "win_turns": [
+            13
+          ],
+          "yaku_counts": {
+            "ドラ": 1,
+            "タンヤオ": 1
+          },
+          "placement": 1,
+          "final_score": 26700,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 8,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 24,
+      "baseline_pts": [
+        -8,
+        -100,
+        33,
+        84
+      ],
+      "test_pts": [
+        -8
+      ],
+      "baseline_placements": [
+        [
+          3,
+          2,
+          0,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          2,
+          0,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          22200,
+          20800,
+          23000,
+          34000
+        ]
+      ],
+      "test_scores": [
+        [
+          22200,
+          20800,
+          23000,
+          34000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 1200,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22200,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 20800,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 23000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 9000,
+          "win_turns": [
+            18
+          ],
+          "yaku_counts": {
+            "門前清自摸和": 1,
+            "ドラ": 3,
+            "役牌": 1
+          },
+          "placement": 0,
+          "final_score": 34000,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 1200,
+          "win_turns": [
+            16
+          ],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22200,
+          "num_kyoku": 5,
+          "kyoku_with_meld": 3,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 22,
+      "baseline_pts": [
+        34,
+        -98,
+        -7,
+        80
+      ],
+      "test_pts": [
+        34
+      ],
+      "baseline_placements": [
+        [
+          3,
+          0,
+          2,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          0,
+          2,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          24000,
+          22500,
+          23500,
+          30000
+        ]
+      ],
+      "test_scores": [
+        [
+          24000,
+          22500,
+          23500,
+          30000
         ]
       ],
       "baseline_player_stats": [
@@ -1752,46 +4361,20 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 1,
-          "final_score": 25000,
-          "num_kyoku": 6,
-          "kyoku_with_meld": 2,
-          "max_renchan": 0
+          "final_score": 24000,
+          "num_kyoku": 10,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 1,
-          "wins": 1,
-          "tsumo_wins": 0,
-          "ron_wins": 1,
-          "dealt_in": 0,
-          "reach_declarations": 2,
-          "reach_wins": 1,
-          "open_wins": 0,
-          "damaten_wins": 0,
-          "tenpai_exhaustive": 0,
-          "busted": false,
-          "total_han": 5,
-          "total_win_points": 16000,
-          "win_turns": [
-            8
-          ],
-          "yaku_counts": {
-            "立直": 1,
-            "一発": 1,
-            "ドラ": 1,
-            "一気通貫": 1
-          },
-          "placement": 0,
-          "final_score": 39000,
-          "num_kyoku": 6,
-          "kyoku_with_meld": 0,
-          "max_renchan": 1
-        },
-        {
-          "seat": 2,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 1,
+          "dealt_in": 0,
           "reach_declarations": 2,
           "reach_wins": 0,
           "open_wins": 0,
@@ -1803,18 +4386,21 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 3,
-          "final_score": 11000,
-          "num_kyoku": 6,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 22500,
+          "num_kyoku": 10,
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
-          "seat": 3,
+          "seat": 2,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
           "dealt_in": 0,
-          "reach_declarations": 0,
+          "reach_declarations": 1,
           "reach_wins": 0,
           "open_wins": 0,
           "damaten_wins": 0,
@@ -1825,10 +4411,43 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 2,
-          "final_score": 25000,
-          "num_kyoku": 6,
-          "kyoku_with_meld": 1,
-          "max_renchan": 0
+          "final_score": 23500,
+          "num_kyoku": 10,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 7000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "門前清自摸和": 1
+          },
+          "placement": 0,
+          "final_score": 30000,
+          "num_kyoku": 10,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
@@ -1849,54 +4468,252 @@
           "win_turns": [],
           "yaku_counts": {},
           "placement": 1,
-          "final_score": 25000,
-          "num_kyoku": 6,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "final_score": 24000,
+          "num_kyoku": 10,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     },
     {
-      "seed": 9,
+      "seed": 28,
       "baseline_pts": [
+        86,
         -8,
-        -101,
-        77,
-        32
+        32,
+        -99
       ],
       "test_pts": [
-        75
+        86
       ],
       "baseline_placements": [
         [
-          2,
-          3,
           0,
-          1
+          2,
+          1,
+          3
         ]
       ],
       "test_placements": [
         [
           0,
+          2,
+          1,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          36400,
+          22400,
+          22500,
+          21700
+        ]
+      ],
+      "test_scores": [
+        [
+          36400,
+          22400,
+          22500,
+          21700
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 7,
+          "total_win_points": 13000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1,
+            "ドラ": 2,
+            "一気通貫": 1
+          },
+          "placement": 0,
+          "final_score": 36400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 0,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 1200,
+          "win_turns": [
+            5
+          ],
+          "yaku_counts": {
+            "門前清自摸和": 1
+          },
+          "placement": 2,
+          "final_score": 22400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 800,
+          "win_turns": [
+            6
+          ],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 22500,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21700,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 7,
+          "total_win_points": 13000,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "門前清自摸和": 1,
+            "ドラ": 2,
+            "一気通貫": 1
+          },
+          "placement": 0,
+          "final_score": 36400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 0,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 23,
+      "baseline_pts": [
+        -8,
+        80,
+        37,
+        -100
+      ],
+      "test_pts": [
+        -8
+      ],
+      "baseline_placements": [
+        [
           1,
           2,
+          0,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          2,
+          0,
           3
         ]
       ],
       "baseline_scores": [
         [
           22000,
-          19200,
-          27000,
-          22800
+          30000,
+          27800,
+          20200
         ]
       ],
       "test_scores": [
         [
-          25000,
-          23200,
-          23000,
-          22800
+          22000,
+          30000,
+          27800,
+          20200
         ]
       ],
       "baseline_player_stats": [
@@ -1919,34 +4736,41 @@
           "placement": 2,
           "final_score": 22000,
           "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 1,
           "wins": 1,
           "tsumo_wins": 0,
           "ron_wins": 1,
-          "dealt_in": 1,
-          "reach_declarations": 4,
-          "reach_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
           "open_wins": 0,
-          "damaten_wins": 1,
+          "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 1,
-          "total_win_points": 2200,
+          "total_han": 2,
+          "total_win_points": 6000,
           "win_turns": [
-            9
+            13
           ],
           "yaku_counts": {
-            "ドラ": 1
+            "立直": 1,
+            "役牌": 1
           },
-          "placement": 3,
-          "final_score": 19200,
+          "placement": 0,
+          "final_score": 30000,
           "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "kyoku_with_meld": 8,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 2,
@@ -1954,34 +4778,35 @@
           "tsumo_wins": 0,
           "ron_wins": 1,
           "dealt_in": 0,
-          "reach_declarations": 3,
+          "reach_declarations": 4,
           "reach_wins": 1,
           "open_wins": 0,
           "damaten_wins": 0,
           "tenpai_exhaustive": 0,
           "busted": false,
-          "total_han": 3,
-          "total_win_points": 5000,
+          "total_han": 1,
+          "total_win_points": 6800,
           "win_turns": [
-            9
+            15
           ],
           "yaku_counts": {
-            "立直": 1,
-            "一発": 1,
-            "ドラ": 1
+            "立直": 1
           },
-          "placement": 0,
-          "final_score": 27000,
+          "placement": 1,
+          "final_score": 27800,
           "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "kyoku_with_meld": 4,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         },
         {
           "seat": 3,
           "wins": 0,
           "tsumo_wins": 0,
           "ron_wins": 0,
-          "dealt_in": 1,
+          "dealt_in": 2,
           "reach_declarations": 1,
           "reach_wins": 0,
           "open_wins": 0,
@@ -1992,11 +4817,383 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 1,
-          "final_score": 22800,
+          "placement": 3,
+          "final_score": 20200,
           "num_kyoku": 12,
+          "kyoku_with_meld": 9,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 3,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22000,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 29,
+      "baseline_pts": [
+        91,
+        -114,
+        -6,
+        38
+      ],
+      "test_pts": [
+        91
+      ],
+      "baseline_placements": [
+        [
+          0,
+          3,
+          2,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          0,
+          3,
+          2,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          41200,
+          6200,
+          24200,
+          28400
+        ]
+      ],
+      "test_scores": [
+        [
+          41200,
+          6200,
+          24200,
+          28400
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 6,
+          "total_win_points": 19000,
+          "win_turns": [
+            12
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "ドラ": 3,
+            "一盃口": 1
+          },
+          "placement": 0,
+          "final_score": 41200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 6200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 24200,
+          "num_kyoku": 4,
           "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 3400,
+          "win_turns": [
+            6
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 1,
+          "final_score": 28400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 6,
+          "total_win_points": 19000,
+          "win_turns": [
+            12
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "ドラ": 3,
+            "一盃口": 1
+          },
+          "placement": 0,
+          "final_score": 41200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 27,
+      "baseline_pts": [
+        35,
+        -101,
+        81,
+        -5
+      ],
+      "test_pts": [
+        35
+      ],
+      "baseline_placements": [
+        [
+          2,
+          0,
+          3,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          0,
+          3,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          25000,
+          19000,
+          31000,
+          25000
+        ]
+      ],
+      "test_scores": [
+        [
+          25000,
+          19000,
+          31000,
+          25000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 25000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 19000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 8000,
+          "win_turns": [
+            9
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "七対子": 1
+          },
+          "placement": 0,
+          "final_score": 31000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 25000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ],
       "test_player_stats": [
@@ -2016,11 +5213,1505 @@
           "total_win_points": 0,
           "win_turns": [],
           "yaku_counts": {},
-          "placement": 0,
+          "placement": 1,
           "final_score": 25000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 30,
+      "baseline_pts": [
+        31,
+        -9,
+        -107,
+        95
+      ],
+      "test_pts": [
+        31
+      ],
+      "baseline_placements": [
+        [
+          3,
+          0,
+          1,
+          2
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          0,
+          1,
+          2
+        ]
+      ],
+      "baseline_scores": [
+        [
+          21000,
+          21000,
+          13000,
+          45000
+        ]
+      ],
+      "test_scores": [
+        [
+          21000,
+          21000,
+          13000,
+          45000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 13000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 2,
+          "tsumo_wins": 1,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 9,
+          "total_win_points": 21000,
+          "win_turns": [
+            12,
+            10
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "七対子": 1,
+            "ドラ": 3,
+            "三暗刻": 1
+          },
+          "placement": 0,
+          "final_score": 45000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 31,
+      "baseline_pts": [
+        91,
+        31,
+        -9,
+        -99
+      ],
+      "test_pts": [
+        91
+      ],
+      "baseline_placements": [
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          41000,
+          21000,
+          21000,
+          21000
+        ]
+      ],
+      "test_scores": [
+        [
+          41000,
+          21000,
+          21000,
+          21000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 2,
+          "tsumo_wins": 2,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 2,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 10,
+          "total_win_points": 18000,
+          "win_turns": [
+            19,
+            18
+          ],
+          "yaku_counts": {
+            "立直": 2,
+            "門前清自摸和": 2,
+            "ドラ": 2,
+            "一盃口": 1,
+            "七対子": 1,
+            "一発": 1
+          },
+          "placement": 0,
+          "final_score": 41000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 2,
+          "tsumo_wins": 2,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 2,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 10,
+          "total_win_points": 18000,
+          "win_turns": [
+            19,
+            18
+          ],
+          "yaku_counts": {
+            "立直": 2,
+            "門前清自摸和": 2,
+            "ドラ": 2,
+            "一盃口": 1,
+            "七対子": 1,
+            "一発": 1
+          },
+          "placement": 0,
+          "final_score": 41000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 33,
+      "baseline_pts": [
+        -105,
+        84,
+        -5,
+        35
+      ],
+      "test_pts": [
+        -105
+      ],
+      "baseline_placements": [
+        [
+          1,
+          3,
+          2,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          3,
+          2,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          15000,
+          34600,
+          25000,
+          25400
+        ]
+      ],
+      "test_scores": [
+        [
+          15000,
+          34600,
+          25000,
+          25400
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 2,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 2400,
+          "win_turns": [
+            11
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 3,
+          "final_score": 15000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 7,
+          "total_win_points": 12000,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {
+            "ドラ": 3,
+            "対々和": 1,
+            "三暗刻": 1
+          },
+          "placement": 0,
+          "final_score": 34600,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 25000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 1,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 400,
+          "win_turns": [
+            6
+          ],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 25400,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 2,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 2400,
+          "win_turns": [
+            11
+          ],
+          "yaku_counts": {
+            "役牌": 1
+          },
+          "placement": 3,
+          "final_score": 15000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 26,
+      "baseline_pts": [
+        -6,
+        -101,
+        37,
+        79
+      ],
+      "test_pts": [
+        -6
+      ],
+      "baseline_placements": [
+        [
+          3,
+          2,
+          0,
+          1
+        ]
+      ],
+      "test_placements": [
+        [
+          3,
+          2,
+          0,
+          1
+        ]
+      ],
+      "baseline_scores": [
+        [
+          24400,
+          19100,
+          27500,
+          29000
+        ]
+      ],
+      "test_scores": [
+        [
+          24400,
+          19100,
+          27500,
+          29000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 3,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 8000,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {
+            "ドラ": 3,
+            "対々和": 1
+          },
+          "placement": 2,
+          "final_score": 24400,
           "num_kyoku": 12,
-          "kyoku_with_meld": 0,
-          "max_renchan": 0
+          "kyoku_with_meld": 8,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 3,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 7200,
+          "win_turns": [
+            6
+          ],
+          "yaku_counts": {
+            "混一色": 1
+          },
+          "placement": 3,
+          "final_score": 19100,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 5,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 3,
+          "tsumo_wins": 0,
+          "ron_wins": 3,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 2,
+          "damaten_wins": 1,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 3500,
+          "win_turns": [
+            8,
+            10,
+            13
+          ],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 27500,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 7,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 1,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 2,
+          "total_win_points": 5000,
+          "win_turns": [
+            3
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1
+          },
+          "placement": 0,
+          "final_score": 29000,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 6,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 3,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 8000,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {
+            "ドラ": 3,
+            "対々和": 1
+          },
+          "placement": 2,
+          "final_score": 24400,
+          "num_kyoku": 12,
+          "kyoku_with_meld": 8,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 36,
+      "baseline_pts": [
+        -5,
+        35,
+        83,
+        -104
+      ],
+      "test_pts": [
+        -5
+      ],
+      "baseline_placements": [
+        [
+          2,
+          1,
+          0,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          1,
+          0,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          25000,
+          25800,
+          33200,
+          16000
+        ]
+      ],
+      "test_scores": [
+        [
+          25000,
+          25800,
+          33200,
+          16000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 25000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 800,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 25800,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 4,
+          "total_win_points": 9000,
+          "win_turns": [
+            14
+          ],
+          "yaku_counts": {
+            "対々和": 1,
+            "三色同刻": 1
+          },
+          "placement": 0,
+          "final_score": 33200,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 16000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 2,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 25000,
+          "num_kyoku": 4,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 32,
+      "baseline_pts": [
+        -99,
+        83,
+        -8,
+        33
+      ],
+      "test_pts": [
+        -99
+      ],
+      "baseline_placements": [
+        [
+          1,
+          3,
+          2,
+          0
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          3,
+          2,
+          0
+        ]
+      ],
+      "baseline_scores": [
+        [
+          21000,
+          33200,
+          22500,
+          23300
+        ]
+      ],
+      "test_scores": [
+        [
+          21000,
+          33200,
+          22500,
+          23300
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21000,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 2,
+          "tsumo_wins": 2,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 4,
+          "reach_wins": 2,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 5,
+          "total_win_points": 13000,
+          "win_turns": [
+            11,
+            14
+          ],
+          "yaku_counts": {
+            "立直": 2,
+            "一発": 1,
+            "門前清自摸和": 2
+          },
+          "placement": 0,
+          "final_score": 33200,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 22500,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 800,
+          "win_turns": [
+            15
+          ],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 23300,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 21000,
+          "num_kyoku": 9,
+          "kyoku_with_meld": 5,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 34,
+      "baseline_pts": [
+        -6,
+        34,
+        84,
+        -103
+      ],
+      "test_pts": [
+        -6
+      ],
+      "baseline_placements": [
+        [
+          2,
+          1,
+          0,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          2,
+          1,
+          0,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          24000,
+          24200,
+          34800,
+          17000
+        ]
+      ],
+      "test_scores": [
+        [
+          24000,
+          24200,
+          34800,
+          17000
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 24000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 1,
+          "final_score": 24200,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 2,
+          "tsumo_wins": 0,
+          "ron_wins": 2,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 2,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 9800,
+          "win_turns": [
+            14,
+            15
+          ],
+          "yaku_counts": {
+            "役牌": 1,
+            "対々和": 1
+          },
+          "placement": 0,
+          "final_score": 34800,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 7,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 17000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 4,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 1,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 24000,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ]
+    },
+    {
+      "seed": 35,
+      "baseline_pts": [
+        35,
+        80,
+        -7,
+        -101
+      ],
+      "test_pts": [
+        35
+      ],
+      "baseline_placements": [
+        [
+          1,
+          0,
+          2,
+          3
+        ]
+      ],
+      "test_placements": [
+        [
+          1,
+          0,
+          2,
+          3
+        ]
+      ],
+      "baseline_scores": [
+        [
+          25500,
+          30900,
+          23900,
+          19700
+        ]
+      ],
+      "test_scores": [
+        [
+          25500,
+          30900,
+          23900,
+          19700
+        ]
+      ],
+      "baseline_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 1800,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "一気通貫": 1
+          },
+          "placement": 1,
+          "final_score": 25500,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 5,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 1,
+          "wins": 2,
+          "tsumo_wins": 1,
+          "ron_wins": 1,
+          "dealt_in": 0,
+          "reach_declarations": 2,
+          "reach_wins": 1,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 3,
+          "total_win_points": 8500,
+          "win_turns": [
+            13,
+            11
+          ],
+          "yaku_counts": {
+            "立直": 1,
+            "一発": 1,
+            "タンヤオ": 1
+          },
+          "placement": 0,
+          "final_score": 30900,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 3,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 2,
+          "wins": 0,
+          "tsumo_wins": 0,
+          "ron_wins": 0,
+          "dealt_in": 0,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 0,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 0,
+          "win_turns": [],
+          "yaku_counts": {},
+          "placement": 2,
+          "final_score": 23900,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 6,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        },
+        {
+          "seat": 3,
+          "wins": 1,
+          "tsumo_wins": 0,
+          "ron_wins": 1,
+          "dealt_in": 1,
+          "reach_declarations": 2,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 0,
+          "total_win_points": 1800,
+          "win_turns": [
+            13
+          ],
+          "yaku_counts": {},
+          "placement": 3,
+          "final_score": 19700,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 3,
+          "max_renchan": 0,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
+        }
+      ],
+      "test_player_stats": [
+        {
+          "seat": 0,
+          "wins": 1,
+          "tsumo_wins": 1,
+          "ron_wins": 0,
+          "dealt_in": 1,
+          "reach_declarations": 0,
+          "reach_wins": 0,
+          "open_wins": 1,
+          "damaten_wins": 0,
+          "tenpai_exhaustive": 0,
+          "busted": false,
+          "total_han": 1,
+          "total_win_points": 1800,
+          "win_turns": [
+            17
+          ],
+          "yaku_counts": {
+            "一気通貫": 1
+          },
+          "placement": 1,
+          "final_score": 25500,
+          "num_kyoku": 8,
+          "kyoku_with_meld": 5,
+          "max_renchan": 1,
+          "yakuman_bonus_count": 0,
+          "meld_seal_count": 0,
+          "gap_relaxation_count": 0
         }
       ]
     }

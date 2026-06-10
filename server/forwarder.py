@@ -338,12 +338,19 @@ def evaluate_state(payload: dict) -> dict:
     }
 
 
+def _normalize_hand_red_five(hand):
+    """Convert red 5 tiles (0m/0p/0s) to regular 5 (5m/5p/5s) for matching."""
+    return ['5' + t[1:] if t and t[0] == '0' else t for t in hand]
+
+
 def evaluate_meld(payload: dict) -> dict:
     """
     @title 副露判断評価
     @description 局面JSONと副露候補のリストを受け取り、各候補（スキップ含む）を評価して最善を返す。
     """
     state = _restore_game_state(payload)
+    # Normalize red 5 tiles in hand so candidate tiles (e.g. "5p") match hand tiles (e.g. "0p")
+    state.my_hand = _normalize_hand_red_five(state.my_hand)
     import json
     config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters_ldea_v1.json')
     if os.path.exists(config_path):
@@ -373,7 +380,7 @@ def evaluate_meld(payload: dict) -> dict:
                     best_eval = entry
             results.append({
                 "type": "skip",
-                "label": "スキップ（鳴かない）",
+                "label": "スキップ",
                 "best_discard": best_tile,
                 "best_score": best_score,
                 "best_eval": best_eval,
@@ -594,6 +601,7 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
     # 役満ボーナスの抽出
     yakuman_bonus = 0
     yakuman_name = ""
+    key_details = []  # 決定理由に表示するIF判定ベースの詳細メッセージ
     try:
         details = evaluator.details.get(tile, [])
         for d in details:
@@ -603,6 +611,14 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
                 if m:
                     yakuman_name = m.group(1)
                     yakuman_bonus = int(m.group(2))
+            # 戦略モードや汎用スコアリング情報は除き、IF判定に基づく具体的な評価因子を抽出
+            if not any(skip in d for skip in ["戦略モード", "EV期待値評価", "順位状況価値", "形テンボーナス",
+                                               "他家脅威による字牌評価減衰", "一発放銃回避",
+                                                "有効牌枚数", "シャンテン", "手効率基本"]):
+                if any(kw in d for kw in ["ボーナス", "ペナルティ", "危険", "安全", "役満",
+                                           "染め", "搭子", "両面", "ドラ", "6ブロック",
+                                           "フリテン", "不要"]):
+                    key_details.append(d)
     except:
         pass
 
@@ -619,6 +635,7 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         "hvb": hvb,
         "yakuman_bonus": yakuman_bonus,
         "yakuman_name": yakuman_name,
+        "key_details": key_details,
         "reason": "",
     }
 
@@ -634,12 +651,14 @@ def _safety_description(defense: float, evaluator: 'Evaluator') -> str:
     score_honor = p.get('SCORE_HONOR', SCORE_HONOR)
     if defense >= score_genbutsu:
         return "現物 (安全度: 極高)"
-    if defense >= score_wall:
-        return "壁スジ (安全度: 非常高)"
+    if defense >= 750:
+        return "壁端 (安全度: 非常高)"
     if defense >= score_no_chance:
         return "ノーチャンス (安全度: 高)"
     if defense >= score_suji:
         return "スジ (安全度: 高)"
+    if defense >= score_wall:
+        return "壁スジ (安全度: 中)"
     if defense >= score_one_chance:
         return "ワンチャンス (安全度: 中)"
     if defense >= score_honor:
@@ -662,11 +681,11 @@ def _attack_description(shanten: int, ukeire: int) -> str:
     if shanten <= -1:
         return f"和了形 (聴牌済・有効牌 {ukeire} 枚でアガリ可能)"
     if shanten == 0:
-        return f"テンパイ維持 (有効牌: {ukeire}枚)"
+        return f"テンパイ (有効牌: {ukeire}枚)"
     if ukeire == 0:
         return f"向聴維持 (有効牌: 0枚・手詰まり)"
     if shanten == 1:
-        return f"1向聴へ前進 (有効牌: {ukeire}枚)"
+        return f"1向聴 (有効牌: {ukeire}枚)"
     return f"{shanten}向聴 (有効牌: {ukeire}枚)"
 
 
@@ -696,6 +715,10 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
         lines.append(f"「{tile}」を推奨。")
     else:
         lines.append(f"「{tile}」を打牌した場合。")
+
+    tile_desc = evaluator.get_tile_description(entry["tile"])
+    if tile_desc:
+        lines.append(tile_desc)
 
     if mode == "攻撃":
         lines.append("攻める手です。")

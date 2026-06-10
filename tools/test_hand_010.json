@@ -1,0 +1,24 @@
+{
+  "chang": 1, "ju": 0, "ben": 0,
+  "my_seat": 0,
+  "liqibang": 0,
+  "scores": [40300, 6500, 24000, 29200],
+  "hand": ["0p","5p","7p","1s","5s","6s","7s","8s","3z","3z"],
+  "tsumo": null,
+  "dora_indicator": "3m",
+  "left_tile_count": 55,
+  "tsumo_count": 4,
+  "river": [
+    ["9m","7z","6z","7m"],
+    ["6z","9p","4z","1z"],
+    ["1m","9s","2m","2z"],
+    ["7z","6z","4z"]
+  ],
+  "melds": [
+    [{"type": 1, "tiles": ["2z","2z","2z"], "froms": [2,0,0], "tile_states": [0,0,0]}],
+    [],
+    [],
+    []
+  ],
+  "reach_states": [false, false, false, false]
+}

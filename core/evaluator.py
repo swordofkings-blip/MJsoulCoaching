@@ -7,6 +7,7 @@ from str_converter import (
     HONOR_IDS,
     TERMINAL_IDS,
     hand_to_counts,
+    id_to_tile,
     is_honor,
     is_red_five,
     is_terminal,
@@ -266,6 +267,47 @@ class DefenseEvaluator:
             self.record_detail(tile, f"他家共通現物 (+{score})")
             return score
 
+        for seat in reach_seats:
+            for t in self.state.river[seat]:
+                if tile_to_id(t) == tile_id:
+                    score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+                    self.record_detail(tile, f"リーチ者個別現物 (S{seat}) (+{score})")
+                    return score
+
+        # リーチ後通過牌（河越し）: リーチ後に誰かが切った牌がロンされなかった＝安牌
+        for seat in reach_seats:
+            # リーチ者の河で、リーチ以降のツモ切り枚数をカウント
+            post_count = 0
+            for m in reversed(self.state.river_moqie[seat]):
+                if m:
+                    post_count += 1
+                else:
+                    break
+            if post_count <= 0:
+                continue
+            # 各他プレーヤーの河の末尾 post_count 枚がリーチ後通過牌
+            for rseat in range(4):
+                if rseat == seat:
+                    continue
+                river = self.state.river[rseat]
+                if len(river) < post_count:
+                    post_count = len(river)
+                start = len(river) - post_count
+                for i in range(start, len(river)):
+                    if tile_to_id(river[i]) == tile_id:
+                        score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+                        self.record_detail(tile, f"リーチ後通過牌 (S{rseat}→S{seat}) (+{score})")
+                        return score
+
+        # リーチ宣言牌の前後（±1）はスジより優先して危険判定
+        riichi_neighbor_ids = self._get_riichi_neighbor_ids(reach_seats)
+
+        suji_ids = self._reach_suji_ids(reach_seats)
+        if tile_id in suji_ids and tile_id not in riichi_neighbor_ids:
+            score = self.params.get('SCORE_SUJI', SCORE_SUJI)
+            self.record_detail(tile, f"スジ安全 (+{score})")
+            return score
+
         if use_p1:
             wall_suji = self._wall_suji_ids()
             if tile_id in wall_suji:
@@ -282,14 +324,6 @@ class DefenseEvaluator:
                 score = self.params.get('SCORE_KABE_EDGE', 750)
                 self.record_detail(tile, f"壁端安全 (+{score})")
                 return score
-
-        suji_ids = self._reach_suji_ids(reach_seats)
-        if tile_id in suji_ids:
-            score = self.params.get('SCORE_SUJI', SCORE_SUJI)
-            self.record_detail(tile, f"スジ安全 (+{score})")
-            return score
-
-        if use_p1:
             one_chance = self._one_chance_ids()
             if tile_id in one_chance:
                 score = self.params.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
@@ -327,10 +361,44 @@ class DefenseEvaluator:
                 penalty = self.params.get('MATAGI_PENALTY', MATAGI_PENALTY)
                 score -= penalty
                 self.record_detail(tile, f"マタギスジ危険 (-{penalty})")
+            if tile_id in riichi_neighbor_ids:
+                penalty = self.params.get('RIICHI_NEIGHBOR_PENALTY', 200)
+                score -= penalty
+                self.record_detail(tile, f"リーチ宣言牌隣接危険 (-{penalty})")
             return score
         score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
         self.record_detail(tile, f"無筋安全基準 ({score})")
         return score
+
+    def _get_riichi_neighbor_ids(self, reach_seats: List[int]) -> set:
+        result = set()
+        for seat in reach_seats:
+            river = self.state.river[seat]
+            moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+            if len(river) < 2:
+                continue
+            post_riichi = 0
+            for m in reversed(moqie):
+                if m:
+                    post_riichi += 1
+                else:
+                    break
+            riichi_idx = len(river) - post_riichi - 1
+            if riichi_idx < 0 or riichi_idx >= len(river):
+                continue
+            for idx in [riichi_idx, riichi_idx - 1]:
+                if idx < 0:
+                    continue
+                tid = tile_to_id(river[idx])
+                if tid >= 27:
+                    continue
+                off = tid % 9
+                base = (tid // 9) * 9
+                if off > 0:
+                    result.add(base + off - 1)
+                if off < 8:
+                    result.add(base + off + 1)
+        return result
 
     def _collect_suji_from_river(self, seat: int) -> List[int]:
         result = set()
@@ -419,7 +487,10 @@ class AttackEvaluator:
         discard_id = tile_to_id(discard_tile)
         new_counts = list(hand_counts)
         new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
-        return ShantenCalculator.calculate_standard(new_counts)
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            return ShantenCalculator.calculate_closed_effective(new_counts)
+        return ShantenCalculator.calculate_open(new_counts, open_meld_count)
 
     def _best_standard_shanten(self) -> int:
         hand_counts = list(self.state.my_hand_counts())
@@ -432,7 +503,11 @@ class AttackEvaluator:
             seen.add(tid)
             tmp = list(hand_counts)
             tmp[tid] -= 1
-            s = ShantenCalculator.calculate_standard(tmp)
+            open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+            if open_meld_count == 0:
+                s = ShantenCalculator.calculate_closed_effective(tmp)
+            else:
+                s = ShantenCalculator.calculate_open(tmp, open_meld_count)
             if s < best:
                 best = s
         return best
@@ -510,6 +585,10 @@ class AttackEvaluator:
                             penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                             score -= penalty
                             self.record_detail(tile, f"6ブロック維持ペナルティ (-{penalty})")
+        furiten_reserve, fr_reason = self._furiten_reserve_penalty(tile)
+        if furiten_reserve > 0:
+            score -= furiten_reserve
+            self.record_detail(tile, fr_reason)
         if shanten >= self.params.get('BETAORI_PREP_SHANTEN', 4):
             score += self._betaori_prep_bonus(tile, shanten)
         return score
@@ -701,11 +780,13 @@ class AttackEvaluator:
                                      seat=self.state.my_seat, chang=self.state.chang,
                                      ju=self.state.ju)
         bonus = score // 10
-        if bonus > 0:
-            self.record_detail(tile, f"手役・打点評価ボーナス (+{bonus})")
-
         counts = self.state.my_hand_counts()
         shanten = ShantenCalculator.calculate_closed_effective(counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(counts, open_meld_count)
+        if bonus > 0:
+            if shanten >= 3 and open_meld_count > 0:
+                damp = max(0.1, 1.0 - (shanten - 2) * 0.35)
+                bonus = int(bonus * damp)
+            self.record_detail(tile, f"手役・打点評価ボーナス (+{bonus})")
         blocks = ShantenCalculator.calculate_blocks(counts, open_meld_count)
         turn = self.state.tsumo_count
 
@@ -1133,6 +1214,55 @@ class AttackEvaluator:
         max_penalty = self.params.get('FURITEN_PENALTY', 300)
         return int(ratio * max_penalty)
 
+    def _furiten_reserve_penalty(self, tile: str) -> int:
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+
+        my_river_ids = set()
+        for t in self.state.river[self.state.my_seat]:
+            my_river_ids.add(tile_to_id(t))
+        if not my_river_ids:
+            return 0, ""
+
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            current_shanten = ShantenCalculator.calculate_closed_effective(new_counts)
+        else:
+            current_shanten = ShantenCalculator.calculate_open(new_counts, open_meld_count)
+        if current_shanten >= 3:
+            return 0, ""
+
+        max_penalty = self.params.get('FURITEN_RESERVE_PENALTY', 300)
+        total_penalty = 0
+        reasons = []
+
+        for tid in range(34):
+            c = new_counts[tid]
+            if c <= 0:
+                continue
+            if is_honor(tid):
+                continue
+            base = (tid // 9) * 9
+            off = tid - base
+            has_l = off > 0 and new_counts[base + off - 1] > 0
+            has_r = off < 8 and new_counts[base + off + 1] > 0
+            if has_l or has_r:
+                continue
+            if off > 0 and (base + off - 1) in my_river_ids:
+                total_penalty += max_penalty
+                reasons.append(f"{id_to_tile(tid)}")
+            if off < 8 and (base + off + 1) in my_river_ids:
+                total_penalty += max_penalty
+                reasons.append(f"{id_to_tile(tid)}")
+
+        total_penalty = min(max_penalty, total_penalty)
+        if total_penalty > 0 and reasons:
+            unique = list(dict.fromkeys(reasons))
+            return total_penalty, f"フリテン予備軍: {','.join(unique)}の隣接牌が河にあるため将来フリテン待ちが含まれる (-{total_penalty})"
+        return total_penalty, ""
+
 
 class Evaluator:
     def __init__(self, state: GameState, params: dict = None):
@@ -1152,6 +1282,89 @@ class Evaluator:
         lst = self.details.setdefault(tile, [])
         if msg not in lst:
             lst.append(msg)
+
+    def get_tile_description(self, tile: str) -> str:
+        """
+        @title 牌特性説明文生成
+        @description 指定された牌がなぜ切りやすいかの簡潔な日本語説明を生成する。
+        record_detail() で記録されたIF判定結果にも連動する。
+        例: "早い順目のオタ風で孤立牌"、"孤立した端牌"、"6ブロック超過の不要牌"
+        @param {str} tile - 評価対象の牌文字列 (例: "3z")
+        @returns {str} 説明文字列（該当なしの場合は空文字）
+        """
+        try:
+            tile_id = tile_to_id(tile)
+        except Exception:
+            return ""
+        hand_counts = hand_to_counts(self.state.my_hand)
+        human_turn = (self.state.tsumo_count - 1) // 4 + 1
+        tile_details = self.details.get(tile, [])
+
+        parts = []
+        if human_turn <= 3:
+            turn_tag = "早い順目"
+        else:
+            turn_tag = ""
+
+        # ドラチェック（IF判定に連動）
+        is_dora = any("ドラ" in d for d in tile_details)
+
+        if is_honor(tile_id):
+            bakaze = 27 + (self.state.chang % 4)
+            jikaze = 27 + (self.state.my_seat % 4)
+
+            if tile_id >= 31:
+                wind_type = "三元牌"
+            elif tile_id == bakaze and tile_id == jikaze:
+                wind_type = "ダブル風"
+            elif tile_id == bakaze:
+                wind_type = "場風"
+            elif tile_id == jikaze:
+                wind_type = "自風"
+            else:
+                wind_type = "オタ風"
+
+            count = hand_counts[tile_id]
+            if count >= 3:
+                return ""
+            if count == 1:
+                prefix = f"{turn_tag}の" if turn_tag else ""
+                parts.append(f"{prefix}{wind_type}で孤立牌")
+        else:
+            base = (tile_id // 9) * 9
+            off = tile_id - base
+            has_l = off > 0 and hand_counts[base + off - 1] > 0
+            has_r = off < 8 and hand_counts[base + off + 1] > 0
+            is_isolated = not has_l and not has_r and hand_counts[tile_id] == 1
+
+            if is_isolated:
+                if off == 0 or off == 8:
+                    parts.append("孤立した端牌")
+                elif off == 1 or off == 7:
+                    parts.append("孤立した2/8牌")
+                else:
+                    parts.append("孤立した中張牌")
+            else:
+                # details のIF判定結果から追加情報を抽出
+                has_6block = any("6ブロック" in d for d in tile_details)
+                has_shape_break = any("搭子破壊" in d for d in tile_details)
+                if has_6block:
+                    parts.append("6ブロック超過の不要牌")
+                if not parts and has_shape_break:
+                    # 搭子を壊す場合 → 打牌候補として不利な情報なので基本スキップ
+                    pass
+
+        # 詳細メッセージから補足タグを抽出（IF判定と連動）
+        if is_dora:
+            parts.append("ドラ牌")
+        if any("フリテン" in d for d in tile_details):
+            parts.append("フリテン懸念")
+        if any("役満" in d for d in tile_details):
+            parts.append("役満狙い")
+
+        if not parts:
+            return ""
+        return "".join(parts) + "のため"
 
     def _get_keiten_bonus(self, tile: str) -> int:
         """

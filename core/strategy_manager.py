@@ -93,38 +93,33 @@ class ShantenCalculator:
     def _open_shanten(counts: List[int], open_meld_count: int) -> int:
         if open_meld_count >= 4:
             return -1
+        if open_meld_count == 0:
+            return ShantenCalculator._standard_shanten(counts)
         best = 8
+        # Head case: try each pair as the head
         for head in range(34):
             if counts[head] < 2:
                 continue
             tmp = list(counts)
             tmp[head] -= 2
-            melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
-            remaining = sum(tmp) - melds * 3
-            extra_pairs = ShantenCalculator._count_extra_pairs(tmp)
-            extra = 0
-            if remaining == 1:
-                extra = 1
-            elif remaining >= 3:
-                leftover_melds = remaining // 3
-                raw = remaining - leftover_melds * 3
-                extra = max(0, raw - extra_pairs)
-            s = (4 - open_meld_count) * 2 - 2 * melds - 1 + extra
-            if extra_pairs >= 1:
-                s -= 1
+            hand_melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
+            blocks = ShantenCalculator.calculate_blocks(tmp, 0)
+            needed = 4 - open_meld_count
+            still_needed = needed - hand_melds
+            # After removing head, all remaining blocks are available for melds
+            meld_blocks = blocks
+            s = still_needed + max(0, still_needed - meld_blocks)
             if s < best:
                 best = s
-        melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
-        remaining = sum(counts) - melds * 3
-        extra_pairs = ShantenCalculator._count_extra_pairs(counts)
-        extra = 0
-        if remaining == 1:
-            extra = 1
-        elif remaining >= 3:
-            leftover_melds = remaining // 3
-            raw = remaining - leftover_melds * 3
-            extra = max(0, raw - extra_pairs)
-        s = (4 - open_meld_count) * 2 - 2 * melds + extra
+        # No-head case
+        hand_melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
+        blocks = ShantenCalculator.calculate_blocks(counts, 0)
+        has_pair = 1 if any(c >= 2 for c in counts) else 0
+        needed = 4 - open_meld_count
+        still_needed = needed - hand_melds
+        # One pair reserved as head, rest are meld-blocks
+        meld_blocks = blocks - has_pair
+        s = still_needed + max(0, still_needed - meld_blocks)
         if s < best:
             best = s
         return best

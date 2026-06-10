@@ -1421,16 +1421,18 @@
                     <div class="bot-coach-panel" id="botCoachPanel"
                         style="flex:1; display:flex; flex-direction:column;">
                         <div class="bot-coach-wait" id="botCoachWait">※手番ではありません</div>
-                            <div class="bot-coach-meld-panel" id="botCoachMeldPanel">
-                                <div class="bot-coach-meld-header">
-                                    <span class="bot-coach-meld-badge">副露判断</span>
-                                    <span id="botCoachMeldStatus"></span>
-                                </div>
-                                <div class="bot-coach-meld-recommend-badge" id="botCoachMeldRecommendBadge" style="display:none;"></div>
-                                <div class="bot-coach-meld-reason-box" id="botCoachMeldReasonText" style="display:none;"></div>
-                                <div class="bot-coach-eval-list" id="botCoachMeldEvalList"></div>
+                        <div class="bot-coach-meld-panel" id="botCoachMeldPanel">
+                            <div class="bot-coach-meld-header">
+                                <span class="bot-coach-meld-badge">副露判断</span>
+                                <span id="botCoachMeldStatus"></span>
                             </div>
-<div class="bot-coach-status" id="botCoachStatus"></div>
+                            <div class="bot-coach-meld-recommend-badge" id="botCoachMeldRecommendBadge"
+                                style="display:none;"></div>
+                            <div class="bot-coach-meld-reason-box" id="botCoachMeldReasonText" style="display:none;">
+                            </div>
+                            <div class="bot-coach-eval-list" id="botCoachMeldEvalList"></div>
+                        </div>
+                        <div class="bot-coach-status" id="botCoachStatus"></div>
                         <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
                             <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
                             <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
@@ -1481,8 +1483,8 @@
                             <div class="bot-coach-reason-title">推奨打牌の決定理由</div>
                             <div class="bot-coach-reason-text" id="botCoachReasonText">--</div>
                         </div>
-                    <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
-                        </div>
+                        <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
+                    </div>
                 </div>
             </div>
 
@@ -1924,7 +1926,7 @@
 
                 // mjai形式の牌を内部形式に変換 (E→1z, 0m→0m etc.)
                 const mjaiToInternal = {
-                    'E':'1z','S':'2z','W':'3z','N':'4z','P':'5z','F':'6z','C':'7z'
+                    'E': '1z', 'S': '2z', 'W': '3z', 'N': '4z', 'P': '5z', 'F': '6z', 'C': '7z'
                 };
                 function normTile(t) {
                     if (!t || t.length === 0) return t;
@@ -2085,6 +2087,11 @@
                     const seat = act.result.data.seat;
                     // 自分の手番
                     if ((cls === 'RecordDealTile' || cls === 'RecordDiscardTile') && seat === perspectiveSeat) {
+                        jumpToAction(idx);
+                        return;
+                    }
+                    // 自分の副露実行（ポン・チー・カン）
+                    if ((cls === 'RecordChiPengGang' || cls === 'RecordAnGangAddGang') && seat === perspectiveSeat) {
                         jumpToAction(idx);
                         return;
                     }
@@ -2938,8 +2945,8 @@ ${riversStr}
                     const recRow = list.querySelector(`.bot-coach-eval-row[data-tile="${data.recommended}"]`);
                     if (recRow) {
                         recRow.classList.add('is-active');
-            renderReasonForTile(recEntry.reason || `「${getTileText(data.recommended)}」推奨 (総合スコア最高)。`);
-                }
+                        renderReasonForTile(recEntry.reason || `「${getTileText(data.recommended)}」推奨 (総合スコア最高)。`);
+                    }
                 }
             } else {
                 if (data.can_kan) {
@@ -2960,7 +2967,9 @@ ${riversStr}
                 clearBotCoachUI();
                 return;
             }
-            if (payload.hand.length !== 14) {
+            // 手牌が14枚でなくてもlastTsumoがあれば打牌判断（副露後の手番も扱う）
+            const tsumoTile = engine ? engine.lastTsumo[perspectiveSeat] : null;
+            if (tsumoTile === null || !payload.hand.includes(tsumoTile)) {
                 clearBotCoachUI();
                 return;
             }
@@ -2981,7 +2990,7 @@ ${riversStr}
                 });
         }
 
-        
+
         function requestBotCoachMeldEvaluation() {
             const mp = document.getElementById("botCoachMeldPanel");
             const ml = document.getElementById("botCoachMeldEvalList");
@@ -2990,7 +2999,7 @@ ${riversStr}
             mp.classList.remove('is-visible');
             mp.dataset.active = "0";
             const mySeat = perspectiveSeat;
-            const hand = engine.hands[mySeat];
+            let hand = [...engine.hands[mySeat]];
             if (!hand || hand.length < 1) return;
             if (currentActionIndex >= timelineSteps.length) return;
             const cri = timelineSteps[currentActionIndex];
@@ -3003,26 +3012,40 @@ ${riversStr}
                 }
             }
             if (di < 0) return;
-            const sl = ["東","南","西","北"];
-            const hc = {}; hand.forEach(t => { hc[t] = (hc[t] || 0) + 1; });
-            const candidates = [{ type: "skip", label: "スキップ（鳴かない）", tiles: [], froms: [] }];
+            // 現在のタイムラインステップが自家の副露（ChiPengGang）の場合、手牌は既に消費された状態にある。
+            // 副露前に戻すため、消費された牌を手牌コピーに戻す。
+            const curAct = rawActionsList[cri];
+            if (curAct && curAct.result && curAct.result.class_name === 'RecordChiPengGang') {
+                const cd = curAct.result.data;
+                if (cd && cd.seat === mySeat) {
+                    cd.tiles.forEach((t, i) => {
+                        if (cd.froms[i] === mySeat) {
+                            hand.push(t);
+                        }
+                    });
+                }
+            }
+            const sl = ["東", "南", "西", "北"];
+            const hc = {}; hand.forEach(t => { const k = t[0] === '0' ? '5' + t[1] : t; hc[k] = (hc[k] || 0) + 1; });
+            const dtBase = dt[0] === '0' ? '5' + dt[1] : dt;
+            const candidates = [{ type: "skip", label: "スキップ", tiles: [], froms: [] }];
             let found = false;
-            if ((hc[dt] || 0) >= 2) {
-                candidates.push({ type: "pon", label: "ポン", tiles: [dt,dt,dt], froms: [di,mySeat,mySeat] });
+            if ((hc[dtBase] || 0) >= 2) {
+                candidates.push({ type: "pon", label: "ポン", tiles: [dtBase, dtBase, dtBase], froms: [di, mySeat, mySeat] });
                 found = true;
             }
             const cs = (di + 1) % 4;
             if (cs === mySeat) {
-                const tt = dt.slice(-1);
+                const tt = dtBase.slice(-1);
                 if ("mps".includes(tt)) {
-                    const n = parseInt(dt[0]);
+                    const n = parseInt(dtBase[0]);
                     if (!isNaN(n)) {
-                        for (let a = Math.max(1,n-2); a <= Math.min(7,n); a++) {
-                            if (![a,a+1,a+2].includes(n)) continue;
-                            const con = [a,a+1,a+2].filter(x => x !== n);
-                            const ta = con[0]+tt, tb = con[1]+tt;
-                            if ((hc[ta]||0) >= 1 && (hc[tb]||0) >= 1) {
-                                candidates.push({ type: "chi", label: "チー("+ta+tb+")", tiles: [dt,ta,tb], froms: [di,mySeat,mySeat] });
+                        for (let a = Math.max(1, n - 2); a <= Math.min(7, n); a++) {
+                            if (![a, a + 1, a + 2].includes(n)) continue;
+                            const con = [a, a + 1, a + 2].filter(x => x !== n);
+                            const ta = con[0] + tt, tb = con[1] + tt;
+                            if ((hc[ta] || 0) >= 1 && (hc[tb] || 0) >= 1) {
+                                candidates.push({ type: "chi", label: "チー(" + ta + tb + ")", tiles: [dtBase, ta, tb], froms: [di, mySeat, mySeat] });
                                 found = true; break;
                             }
                         }
@@ -3032,6 +3055,18 @@ ${riversStr}
             if (!found) return;
             const payload = buildCoachPayload();
             if (!payload) return;
+            // 副露後の手牌ではなく副露前の手牌で評価するため、ペイロードも修正する
+            if (curAct && curAct.result && curAct.result.class_name === 'RecordChiPengGang') {
+                const cd = curAct.result.data;
+                if (cd && cd.seat === mySeat) {
+                    cd.tiles.forEach((t, i) => {
+                        if (cd.froms[i] === mySeat) {
+                            payload.hand.push(t);
+                        }
+                    });
+                    payload.melds[mySeat].pop();
+                }
+            }
             payload.meld_candidates = candidates;
             const statusEl = document.getElementById('botCoachMeldStatus');
             statusEl.innerHTML = '<span style="color:var(--text-muted);">評価中...</span>';
@@ -3086,9 +3121,9 @@ ${riversStr}
                     else { shantenText = sh + '向聴'; }
 
                     let iconClass, iconText;
-                    if (c.type === 'pon') { iconClass = 'icon-pon'; iconText = '碰'; }
-                    else if (c.type === 'chi') { iconClass = 'icon-chi'; iconText = '吃'; }
-                    else { iconClass = 'icon-skip'; iconText = 'pass'; }
+                    if (c.type === 'pon') { iconClass = 'icon-pon'; iconText = 'ポン'; }
+                    else if (c.type === 'chi') { iconClass = 'icon-chi'; iconText = 'チー'; }
+                    else { iconClass = 'icon-skip'; iconText = 'パス'; }
 
                     let rowClass = 'bot-coach-meld-eval-row';
                     if (isBest) rowClass += ' is-recommended';
@@ -3114,7 +3149,7 @@ ${riversStr}
                     evalHtml += '</div>';
                 });
                 evalEl.innerHTML = evalHtml;
-            }).catch(function() { mp.classList.remove('is-loading'); mp.classList.remove('is-visible'); });
+            }).catch(function () { mp.classList.remove('is-loading'); mp.classList.remove('is-visible'); });
         }
 
         /**
