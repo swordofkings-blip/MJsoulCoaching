@@ -3019,25 +3019,22 @@ ${riversStr}
                     if (dd && dd.seat !== undefined && dd.seat !== mySeat && dd.tile) { di = dd.seat; dt = dd.tile; }
                 }
             }
-            if (di < 0) {
-                // 相手の捨て牌がない場合、加槓（自模）をチェック
-                const tsumo = engine.lastTsumo ? engine.lastTsumo[mySeat] : null;
-                if (tsumo && engine.melds && engine.melds[mySeat]) {
-                    for (const meld of engine.melds[mySeat]) {
-                        if (meld.tiles && meld.tiles.length === 3 && meld.tiles[0] === tsumo) {
-                            // 加槓候補: ツモ牌を既存のポンに追加
-                            const candidates = [{ type: "skip", label: "スキップ", tiles: [], froms: [] }];
-                            candidates.push({ type: "kakan", label: "加槓", tiles: [tsumo], froms: [mySeat] });
-                            const payload = buildCoachPayload(true);
-                            if (!payload) return;
-                            payload.meld_candidates = candidates;
-                            _send_meld_eval(payload, '加槓可能です', mp);
-                            return;
-                        }
+            // 加槓チェックは di より先に行う（ツモ直後は直前が他家捨て牌で di>=0 になるため）
+            const tsumo = engine.lastTsumo ? engine.lastTsumo[mySeat] : null;
+            if (tsumo && engine.melds && engine.melds[mySeat]) {
+                for (const meld of engine.melds[mySeat]) {
+                    if (meld.tiles && meld.tiles.length === 3 && meld.tiles[0] === tsumo) {
+                        const candidates = [{ type: "skip", label: "スキップ", tiles: [], froms: [] }];
+                        candidates.push({ type: "kakan", label: "加槓", tiles: [tsumo], froms: [mySeat] });
+                        const payload = buildCoachPayload(true);
+                        if (!payload) return;
+                        payload.meld_candidates = candidates;
+                        _send_meld_eval(payload, '加槓可能です', mp);
+                        return;
                     }
                 }
-                return;
             }
+            if (di < 0) return;
             // 現在のタイムラインステップが自家の副露（ChiPengGang）の場合、手牌は既に消費された状態にある。
             // 副露前に戻すため、消費された牌を手牌コピーに戻す。
             const curAct = rawActionsList[cri];
