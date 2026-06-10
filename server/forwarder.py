@@ -480,8 +480,8 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
         else:
             lines.append("既に副露していますが、さらに鳴く価値がありません。")
         if shanten > 0:
-            lines.append(f"{shanten}向聴と手が遠く、")
-        lines.append("判断を保留しました。")
+            lines.append(f"現在{shanten}向聴です。")
+            lines.append("シャンテン数が進まないため不要です。")
     else:
         meld_tile_str = ""
         if cand and cand.get("tiles"):
