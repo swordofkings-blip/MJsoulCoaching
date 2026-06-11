@@ -577,9 +577,9 @@ class AttackEvaluator:
         shanten = self.shanten_after_discard(tile)
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
         std_shanten = self._standard_shanten_after(tile)
-        if std_shanten > self._best_standard_shanten():
-            self.record_detail(tile, f"シャンテン後退ペナルティ ({SHANTEN_BACKTRACK_PENALTY})")
-            return SHANTEN_BACKTRACK_PENALTY
+        # Why: シャンテン後退時に即時 return すると、ドラ切りや形状破壊などの他ペナルティがスキップされ、
+        # 役なしテンパイ維持（超低スコア）よりも後退打牌が高評価される逆転バグを防ぐため、フラグ保持して最後に減算する
+        is_backtrack = std_shanten > self._best_standard_shanten()
 
         USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
         if USE_P2:
@@ -706,6 +706,12 @@ class AttackEvaluator:
             self.record_detail(tile, fr_reason)
         if shanten >= self.params.get('BETAORI_PREP_SHANTEN', 4):
             score += self._betaori_prep_bonus(tile, shanten)
+
+        # Why: シャンテン後退した打牌に対して、他のマイナス要素（ドラ切りなど）を正しく加味した上でペナルティを課すため、ここで減算する
+        if is_backtrack:
+            score += SHANTEN_BACKTRACK_PENALTY
+            self.record_detail(tile, f"シャンテン後退ペナルティ ({SHANTEN_BACKTRACK_PENALTY})")
+
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
