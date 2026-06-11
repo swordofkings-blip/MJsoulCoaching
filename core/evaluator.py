@@ -259,6 +259,15 @@ class DefenseEvaluator:
                         score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU) // 2
                         self.record_detail(tile, f"現物安全 (+{score})")
                         return score
+
+            # 非リーチ他家脅威による危険ペナルティ（終盤・他家テンパイ気配濃厚時）
+            if self.evaluator and self.evaluator.strategy:
+                max_threat = self.evaluator.strategy.compute_opponent_threat()
+                local_turn = (self.state.tsumo_count - 1) // 4 + 1
+                if max_threat >= 0.15 and local_turn >= 11:
+                    penalty = int(-400 * max_threat)
+                    self.record_detail(tile, f"非リーチ他家脅威による危険ペナルティ ({penalty})")
+                    return penalty
             return 0
 
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
