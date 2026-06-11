@@ -759,13 +759,11 @@ class AttackEvaluator:
         after_counts = list(self.state.my_hand_counts())
         discard_id = tile_to_id(tile)
         after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
-        ryanmen_count = 0
         dora_ids = set(tile_to_id(d) for d in self.state.actual_doras)
         dora_ryanmen_bonus = 0
         for base in [0, 9, 18]:
             for i in range(7):
                 if after_counts[base + i] >= 1 and after_counts[base + i + 1] >= 1:
-                    ryanmen_count += 1
                     wait_l = base + i - 1 if i > 0 else -1
                     wait_r = base + i + 2 if i < 7 else -1
                     if wait_l in dora_ids or wait_r in dora_ids:
@@ -774,6 +772,30 @@ class AttackEvaluator:
             dora_bonus = dora_ryanmen_bonus * self.params.get('DORA_RYANMEN_BONUS', 15)
             score += dora_bonus
             self.record_detail(tile, f"ドラ受けリャンメン維持ボーナス (+{dora_bonus})")
+
+        # ブロック競合ペナルティ: 切り出し後、リャンメンとカンチャンが同じ待ち牌を奪い合う場合は減点
+        ryanmen_waits = set()
+        kanchan_waits = set()
+        for base in [0, 9, 18]:
+            for i in range(7):
+                if after_counts[base + i] >= 1 and after_counts[base + i + 1] >= 1:
+                    wait_l = base + i - 1 if i > 0 else -1
+                    wait_r = base + i + 2 if i < 7 else -1
+                    if wait_l >= 0: ryanmen_waits.add(wait_l)
+                    if wait_r >= 0: ryanmen_waits.add(wait_r)
+            for i in range(9):
+                if after_counts[base + i] >= 1 and i + 2 < 9 and after_counts[base + i + 2] >= 1 and after_counts[base + i + 1] == 0:
+                    wait = base + i + 1
+                    kanchan_waits.add(wait)
+        overlapping = ryanmen_waits & kanchan_waits
+        if overlapping:
+            base_pen = self.params.get('BLOCK_COMPETITION_PENALTY', 10)
+            comp_pen = 0
+            for w in overlapping:
+                mult = 2 if w in dora_ids else 1
+                comp_pen += base_pen * mult
+            score -= comp_pen
+            self.record_detail(tile, f"ブロック競合ペナルティ (-{comp_pen})")
 
         return score
 
