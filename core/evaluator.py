@@ -1481,10 +1481,21 @@ class Evaluator:
     def _get_keiten_bonus(self, tile: str) -> int:
         """
         @title 形式テンパイ（形テン）ボーナス
-        @description 終盤において、打牌後にテンパイ（または和了）となる手牌に加算するボーナス値を返す。
+        @description 終盤において、打牌後にテンパイとなる手牌に加算するボーナス値を返す。
+                     放銃リスクが見合わない危険な局面では0を返し、緊急時のみ強行する。
         @param tile 捨てる牌の文字列 (例: "5m")
         @returns int ボーナス値（条件を満たさない場合は0）
         """
+        # 他家テンパイ気配があり、切る牌が危険牌で、緊急事態でなければボーナス無効
+        max_threat = self.strategy.compute_opponent_threat()
+        v_defense = self.defense.defense_score_for_tile(tile)
+        safe_threshold = self.params.get('SCORE_SUJI', 500)
+        is_dealer = (self.state.my_seat - self.state.ju) % 4 == 0
+        rank = self.state.my_score_rank()
+        is_emergency = is_dealer and (self.state.ju == 3) and (rank >= 2)
+        if max_threat >= 0.15 and v_defense < safe_threshold and not is_emergency:
+            return 0
+
         tsumo = (self.state.tsumo_count - 1) // 4 + 1
         if 15 <= tsumo <= 17:
             shanten_after = self.attack.shanten_after_discard(tile)
