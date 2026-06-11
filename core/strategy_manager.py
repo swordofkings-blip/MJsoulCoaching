@@ -178,8 +178,6 @@ class ShantenCalculator:
                             s = still_needed + max(0, still_needed - rem_blocks)
                         if s < best:
                             best = s
-        if best < 0:
-            best = 0
         if best <= 0 and open_meld_count == 0 and not any(c >= 2 for c in counts):
             best = max(best, 1)
         return best

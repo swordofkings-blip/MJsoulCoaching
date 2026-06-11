@@ -267,12 +267,14 @@ class DefenseEvaluator:
             self.record_detail(tile, f"他家共通現物 (+{score})")
             return score
 
-        for seat in reach_seats:
-            for t in self.state.river[seat]:
-                if tile_to_id(t) == tile_id:
-                    score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
-                    self.record_detail(tile, f"リーチ者個別現物 (S{seat}) (+{score})")
-                    return score
+        # リーチ者が単独の場合のみ個別現物判定（複数リーチでは全員共通現物のみ安全）
+        if n_reach == 1:
+            for seat in reach_seats:
+                for t in self.state.river[seat]:
+                    if tile_to_id(t) == tile_id:
+                        score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+                        self.record_detail(tile, f"リーチ者個別現物 (S{seat}) (+{score})")
+                        return score
 
         # リーチ後通過牌（河越し）: リーチ後に誰かが切った牌がロンされなかった＝安牌
         for seat in reach_seats:
@@ -551,7 +553,7 @@ class AttackEvaluator:
             effective_ukeire = int(ukeire_total * quality)
             score = effective_ukeire * self.params.get('UKEIRE_MULTIPLIER', 10)
             self.record_detail(tile, f"有効牌枚数・質評価 (+{score})")
-            shanten_penalty = shanten * self.params.get('SHANTEN_MULTIPLIER', 500)
+            shanten_penalty = max(0, shanten) * self.params.get('SHANTEN_MULTIPLIER', 500)
             score -= shanten_penalty
             if shanten_penalty > 0:
                 self.record_detail(tile, f"シャンテン数ペナルティ (-{shanten_penalty})")
@@ -605,6 +607,15 @@ class AttackEvaluator:
                             not is_terminal(tile_to_id(t)) and not is_honor(tile_to_id(t))
                             for t in temp_hand
                         )
+                        if all_tanyao:
+                            # Also check melds for terminals/honors
+                            for m in self.state.my_melds:
+                                for mt in m.tiles:
+                                    if is_terminal(tile_to_id(mt)) or is_honor(tile_to_id(mt)):
+                                        all_tanyao = False
+                                        break
+                                if not all_tanyao:
+                                    break
                         if all_tanyao:
                             has_yaku = True
                             break
