@@ -772,12 +772,13 @@ class AttackEvaluator:
             after_hand.remove(tile)
         open_meld_count = sum(1 for m in melds if m.is_open)
         has_reach = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
-        is_dealer = (self.state.my_seat % 4) == 0
+        wind_idx = (self.state.my_seat - self.state.ju) % 4
+        is_dealer = wind_idx == 0
         score = estimate_hand_value(after_hand, melds, self.state.actual_doras,
                                      is_open=open_meld_count > 0,
                                      has_reach=has_reach, is_ippatsu=False,
                                      is_tsumo=False, is_dealer=is_dealer,
-                                     seat=self.state.my_seat, chang=self.state.chang,
+                                     seat=wind_idx, chang=self.state.chang,
                                      ju=self.state.ju)
         bonus = score // 10
         counts = self.state.my_hand_counts()
@@ -817,16 +818,30 @@ class AttackEvaluator:
                 bonus += concentration_bonus
                 self.record_detail(tile, f"染めバイアス (+{concentration_bonus})")
         
-        # 染め手（主力＋字牌が9枚以上かつ、通常進行がまだ遅い2向聴以上の状況）
-        is_dyeing = (dominant_count + z_count >= 9) and (shanten >= 2)
+        # 染め手（主力色が7枚以上かつ、通常進行がまだ遅い2向聴以上の状況）
+        is_dyeing = (dominant_count >= 7) and (shanten >= 2)
         if is_dyeing and not is_honor(discard_id):
             tile_suit = None
             if discard_id < 9: tile_suit = 'm'
             elif discard_id < 18: tile_suit = 'p'
             elif discard_id < 27: tile_suit = 's'
             
-            # 染める色以外を捨てる際にボーナスを加算して移行を推進
+            # 染める色以外に既に完成面子(3連続)がある場合は染め手移行を抑制
+            has_other_meld = False
             if tile_suit != dominant_suit:
+                for sb in [0, 9, 18]:
+                    sn = ['m', 'p', 's'][sb // 9]
+                    if sn == dominant_suit:
+                        continue
+                    for i in range(7):
+                        if all(counts[sb + i + j] >= 1 for j in range(3)):
+                            has_other_meld = True
+                            break
+                    if has_other_meld:
+                        break
+            
+            # 染める色以外を捨てる際にボーナスを加算して移行を推進（赤5は除く）
+            if tile_suit != dominant_suit and not has_other_meld and not is_red_five(tile):
                 dye_bonus = self.params.get('BETAORI_HONITSU_BONUS', 40)
                 bonus += dye_bonus
                 self.record_detail(tile, f"染め手移行推進ボーナス (+{dye_bonus})")
@@ -879,31 +894,39 @@ class AttackEvaluator:
                 # 進行度が高く、十分なブロックがある場合は安全牌の抱えを優先（0.3は保持を強く動機付けるための定数）
                 vis_factor *= 0.3
 
+            base_penalty = self.params.get('HONOR_VALUE_PENALTY', 20)
             if discard_id in SANGEN:
                 if is_pair and remaining >= 2:
-                    penalty = self.params.get('HONOR_VALUE_PENALTY', 20)
-                    bonus -= penalty
-                    self.record_detail(tile, f"三元牌対子保持ペナルティ (-{penalty})")
+                    bonus -= base_penalty
+                    self.record_detail(tile, f"三元牌対子保持ペナルティ (-{base_penalty})")
+                elif not is_pair:
+                    sangen_mult = self.params.get('SANGEN_PENALTY_MULTIPLIER', 0.75)
+                    val_penalty = int(base_penalty * sangen_mult * vis_factor)
+                    bonus -= val_penalty
+                    self.record_detail(tile, f"三元牌整理ペナルティ (-{val_penalty})")
             bakaze = 27 + (self.state.chang % 4)
-            jikaze = 27 + (self.state.my_seat % 4)
+            wind_idx = (self.state.my_seat - self.state.ju) % 4
+            jikaze = 27 + wind_idx
             is_double_wind = (bakaze == jikaze) and (discard_id == bakaze)
             if discard_id == bakaze:
                 if is_pair and remaining >= 2:
-                    penalty = self.params.get('HONOR_VALUE_PENALTY', 20)
-                    bonus -= penalty
-                    self.record_detail(tile, f"場風対子保持ペナルティ (-{penalty})")
+                    bonus -= base_penalty
+                    self.record_detail(tile, f"場風対子保持ペナルティ (-{base_penalty})")
                 elif is_double_wind:
-                    pass
+                    if not is_pair:
+                        val_penalty = int(base_penalty * 1.5 * vis_factor)
+                        bonus -= val_penalty
+                        self.record_detail(tile, f"ダブ風切りペナルティ (-{val_penalty})")
                 else:
                     if not is_pair:
-                        val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
-                        bonus += val_bonus
-                        self.record_detail(tile, f"不要場風整理ボーナス (+{val_bonus})")
+                        val_penalty = int(base_penalty * 0.5 * vis_factor)
+                        bonus -= val_penalty
+                        self.record_detail(tile, f"不要場風切りペナルティ (-{val_penalty})")
             if discard_id == jikaze:
                 if not is_pair and not is_double_wind:
-                    val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
-                    bonus += val_bonus
-                    self.record_detail(tile, f"不要自風整理ボーナス (+{val_bonus})")
+                    val_penalty = int(base_penalty * 1.0 * vis_factor)
+                    bonus -= val_penalty
+                    self.record_detail(tile, f"不要自風切りペナルティ (-{val_penalty})")
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
                 bonus += val_bonus
@@ -918,13 +941,24 @@ class AttackEvaluator:
             
             vis = visible_all[discard_id]
             if vis >= 1:
-                ratio = 4.0 / max(1, 4 - vis) - 1.0
-                offset = int(ratio * ratio_base)
-                bonus += offset
-                if is_keeping_safe:
-                    self.record_detail(tile, f"安全字牌抱えペナルティ ({offset})")
+                safe_start = self.params.get('SAFE_TILE_TURN_START', 6)
+                safe_ramp = self.params.get('SAFE_TILE_RAMP_DURATION', 10)
+                has_threat = self.state.is_any_opponent_reach() or Evaluator._any_opponent_has_open_meld(self.state)
+                if has_threat:
+                    effective_turn = max(self.state.tsumo_count, safe_start)
                 else:
-                    self.record_detail(tile, f"安牌字牌整理ボーナス (+{offset})")
+                    effective_turn = self.state.tsumo_count
+                turn_factor = max(0.0, min(1.0, (effective_turn - safe_start) / safe_ramp))
+                if is_keeping_safe or turn_factor > 0:
+                    ratio = 4.0 / max(1, 4 - vis) - 1.0
+                    offset = int(ratio * ratio_base)
+                    if not is_keeping_safe and turn_factor < 1.0:
+                        offset = int(offset * turn_factor)
+                    bonus += offset
+                    if is_keeping_safe:
+                        self.record_detail(tile, f"安全字牌抱えペナルティ ({offset})")
+                    else:
+                        self.record_detail(tile, f"安牌字牌整理ボーナス (+{offset})")
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.actual_doras)
             if is_dora:
@@ -935,9 +969,19 @@ class AttackEvaluator:
             ratio_base = self.params.get('VISIBLE_RATIO_BASE', 20)
             visible_all = self.state.all_visible_counts()
             vis = visible_all[discard_id]
-            if vis >= 1 and counts[discard_id] == 1:
+            safe_start = self.params.get('SAFE_TILE_TURN_START', 6)
+            safe_ramp = self.params.get('SAFE_TILE_RAMP_DURATION', 10)
+            has_threat = self.state.is_any_opponent_reach() or Evaluator._any_opponent_has_open_meld(self.state)
+            if has_threat:
+                effective_turn = max(self.state.tsumo_count, safe_start)
+            else:
+                effective_turn = self.state.tsumo_count
+            turn_factor = max(0.0, min(1.0, (effective_turn - safe_start) / safe_ramp))
+            if vis >= 1 and counts[discard_id] == 1 and turn_factor > 0:
                 ratio = 4.0 / max(1, 4 - vis) - 1.0
                 offset = int(ratio * ratio_base)
+                if turn_factor < 1.0:
+                    offset = int(offset * turn_factor)
                 bonus += offset
                 self.record_detail(tile, f"安牌整理ボーナス (+{offset})")
 
@@ -1040,7 +1084,7 @@ class AttackEvaluator:
             'yakuman':   { 'child': 40000, 'dealer': 64000 }
         })
         line_config = score_lines.get(score_line_name, score_lines['mangan'])
-        is_dealer = (self.state.my_seat % 4) == 0
+        is_dealer = (self.state.my_seat - self.state.ju) % 4 == 0
         mangan_line = line_config['dealer'] if is_dealer else line_config['child']
 
         # 巡目補正
@@ -1311,7 +1355,8 @@ class Evaluator:
 
         if is_honor(tile_id):
             bakaze = 27 + (self.state.chang % 4)
-            jikaze = 27 + (self.state.my_seat % 4)
+            wind_idx = (self.state.my_seat - self.state.ju) % 4
+            jikaze = 27 + wind_idx
 
             if tile_id >= 31:
                 wind_type = "三元牌"
@@ -1473,7 +1518,7 @@ class Evaluator:
         is_dealer_last = sorted_seats[-1] == dealer_seat
         is_dealer_winning = dealer_seat == sorted_seats[0]
 
-        if is_dealer_last and my_rank <= 1:
+        if is_dealer_last and my_rank <= 1 and self.strategy._remaining_kyokus() <= 2:
             ally_target = sorted_seats[1] if my_rank == 0 else sorted_seats[0]
             tid = tile_to_id(tile)
             if not is_honor(tid):
@@ -1560,11 +1605,12 @@ class Evaluator:
         open_melds = [m for m in melds if m.is_open]
         is_open = len(open_melds) > 0
         has_reach = any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat)
-        is_dealer = (self.state.my_seat % 4) == 0
+        wind_idx = (self.state.my_seat - self.state.ju) % 4
+        is_dealer = wind_idx == 0
         return estimate_hand_value(hand, melds, self.state.doras, is_open,
                                     has_reach=has_reach, is_ippatsu=False,
                                     is_tsumo=False, is_dealer=is_dealer,
-                                    seat=self.state.my_seat, chang=self.state.chang,
+                                    seat=wind_idx, chang=self.state.chang,
                                     ju=self.state.ju)
 
     def _estimate_deal_loss(self, tile: str) -> int:
@@ -2032,8 +2078,8 @@ class Evaluator:
         is_yakuhai_pon = False
         if type_ == 1:
             target_id = tile_to_id(tiles[0])
-            seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
-            round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
+            seat_wind = 27 + ((self.state.my_seat - self.state.ju) % 4)
+            round_wind = 27 + (self.state.chang % 4)
             is_yakuhai_pon = target_id in (31, 32, 33, seat_wind, round_wind)
 
         # 既に副露している場合、pinfu/chiitoitsuなど閉局専用役は不可能なのでdeclineを無視
@@ -2162,8 +2208,8 @@ class Evaluator:
         is_yakuhai_meld = False
         if type_ == 1:
             target_id = tile_to_id(tiles[0])
-            seat_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.my_seat]
-            round_wind = {0: 27, 1: 28, 2: 29, 3: 30}[self.state.chang % 4]
+            seat_wind = 27 + ((self.state.my_seat - self.state.ju) % 4)
+            round_wind = 27 + (self.state.chang % 4)
             is_yakuhai_meld = target_id in (31, 32, 33, seat_wind, round_wind)
 
         # 【追加】防御ペナルティ: 安全牌喪失リスクを評価
@@ -2220,8 +2266,8 @@ class Evaluator:
         # 役牌ポン（封印解除時のみ: 守備力変わらないので鳴く）
         if type_ == 1:
             target_id = tile_to_id(tiles[0])
-            seat_wind = {0:27,1:28,2:29,3:30}[self.state.my_seat]
-            round_wind = {0:27,1:28,2:29,3:30}[self.state.chang%4]
+            seat_wind = 27 + ((self.state.my_seat - self.state.ju) % 4)
+            round_wind = 27 + (self.state.chang % 4)
             if target_id in (31,32,33,seat_wind,round_wind) and expected_han >= 1:
                 return True
 

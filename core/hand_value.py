@@ -107,7 +107,7 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
                 add = y.open_han if is_open else y.closed_han
                 if han < 13 and add > 0:
                     han += add
-            elif y.progress > 0.3 and han < 13 and partial_total < 3:
+            elif y.progress > 0.4 and han < 13 and partial_total < 3:
                 add = max(1, int((y.open_han if is_open else y.closed_han) * y.progress))
                 if add > 0:
                     partial_total += min(add, 3 - partial_total)

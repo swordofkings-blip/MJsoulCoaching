@@ -9,7 +9,6 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config
     params = json.load(f)
 
 SEAT_NAMES = ['東', '南', '西', '北']
-
 CALL_NAMES = {0: 'チー', 1: 'ポン', 2: '大明槓', 3: '暗槓', 4: '加槓'}
 
 def fmt_tile(t):
@@ -20,14 +19,28 @@ lines = []
 def out(s=''):
     lines.append(s)
 
+SEVERITY_LABEL = {0: '---', 1: '許容範囲', 2: '微妙', 3: 'やや悪', 4: '疑問手', 5: '明確な悪手'}
+
+def classify_mismatch(rating, shanten_back):
+    if rating >= 80:
+        return 1
+    if rating >= 60:
+        return 2 if shanten_back else 1
+    if rating >= 40:
+        return 3 if shanten_back else 2
+    if rating >= 20:
+        return 4 if shanten_back else 3
+    return 5 if shanten_back else 4
+
 paths = sorted(glob.glob('C:/Users/Daikichi/Documents/code-workspace/雀魂ラッパー/data/record_*_trimmed.json'))
 
 # Statistics counters
 total_discard_decisions = 0
 discard_matches = 0
+all_mismatches = []  # list of dicts for ranking
 total_meld_opportunities = 0
 meld_matches = 0
-meld_results = []  # (call_type_str, ai_decision, human_decision, turn, mismatch_detail)
+meld_results = []
 
 for path in paths:
     with open(path, encoding='utf-8') as f:
@@ -70,7 +83,6 @@ for path in paths:
                     d.get('leftTileCount', 70),
                     d.get('doras', [d['dora']] if 'dora' in d else [])
                 )
-                # chang/ju for yaku detection
                 states[s].chang = d.get('chang', 0)
                 states[s].ju = d.get('ju', 0)
             awaiting = [True] * 4
@@ -91,7 +103,6 @@ for path in paths:
             isL = d.get('isLiqi', False)
             moq = d.get('moqie', False)
 
-            # Discard agreement check
             if awaiting[seat]:
                 hand = list(states[seat].my_hand)
                 if len(hand) % 3 == 2:
@@ -122,26 +133,39 @@ for path in paths:
                             discard_matches += 1
                         else:
                             s_state = states[seat]
-                            mid = os.path.basename(path).split('_')[1].split('-')[0]
-                            rivs = [' '.join(fmt_tile(t) for t in s_state.river[i]) if s_state.river[i] else 'なし' for i in range(4)]
-                            doras_str = ' '.join(fmt_tile(t) for t in s_state.doras) if s_state.doras else 'なし'
+                            atk = ev.attack
+                            best_shanten = atk._standard_shanten_after(best)
+                            actual_shanten = atk._standard_shanten_after(tile)
+                            is_shanten_back = actual_shanten > best_shanten
 
-                            human_turn = (s_state.tsumo_count - 1) // 4 + 1
-                            out(f'===== 捨牌不一致 #{total_discard_decisions} =====')
-                            is_dealer = '(親)' if s_state.my_seat == 0 else ''
-                            out(f'{SEAT_NAMES[seat]}家{is_dealer} / {s_state.chang*4+s_state.ju+1}局 {s_state.ben}本場 / {human_turn}巡目({s_state.tsumo_count}ツモ) / 残り{s_state.left_tile_count}枚')
-                            out(f'点数: {s_state.scores}')
-                            out(f'ドラ: {doras_str}')
-                            out(f'actual: {fmt_tile(tile)} (Rating: {actual_rating:.1f})  AI: {fmt_tile(best)}')
-                            out(f'hand({len(hand)}枚): {hand}')
-                            drawn = hand[-1] if len(hand) == 14 else '-'
-                            out(f'ツモ: {drawn}')
-                            seat_labels = ['自分' if i == seat else SEAT_NAMES[i] for i in range(4)]
-                            for i in range(4):
-                                r_info = rivs[i]
-                                rc_info = ' リーチ' if s_state.reach_states[i].is_reach else ''
-                                out(f'  {seat_labels[i]}: {r_info}{rc_info}')
-                            out()
+                            # Collect score breakdown for best and actual
+                            def get_tile_info(t):
+                                return {
+                                    'tile': t,
+                                    'score': scores.get(t, 0),
+                                    'shanten_ce': atk.shanten_after_discard(t),
+                                    'shanten_prog': atk._standard_shanten_after(t),
+                                    'defense': ev.defense.defense_score_for_tile(t),
+                                }
+
+                            best_info = get_tile_info(best)
+                            actual_info = get_tile_info(tile)
+
+                            severity = classify_mismatch(actual_rating, is_shanten_back)
+
+                            all_mismatches.append({
+                                'severity': severity,
+                                'rating': actual_rating,
+                                'seat': seat,
+                                'tsumo': s_state.tsumo_count,
+                                'hand': list(hand),
+                                'actual': tile,
+                                'actual_info': actual_info,
+                                'best': best,
+                                'best_info': best_info,
+                                'path': path,
+                                'state': s_state,
+                            })
 
             awaiting[seat] = False
             for s in range(4):
@@ -203,13 +227,13 @@ for path in paths:
             awaiting = [False] * 4
 
 # Report
-out('=' * 50)
-out('一致率レポート')
-out('=' * 50)
+out('=' * 60)
+out('分析レポート')
+out('=' * 60)
 out()
 
 files_count = len(paths)
-out(f'分析対象: {files_count} ファイル')
+out(f'分析対象: {files_count} ファイル ({len(all_mismatches)} mismatches)')
 out()
 
 discard_rate = (discard_matches / total_discard_decisions * 100) if total_discard_decisions else 0
@@ -219,6 +243,72 @@ out(f'  一致回数: {discard_matches}')
 out(f'  不一致回数: {total_discard_decisions - discard_matches}')
 out(f'  一致率: {discard_rate:.1f}%')
 out()
+
+# Severity distribution
+out(f'【不一致の深刻度分布】')
+severity_counts = {}
+for mm in all_mismatches:
+    severity_counts[mm['severity']] = severity_counts.get(mm['severity'], 0) + 1
+for sev in sorted(severity_counts.keys(), reverse=True):
+    label = SEVERITY_LABEL.get(sev, f'Level{sev}')
+    out(f'  {label}: {severity_counts[sev]}回')
+out()
+
+# Rank by severity (worst first), then show top-N
+all_mismatches.sort(key=lambda x: (-x['severity'], x['rating']))
+SHOW_TOP = 30
+out(f'【明確な悪手 トップ{SHOW_TOP}】')
+out(f'  (番号はAIのRating。低いほど悪手)')
+out()
+
+shown = 0
+for mm in all_mismatches:
+    if mm['severity'] < 5 or shown >= SHOW_TOP:
+        continue
+    shown += 1
+    seat = mm['seat']
+    s_state = mm['state']
+    hand = mm['hand']
+    rivs = [' '.join(fmt_tile(t) for t in s_state.river[i]) if s_state.river[i] else 'なし' for i in range(4)]
+    doras_str = ' '.join(fmt_tile(t) for t in s_state.doras) if s_state.doras else 'なし'
+    human_turn = (s_state.tsumo_count - 1) // 4 + 1
+    is_dealer = '(親)' if s_state.my_seat == 0 else ''
+
+    out(f'--- #{shown} (Rating: {mm["rating"]:.1f}) ---')
+    out(f'{SEAT_NAMES[seat]}家{is_dealer} / {s_state.chang*4+s_state.ju+1}局 {s_state.ben}本場 / {human_turn}巡目({s_state.tsumo_count}ツモ)')
+    out(f'actual: {fmt_tile(mm["actual"])} (Shanten: {mm["actual_info"]["shanten_prog"]}, 防御: {mm["actual_info"]["defense"]:.0f})')
+    out(f'AI推奨: {fmt_tile(mm["best"])} (Shanten: {mm["best_info"]["shanten_prog"]}, 防御: {mm["best_info"]["defense"]:.0f})')
+    out(f'スコア差: {mm["best_info"]["score"]:.0f} - {mm["actual_info"]["score"]:.0f} = {mm["best_info"]["score"] - mm["actual_info"]["score"]:.0f}')
+    out(f'hand({len(hand)}枚): {hand}')
+    drawn = hand[-1] if len(hand) == 14 else '-'
+    out(f'ツモ: {drawn}')
+    seat_labels = ['自分' if i == seat else SEAT_NAMES[i] for i in range(4)]
+    for i in range(4):
+        r_info = rivs[i]
+        rc_info = ' リーチ' if s_state.reach_states[i].is_reach else ''
+        out(f'  {seat_labels[i]}: {r_info}{rc_info}')
+    out()
+
+# Also show top severity 4 (疑問手)
+shown4 = 0
+SHOW_Q = 20
+out(f'【疑問手(Level4) トップ{SHOW_Q}】')
+for mm in all_mismatches:
+    if mm['severity'] != 4 or shown4 >= SHOW_Q:
+        continue
+    shown4 += 1
+    seat = mm['seat']
+    s_state = mm['state']
+    hand = mm['hand']
+    human_turn = (s_state.tsumo_count - 1) // 4 + 1
+    is_dealer = '(親)' if s_state.my_seat == 0 else ''
+
+    out(f'--- #{shown4} (Rating: {mm["rating"]:.1f}) ---')
+    out(f'{SEAT_NAMES[seat]}家{is_dealer} / {s_state.chang*4+s_state.ju+1}局 {s_state.ben}本場 / {human_turn}巡目({s_state.tsumo_count}ツモ)')
+    out(f'actual: {fmt_tile(mm["actual"])} (score:{mm["actual_info"]["score"]:.0f} shanten:{mm["actual_info"]["shanten_prog"]})')
+    out(f'AI推奨: {fmt_tile(mm["best"])} (score:{mm["best_info"]["score"]:.0f} shanten:{mm["best_info"]["shanten_prog"]})')
+    out(f'hand({len(hand)}枚): {hand}')
+    out()
 
 meld_rate = (meld_matches / total_meld_opportunities * 100) if total_meld_opportunities else 0
 out(f'【副露】')
@@ -232,18 +322,17 @@ total_decisions = total_discard_decisions + total_meld_opportunities
 total_matches = discard_matches + meld_matches
 overall_rate = (total_matches / total_decisions * 100) if total_decisions else 0
 out(f'【総合】')
-out(f'  総判断回数: {total_decisions} (捨牌{total_discard_decisions} + 副露{total_meld_opportunities})')
-out(f'  一致回数: {total_matches}')
+out(f'  総判断回数: {total_decisions}')
 out(f'  総合一致率: {overall_rate:.1f}%')
 out()
 
-# Mismatch rate (AI says NOT to meld when human did = AI thinks human was wrong)
-out('【考察】')
 ai_says_no = total_meld_opportunities - meld_matches
-out(f'  副露不一致のうち、AIが「するべきでない」と判断: {ai_says_no}回 ({ai_says_no/total_meld_opportunities*100:.1f}%)')
-out(f'  → 現在の副露ルールはかなり抑制的（目標副露率30~40%に合わせて設計）')
+out(f'【副露不一致】')
+out(f'  AIが「するべきでない」と判断: {ai_says_no}回 ({ai_says_no/total_meld_opportunities*100:.1f}%)')
+out()
 
 with open('mismatches.txt', 'w', encoding='utf-8') as f:
     f.write('\n'.join(lines))
 print(f'Saved {total_discard_decisions} discard + {total_meld_opportunities} meld decisions to mismatches.txt')
 print(f'Discard agreement: {discard_rate:.1f}%  Meld agreement: {meld_rate:.1f}%')
+print(f'Clear mistakes (severity 5): {severity_counts.get(5, 0)}  Questionable (severity 4): {severity_counts.get(4, 0)}')

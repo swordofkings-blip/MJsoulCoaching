@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from functools import lru_cache
-from typing import List, Tuple
+from typing import List, Tuple, Set, Set
 
 from game_state import GameState, Meld
 from str_converter import (
@@ -20,153 +20,201 @@ class ShantenCalculator:
 
     @staticmethod
     def calculate_standard(hand_counts: List[int]) -> int:
-        return ShantenCalculator._standard_shanten(hand_counts)
+        return ShantenCalculator._suit_shanten(hand_counts, 0)
 
     @staticmethod
     def calculate_closed(hand_counts: List[int]) -> int:
-        std = ShantenCalculator._standard_shanten(hand_counts)
+        std = ShantenCalculator._suit_shanten(hand_counts, 0)
         chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
         kokushi = ShantenCalculator._kokushi_shanten(hand_counts)
         return min(std, chiitoi, kokushi)
 
     @staticmethod
     def calculate_open(hand_counts: List[int], open_meld_count: int) -> int:
-        key = tuple(hand_counts)
-        cache_key = ('op', key, open_meld_count)
-        if cache_key in ShantenCalculator._cache:
-            return ShantenCalculator._cache[cache_key]
-        result = ShantenCalculator._open_shanten(hand_counts, open_meld_count)
-        ShantenCalculator._cache[cache_key] = result
+        key = (tuple(hand_counts), open_meld_count)
+        if key in ShantenCalculator._cache:
+            return ShantenCalculator._cache[key]
+        if open_meld_count >= 4:
+            return -1
+        result = ShantenCalculator._suit_shanten(hand_counts, open_meld_count)
+        ShantenCalculator._cache[key] = result
         return result
 
-
+    @staticmethod
+    def calculate_open(hand_counts: List[int], open_meld_count: int) -> int:
+        key = (tuple(hand_counts), open_meld_count)
+        if key in ShantenCalculator._cache:
+            return ShantenCalculator._cache[key]
+        if open_meld_count >= 4:
+            return -1
+        result = ShantenCalculator._suit_shanten(hand_counts, open_meld_count)
+        ShantenCalculator._cache[key] = result
+        return result
 
     @staticmethod
-    def _standard_shanten(counts: List[int]) -> int:
-        best = 8
-        for head in range(34):
-            if counts[head] < 2:
-                continue
-            tmp = list(counts)
-            tmp[head] -= 2
-            melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
-            s = 8 - 2 * melds - 1
-            extra_pairs = 0
-            for i in range(34):
-                if tmp[i] >= 2:
-                    if i >= 27:
-                        extra_pairs += 1
-                    else:
-                        base = (i // 9) * 9
-                        off = i - base
-                        has_l = off > 0 and tmp[base + off - 1] > 0
-                        has_r = off < 8 and tmp[base + off + 1] > 0
-                        if not has_l and not has_r:
-                            extra_pairs += 1
-            if extra_pairs >= 1:
-                s -= 1
-            if s < best:
-                best = s
-        melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
-        s = 8 - 2 * melds
-        if s < best:
-            best = s
+    def calculate_closed_effective(hand_counts: List[int]) -> int:
+        key = (tuple(hand_counts), 'ce')
+        if key in ShantenCalculator._cache:
+            return ShantenCalculator._cache[key]
+        
+        std = ShantenCalculator._suit_shanten(hand_counts, 0)
+        pairs = sum(1 for c in hand_counts if c >= 2)
+        yaochu_indices = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        yaochu_types = sum(1 for i in yaochu_indices if hand_counts[i] >= 1)
+        best = std
+        if pairs >= 4:
+            chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
+            if chiitoi < best:
+                best = chiitoi
+        if yaochu_types >= 9:
+            kokushi = ShantenCalculator._kokushi_shanten(hand_counts)
+            if kokushi < best:
+                best = kokushi
+                
+        ShantenCalculator._cache[key] = best
         return best
 
     @staticmethod
-    def _count_extra_pairs(counts: List[int]) -> int:
-        n = 0
-        for i in range(34):
-            if counts[i] == 2:
-                if i >= 27:
-                    n += 1
-                else:
-                    base = (i // 9) * 9
-                    off = i - base
-                    has_l = off > 0 and counts[base + off - 1] > 0
-                    has_r = off < 8 and counts[base + off + 1] > 0
-                    if not has_l and not has_r:
-                        n += 1
-        return n
+    @lru_cache(maxsize=None)
+    def _solve_suit_combinations(counts9: Tuple[int, ...]) -> Set[Tuple[int, int, int]]:
+        result = set()
+        c = list(counts9)
+
+        def dfs(idx, melds, taatsu, pairs):
+            if idx == 9:
+                result.add((melds, taatsu, pairs))
+                return
+            if c[idx] == 0:
+                dfs(idx + 1, melds, taatsu, pairs)
+                return
+            n = c[idx]
+            if n >= 3:
+                c[idx] -= 3
+                dfs(idx, melds + 1, taatsu, pairs)
+                c[idx] += 3
+            if n >= 2:
+                c[idx] -= 2
+                dfs(idx, melds, taatsu, pairs + 1)
+                c[idx] += 2
+            if idx <= 6 and c[idx + 1] > 0 and c[idx + 2] > 0:
+                c[idx] -= 1
+                c[idx + 1] -= 1
+                c[idx + 2] -= 1
+                dfs(idx, melds + 1, taatsu, pairs)
+                c[idx] += 1
+                c[idx + 1] += 1
+                c[idx + 2] += 1
+            if idx <= 7 and c[idx + 1] > 0:
+                c[idx] -= 1
+                c[idx + 1] -= 1
+                dfs(idx, melds, taatsu + 1, pairs)
+                c[idx] += 1
+                c[idx + 1] += 1
+            if idx <= 6 and c[idx + 2] > 0:
+                c[idx] -= 1
+                c[idx + 2] -= 1
+                dfs(idx, melds, taatsu + 1, pairs)
+                c[idx] += 1
+                c[idx + 2] += 1
+            c[idx] -= 1
+            dfs(idx, melds, taatsu, pairs)
+            c[idx] += 1
+
+        dfs(0, 0, 0, 0)
+        return result
 
     @staticmethod
-    def _open_shanten(counts: List[int], open_meld_count: int) -> int:
-        if open_meld_count >= 4:
-            return -1
-        if open_meld_count == 0:
-            return ShantenCalculator._standard_shanten(counts)
+    @lru_cache(maxsize=None)
+    def _solve_honor_combinations(counts7: Tuple[int, ...]) -> Set[Tuple[int, int]]:
+        result = set()
+        c = list(counts7)
+
+        def dfs(idx, melds, pairs):
+            if idx == 7:
+                result.add((melds, pairs))
+                return
+            if c[idx] == 0:
+                dfs(idx + 1, melds, pairs)
+                return
+            n = c[idx]
+            if n >= 3:
+                c[idx] -= 3
+                dfs(idx, melds + 1, pairs)
+                c[idx] += 3
+            if n >= 2:
+                c[idx] -= 2
+                dfs(idx, melds, pairs + 1)
+                c[idx] += 2
+            c[idx] -= n
+            dfs(idx + 1, melds, pairs)
+            c[idx] += n
+
+        dfs(0, 0, 0)
+        return result
+
+    @staticmethod
+    def _suit_shanten(counts: List[int], open_meld_count: int) -> int:
+        m_combs = ShantenCalculator._solve_suit_combinations(tuple(counts[0:9]))
+        p_combs = ShantenCalculator._solve_suit_combinations(tuple(counts[9:18]))
+        s_combs = ShantenCalculator._solve_suit_combinations(tuple(counts[18:27]))
+        h_combs = ShantenCalculator._solve_honor_combinations(tuple(counts[27:34]))
         best = 8
-        # Head case: try each pair as the head
-        for head in range(34):
-            if counts[head] < 2:
-                continue
-            tmp = list(counts)
-            tmp[head] -= 2
-            hand_melds = ShantenCalculator._max_meld_mps(tuple(tmp[0:9])) + ShantenCalculator._max_meld_mps(tuple(tmp[9:18])) + ShantenCalculator._max_meld_mps(tuple(tmp[18:27])) + ShantenCalculator._max_meld_z(tmp[27:34])
-            blocks = ShantenCalculator.calculate_blocks(tmp, 0)
-            needed = 4 - open_meld_count
-            still_needed = needed - hand_melds
-            # After removing head, all remaining blocks are available for melds
-            meld_blocks = blocks
-            s = still_needed + max(0, still_needed - meld_blocks)
-            if s < best:
-                best = s
-        # No-head case
-        hand_melds = ShantenCalculator._max_meld_mps(tuple(counts[0:9])) + ShantenCalculator._max_meld_mps(tuple(counts[9:18])) + ShantenCalculator._max_meld_mps(tuple(counts[18:27])) + ShantenCalculator._max_meld_z(counts[27:34])
-        blocks = ShantenCalculator.calculate_blocks(counts, 0)
-        has_pair = 1 if any(c >= 2 for c in counts) else 0
-        needed = 4 - open_meld_count
-        still_needed = needed - hand_melds
-        # One pair reserved as head, rest are meld-blocks
-        meld_blocks = blocks - has_pair
-        s = still_needed + max(0, still_needed - meld_blocks)
-        if s < best:
-            best = s
-        # still_needed==0 でも雀頭（恰好2枚の対子）が手牌になければ聴牌できない
-        if best <= 0 and not any(c == 2 for c in counts):
+
+        for mm, mt, mp in m_combs:
+            for pm, pt, pp in p_combs:
+                for sm, st, sp in s_combs:
+                    for hm, hp in h_combs:
+                        total_melds = mm + pm + sm + hm + open_meld_count
+                        total_taatsu = mt + pt + st
+                        total_pairs = mp + pp + sp + hp
+                        still_needed = 4 - total_melds
+                        if total_pairs >= 1:
+                            rem_blocks = total_taatsu + (total_pairs - 1)
+                            s = still_needed + max(0, still_needed - rem_blocks) - 1
+                        else:
+                            rem_blocks = total_taatsu + total_pairs
+                            s = still_needed + max(0, still_needed - rem_blocks)
+                        if s < best:
+                            best = s
+        if best < 0:
+            best = 0
+        if best <= 0 and open_meld_count == 0 and not any(c >= 2 for c in counts):
             best = max(best, 1)
         return best
 
     @staticmethod
-    def _max_meld_z(counts7: List[int]) -> int:
-        return sum(c // 3 for c in counts7)
+    def _chiitoitsu_shanten(counts: List[int]) -> int:
+        pairs = sum(1 for c in counts if c >= 2)
+        kinds = sum(1 for c in counts if c >= 1)
+        if kinds < 7:
+            return 8
+        if pairs == 7:
+            return -1
+        return 6 - pairs
 
     @staticmethod
-    @lru_cache(maxsize=None)
-    def _max_meld_mps(counts9: Tuple[int, ...]) -> int:
-        c = list(counts9)
-        return ShantenCalculator._solve_mps(c)
+    def _kokushi_shanten(counts: List[int]) -> int:
+        yao = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        unique = sum(1 for i in yao if counts[i] >= 1)
+        has_pair = any(counts[i] >= 2 for i in yao)
+        if unique == 13 and has_pair:
+            return -1
+        return 13 - unique - (1 if has_pair else 0)
 
     @staticmethod
-    def _solve_mps(c: List[int]) -> int:
-        best = 0
-        first = None
-        for i in range(9):
-            if c[i] > 0:
-                first = i
-                break
-        if first is None:
-            return 0
-        if c[first] >= 3:
-            c2 = list(c)
-            c2[first] -= 3
-            v = 1 + ShantenCalculator._solve_mps(c2)
-            if v > best:
-                best = v
-        if first <= 6 and c[first + 1] > 0 and c[first + 2] > 0:
-            c2 = list(c)
-            c2[first] -= 1
-            c2[first + 1] -= 1
-            c2[first + 2] -= 1
-            v = 1 + ShantenCalculator._solve_mps(c2)
-            if v > best:
-                best = v
-        c2 = list(c)
-        c2[first] -= 1
-        v = ShantenCalculator._solve_mps(c2)
-        if v > best:
-            best = v
-        return best
+    def calculate_blocks(hand_counts: List[int], open_meld_count: int = 0) -> int:
+        """
+        @title 手牌全体のブロック数算出
+        @description 萬子・筒子・索子の各スートの最大ブロック数 ＋ 字牌の対子/刻子数 ＋ 副露数を合計する。
+        @param {List[int]} hand_counts - 34種牌カウント
+        @param {int} open_meld_count - 副露数
+        @returns {int} 手牌全体のブロック数
+        """
+        m_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[0:9]))
+        p_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[9:18]))
+        s_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[18:27]))
+        z_blocks = sum(1 for c in hand_counts[27:34] if c >= 2)
+        return m_blocks + p_blocks + s_blocks + z_blocks + open_meld_count
 
     @staticmethod
     @lru_cache(maxsize=None)
@@ -212,67 +260,6 @@ class ShantenCalculator:
         c2[first] -= 1
         best = max(best, ShantenCalculator._solve_blocks_mps(tuple(c2)))
         return best
-
-    @staticmethod
-    def calculate_blocks(hand_counts: List[int], open_meld_count: int = 0) -> int:
-        """
-        @title 手牌全体のブロック数算出
-        @description 萬子・筒子・索子の各スートの最大ブロック数 ＋ 字牌の対子/刻子数 ＋ 副露数を合計する。
-        @param {List[int]} hand_counts - 34種牌カウント
-        @param {int} open_meld_count - 副露数
-        @returns {int} 手牌全体のブロック数
-        """
-        m_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[0:9]))
-        p_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[9:18]))
-        s_blocks = ShantenCalculator._solve_blocks_mps(tuple(hand_counts[18:27]))
-        z_blocks = sum(1 for c in hand_counts[27:34] if c >= 2)
-        return m_blocks + p_blocks + s_blocks + z_blocks + open_meld_count
-
-    @staticmethod
-    def calculate_closed_effective(hand_counts: List[int]) -> int:
-        key = tuple(hand_counts)
-        cache_key = ('ce', key)
-        if cache_key in ShantenCalculator._cache:
-            return ShantenCalculator._cache[cache_key]
-        result = ShantenCalculator._calc_closed_effective(hand_counts)
-        ShantenCalculator._cache[cache_key] = result
-        return result
-
-    @staticmethod
-    def _calc_closed_effective(hand_counts: List[int]) -> int:
-        std = ShantenCalculator._standard_shanten(hand_counts)
-        pairs = sum(1 for c in hand_counts if c >= 2)
-        yaochu_indices = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
-        yaochu_types = sum(1 for i in yaochu_indices if hand_counts[i] >= 1)
-        best = std
-        if pairs >= 4:
-            chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
-            if chiitoi < best:
-                best = chiitoi
-        if yaochu_types >= 9:
-            kokushi = ShantenCalculator._kokushi_shanten(hand_counts)
-            if kokushi < best:
-                best = kokushi
-        return best
-
-    @staticmethod
-    def _chiitoitsu_shanten(counts: List[int]) -> int:
-        pairs = sum(1 for c in counts if c >= 2)
-        kinds = sum(1 for c in counts if c >= 1)
-        if kinds < 7:
-            return 8
-        if pairs == 7:
-            return -1
-        return 6 - pairs
-
-    @staticmethod
-    def _kokushi_shanten(counts: List[int]) -> int:
-        yao = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
-        unique = sum(1 for i in yao if counts[i] >= 1)
-        has_pair = any(counts[i] >= 2 for i in yao)
-        if unique == 13 and has_pair:
-            return -1
-        return 13 - unique - (1 if has_pair else 0)
 
 
 class StrategyManager:

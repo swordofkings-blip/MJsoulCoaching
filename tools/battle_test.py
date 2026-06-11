@@ -27,10 +27,19 @@ BASE_SCORE = 25000
 
 
 def load_params(path: str) -> dict:
-    if not path or not os.path.exists(path):
+    if not path:
         return {}
-    with open(path, 'r', encoding='utf-8-sig') as f:
-        return json.load(f)
+    _base = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    _paths = [
+        path,
+        os.path.join(_base, 'config', path),
+        os.path.join(_base, path),
+    ]
+    for _p in _paths:
+        if os.path.exists(_p):
+            with open(_p, 'r', encoding='utf-8-sig') as f:
+                return json.load(f)
+    return {}
 
 
 def compute_pt(placement: int, final_score: int, room: str) -> int:

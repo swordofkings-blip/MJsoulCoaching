@@ -35,7 +35,7 @@ def decode_wrapped_protobuf(raw_bytes):
     @returns {tuple} (クラス名, デコードされた辞書データ, 内包バイナリ) または (None, None, 元バイナリ)
     """
     try:
-        from liqi import fromProtobuf
+        from majsoul_wrapper.liqi import fromProtobuf
         blocks = fromProtobuf(raw_bytes)
         if len(blocks) >= 2 and blocks[0]['type'] == 'string' and blocks[1]['type'] == 'string':
             class_name = blocks[0]['data'].decode('utf-8')
@@ -215,7 +215,7 @@ def evaluate_state(payload: dict) -> dict:
     params = payload.get("params", None)
     if params is None:
         import json
-        config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters_ldea_v1.json')
+        config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters.json')
         if os.path.exists(config_path):
             with open(config_path, encoding='utf-8') as f:
                 params = json.load(f)
@@ -225,9 +225,9 @@ def evaluate_state(payload: dict) -> dict:
     my_seat = state.my_seat
     hand = list(state.my_hand)
 
-    # 手牌 + 副露牌の合計で打牌判断を判定（副露後は手牌が14枚未満になる）
+    # 手牌 + 副露牌の合計で打牌判断を判定（副露後・カン後は手牌が14枚未満になる）
     total_tiles = len(hand) + sum(len(m.tiles) for m in state.my_melds)
-    if total_tiles % 3 != 2 or len(hand) < 1:
+    if total_tiles < 13 or total_tiles > 15 or len(hand) < 1:
         return {
             "status": "not_your_turn",
             "recommended": None,
@@ -243,28 +243,7 @@ def evaluate_state(payload: dict) -> dict:
 
     is_riichi_active = state.reach_states[my_seat].is_reach
 
-    # リーチ中・暗槓判断の処理
-    can_kan = False
-    should_kan = False
-    kan_tile = None
-    kan_reason = ""
-    
     if is_riichi_active:
-        hand_counts = state.my_hand_counts()
-        for idx, count in enumerate(hand_counts):
-            if count == 4:
-                from str_converter import id_to_tile
-                kan_tile = id_to_tile(idx)
-                can_kan = True
-                should_kan = evaluator.should_kan()
-                if should_kan:
-                    kan_reason = f"手牌に暗槓可能な牌（{kan_tile}）があります。押し値 ({push_score:.2f}) が高いため、暗槓を推奨します。"
-                else:
-                    kan_reason = f"手牌に暗槓可能な牌（{kan_tile}）がありますが、状況的（押し値 {push_score:.2f}）に暗槓せずツモ切りを推奨します。"
-                break
-        if not can_kan:
-            kan_reason = "リーチ中です。暗槓可能な牌はありません。ツモ切り推奨です。"
-        
         # リーチ中の推奨は基本ツモ切り (last_self_drawn)
         recommended = state.last_self_drawn
     
@@ -323,10 +302,6 @@ def evaluate_state(payload: dict) -> dict:
         "strategy_details": strategy_details,
         "evaluations": evaluations,
         "is_riichi_active": is_riichi_active,
-        "can_kan": can_kan,
-        "should_kan": should_kan,
-        "kan_tile": kan_tile,
-        "kan_reason": kan_reason,
         "should_riichi": should_riichi,
         "riichi_reason": riichi_reason,
         "summary": {
@@ -352,7 +327,7 @@ def evaluate_meld(payload: dict) -> dict:
     # Normalize red 5 tiles in hand so candidate tiles (e.g. "5p") match hand tiles (e.g. "0p")
     state.my_hand = _normalize_hand_red_five(state.my_hand)
     import json
-    config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters_ldea_v1.json')
+    config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters.json')
     if os.path.exists(config_path):
         with open(config_path, encoding='utf-8') as f:
             params = json.load(f)
@@ -500,7 +475,6 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
 
     if ctype in ("kakan", "ankan"):
         name = "加槓" if ctype == "kakan" else "暗槓"
-        lines.append(f"{name}はシャンテンが進みません。")
         lines.append("嶺上牌をツモった後に判断します。")
         from core.strategy_manager import ShantenCalculator
         from core.str_converter import hand_to_counts
@@ -511,6 +485,13 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
                 lines.append(f"現在聴牌のため、{name}で放銃リスクが高まります。")
             else:
                 lines.append(f"現在{old_shanten}向聴です。")
+            # シャンテン戻しチェック
+            if new_state and hasattr(new_state, 'my_hand') and new_state.my_hand:
+                new_cnts = hand_to_counts(new_state.my_hand)
+                new_open_cnt = sum(1 for m in new_state.my_melds if m.is_open) if hasattr(new_state, 'my_melds') else 0
+                new_shanten = ShantenCalculator.calculate_open(new_cnts, new_open_cnt)
+                if new_shanten > old_shanten:
+                    lines.append("手が崩れてシャンテン戻しです。")
         if ctype == "ankan":
             lines.append("暗槓は門前役（四暗刻など）に影響します。")
         else:
@@ -526,18 +507,27 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
 
     if ctype == "skip":
         lines.append(f"鳴かずに{tile}を切ります。")
-        # 副露封印チェック
-        from core.strategy_manager import StrategyManager
-        sm = StrategyManager(old_state, params={})
-        if not sm.is_meld_open_allowed():
-            lines.append("門前限定役満を狙っているため副露を封印します。")
-        elif open_meld_count == 0:
-            lines.append("門前を維持します。")
+        # 暗槓可能な状態でのスキップ→暗槓判断時は門前維持やシャンテン固定は自明なので省略
+        from core.str_converter import hand_to_counts
+        cnts = hand_to_counts(old_state.my_hand) if hasattr(old_state, 'my_hand') else []
+        has_ankan = any(c >= 4 for c in cnts) if cnts else False
+
+        if not has_ankan:
+            # 副露封印チェック
+            from core.strategy_manager import StrategyManager
+            sm = StrategyManager(old_state, params={})
+            if not sm.is_meld_open_allowed():
+                lines.append("門前限定役満を狙っているため副露を封印します。")
+            elif open_meld_count == 0:
+                lines.append("門前を維持します。")
+            else:
+                lines.append("既に副露していますが、さらに鳴く価値がありません。")
+            if shanten > 0:
+                lines.append(f"現在{shanten}向聴です。")
+                lines.append("シャンテン数が進まないため不要です。")
         else:
-            lines.append("既に副露していますが、さらに鳴く価値がありません。")
-        if shanten > 0:
-            lines.append(f"現在{shanten}向聴です。")
-            lines.append("シャンテン数が進まないため不要です。")
+            if shanten > 0:
+                lines.append(f"現在{shanten}向聴です。")
     else:
         meld_tile_str = ""
         if cand and cand.get("tiles"):
@@ -864,11 +854,16 @@ def _restore_game_state(payload: dict) -> GameState:
     state.tsumo_count = int(payload.get("tsumo_count", 0))
     state.scores = list(payload.get("scores", [25000, 25000, 25000, 25000]))
     state.doras = list(payload.get("doras", []))
+    state.dealer_seat = state.ju
 
     hand = payload.get("hand", [])
     if not validate_tiles(hand):
         raise ValueError("hand contains invalid tile strings")
     state.my_hand = list(hand)
+
+    # buildCoachPayload は常にツモ牌を hand の末尾に移動しているため、末尾が last_self_drawn
+    if len(hand) >= 14:
+        state.last_self_drawn = hand[-1]
 
     raw_river = payload.get("river", [[], [], [], []])
     state.river = [list(r) for r in raw_river] + [[] for _ in range(4 - len(raw_river))]
@@ -1143,6 +1138,12 @@ class PacketHandler(BaseHTTPRequestHandler):
         if self.path == '/api/restart':
             self._send_json({"status": "ok", "message": "Restarting server..."})
             self.wfile.flush()
+            # __pycache__を削除して古いキャッシュを無効化
+            for root, dirs, files in os.walk(_FW_ROOT):
+                for d in dirs:
+                    if d == '__pycache__':
+                        import shutil
+                        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
             # Pythonはモジュールキャッシュを持つため、ファイル変更を反映するには完全なプロセス再起動が必要
             if getattr(sys, 'frozen', False):
                 cmd = [sys.executable]

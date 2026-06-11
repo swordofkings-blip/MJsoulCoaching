@@ -134,7 +134,9 @@ def evaluate_all(record_path: str, params: dict, verbose: bool = False) -> dict:
 
                         # 安全度が同等以下かつシャンテン数が後退する無駄な危険牌は一致とみなさない
                         is_useless_discard = (actual_defense <= rec_defense and actual_shanten > rec_shanten)
-                        is_match = (recommended == tile or (rating >= rating_threshold and not is_useless_discard))
+                        scored_list = sorted(scores.items(), key=lambda x: -x[1])
+                        top3 = [t for t, _ in scored_list[:3]]
+                        is_match = ((tile in top3 and rating >= 70) or (rating >= rating_threshold and not is_useless_discard))
                     if is_match:
                         per_seat[seat]['matches'] += 1
                     else:

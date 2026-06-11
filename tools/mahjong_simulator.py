@@ -942,7 +942,7 @@ class MahjongSimulator:
         s.scores = list(self._scores)
         s.doras = list(self._dora_indicators)
         s.left_tile_count = self._dead_wall_start - self._wall_pos
-        s.tsumo_count = self._tsumo_count
+        s.tsumo_count = self._player_tsumo[seat]
         s.reach_states = [ReachState(is_reach=rs.is_reach, reach_turn=rs.reach_turn,
                                       is_ippatsu=rs.is_ippatsu) for rs in self._reach_states]
         s.last_discard_seat = self._last_discard_seat
