@@ -2684,7 +2684,7 @@ ${riversStr}
             if (match) ju = parseInt(match[0]) - 1;
             const chang = Math.floor(ju / 4);
 
-            return {
+            const payload = {
                 my_seat: mySeat,
                 hand: hand,
                 tsumo: (includeTsumo !== false) ? null : tsumo,
@@ -2701,6 +2701,11 @@ ${riversStr}
                 left_tile_count: engine.leftTileCount,
                 reach_states: reach_states
             };
+            const ps = gameData && gameData.head && gameData.head.player_stats;
+            if (ps) {
+                payload.player_stats = ps;
+            }
+            return payload;
         }
 
         /**

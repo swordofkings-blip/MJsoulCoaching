@@ -18,6 +18,7 @@ from google.protobuf.json_format import MessageToDict
 _FW_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.insert(0, _FW_ROOT)
 
+from core.sapk_api import fetch_player_stats
 from majsoul_wrapper.liqi import LiqiProto
 from core.game_state import GameState, Meld, ReachState
 from core.evaluator import Evaluator
@@ -174,6 +175,18 @@ def save_game_record(data_dict):
         print(f"[Warning] GameDetailRecordsラッパーのアンラップに失敗しました (取得クラス: {pure_name})")
         # 1段目のアンラップが失敗した場合は、そのままの解析結果を表示用に入れる
         detail_dict = detail_dict or {"raw_base64_original": base64_data}
+
+    # 牌譜屋APIからプレイヤーのスタッツを取得し seat 番号をキーに埋め込む
+    accounts = head.get('accounts', [])
+    player_stats = {}
+    for acc in accounts:
+        seat = acc.get('seat')
+        nickname = acc.get('nickname', '')
+        if seat is not None and nickname:
+            stats = fetch_player_stats(nickname)
+            player_stats[str(seat)] = stats
+    if player_stats:
+        head['player_stats'] = player_stats
 
     # 3段目の入れ子データ（actions内のresultなど）をすべて再帰的に展開して保存する
     output_data = {
@@ -911,6 +924,7 @@ def _restore_game_state(payload: dict) -> GameState:
 
     state.last_discard_seat = int(payload.get("last_discard_seat", -1))
     state.last_discard_tile = payload.get("last_discard_tile", None)
+    state.player_stats = payload.get("player_stats", {})
     return state
 
 
@@ -1185,6 +1199,15 @@ class PacketHandler(BaseHTTPRequestHandler):
                     print("-" * 80)
 
                     msg_type_str = str(result.get('type'))
+                    method_name = result.get('method', '')
+                    # Why: プロフィール確認パケットの形式を確認するためのデバッグ用ダンプ
+                    if 'Statistic' in method_name or 'Player' in method_name:
+                        debug_log_path = os.path.join(_FW_ROOT, 'logs', 'debug_stats_packet.json')
+                        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+                        with open(debug_log_path, 'w', encoding='utf-8') as df:
+                            json.dump(result, df, ensure_ascii=False, indent=2)
+                        print(f"\n[DEBUG] Captured player/statistic packet: {method_name}. Saved to logs/debug_stats_packet.json")
+
                     if result.get('method') == '.lq.Lobby.fetchGameRecord' and ('Res' in msg_type_str or '3' in msg_type_str):
                         save_game_record(result.get('data'))
 

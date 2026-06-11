@@ -701,8 +701,29 @@ class StrategyManager:
                 return max(a_base, 0.3)
             return 1.0
         push_score = a_base * (1.0 - t_max)
+        # --- 人読み: リーチ押し引き補正 ---
+        push_score = self._apply_player_stats_riichi_adjust(push_score)
         push_score = self._apply_position_override(push_score)
         return max(0.0, min(1.0, push_score))
+
+    def _apply_player_stats_riichi_adjust(self, push_score: float) -> float:
+        player_stats = self.state.player_stats or {}
+        adjust = 0.0
+        for s in range(4):
+            if s == self.state.my_seat:
+                continue
+            if not self.state.reach_states[s].is_reach:
+                continue
+            pstats = player_stats.get(str(s), {})
+            deal_in_rate = pstats.get("deal_in_rate", 0.12)
+            riichi_rate = pstats.get("riichi_rate", 0.20)
+            if deal_in_rate < 0.11:
+                adjust -= 0.10
+            if riichi_rate > 0.24:
+                adjust += 0.10
+        if adjust != 0.0:
+            pass
+        return max(0.0, min(1.0, push_score + adjust))
 
     def _remaining_kyokus(self) -> int:
         ju = self.state.ju

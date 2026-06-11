@@ -97,6 +97,12 @@ class DefenseEvaluator:
         self.params = params or {}
         self.evaluator = None
 
+    def _player_stats_for_seat(self, seat: int) -> dict:
+        if not self.state.player_stats:
+            return {}
+        key = str(seat)
+        return self.state.player_stats.get(key, {})
+
     def record_detail(self, tile: str, msg: str):
         if self.evaluator:
             self.evaluator.record_detail(tile, msg)
@@ -292,7 +298,44 @@ class DefenseEvaluator:
                     penalty = int(-400 * max_threat)
                     self.record_detail(tile, f"非リーチ他家脅威による危険ペナルティ ({penalty})")
                     return penalty
-            return 0
+
+            # --- 人読み: 他家鳴き時の打点/危険度見積もり補正 ---
+            meld_score_adjust = 0
+            for s in range(4):
+                if s == self.state.my_seat:
+                    continue
+                open_melds = [m for m in self.state.melds[s] if m.is_open]
+                if not open_melds:
+                    continue
+                pstats = self._player_stats_for_seat(s)
+                call_rate = pstats.get("call_rate", 0.33)
+                win_rate = pstats.get("win_rate", 0.22)
+                if call_rate > 0.40 and win_rate > 0.22:
+                    # 高副露+高和了 = 安手早仕掛け 危険度0.75倍（守備点を上げる）
+                    meld_score_adjust = max(meld_score_adjust, 5)
+                    self.record_detail(tile, f"人読み: S{s}安手早仕掛け傾向のためリスク軽減 (+5)")
+                elif call_rate <= 0.25:
+                    # 低副露 = 勝負手 危険度1.5倍（守備点を下げる）
+                    meld_score_adjust = min(meld_score_adjust, -30)
+                    self.record_detail(tile, f"人読み: S{s}低副露勝負手のためリスク増大 (-30)")
+
+            # --- 人読み: ダマテン警戒補正（高ダマテン率プレイヤーが手出し中盤以降） ---
+            local_turn = (self.state.tsumo_count - 1) // 4 + 1
+            if local_turn >= 10:
+                for s in range(4):
+                    if s == self.state.my_seat:
+                        continue
+                    if self.state.reach_states[s].is_reach:
+                        continue
+                    pstats = self._player_stats_for_seat(s)
+                    damaten_rate = pstats.get("damaten_rate", 0.15)
+                    if damaten_rate > 0.15:
+                        # 高ダマテン率プレイヤーの中盤以降の手出しに無筋は危険
+                        if self.state.last_discard_seat == s:
+                            meld_score_adjust -= 100
+                            self.record_detail(tile, f"人読み: S{s}高ダマテン率({damaten_rate:.1%})の手出し警戒 (-100)")
+                            break
+            return meld_score_adjust
 
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:
