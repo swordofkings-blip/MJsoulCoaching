@@ -755,6 +755,26 @@ class AttackEvaluator:
             score += SHANTEN_BACKTRACK_PENALTY
             self.record_detail(tile, f"シャンテン後退ペナルティ ({SHANTEN_BACKTRACK_PENALTY})")
 
+        # リャンメン維持・発展ボーナス: 切り出し後の手牌に残るリャンメン形状1つにつき加点
+        after_counts = list(self.state.my_hand_counts())
+        discard_id = tile_to_id(tile)
+        after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
+        ryanmen_count = 0
+        dora_ids = set(tile_to_id(d) for d in self.state.actual_doras)
+        dora_ryanmen_bonus = 0
+        for base in [0, 9, 18]:
+            for i in range(7):
+                if after_counts[base + i] >= 1 and after_counts[base + i + 1] >= 1:
+                    ryanmen_count += 1
+                    wait_l = base + i - 1 if i > 0 else -1
+                    wait_r = base + i + 2 if i < 7 else -1
+                    if wait_l in dora_ids or wait_r in dora_ids:
+                        dora_ryanmen_bonus += 1
+        if dora_ryanmen_bonus > 0:
+            dora_bonus = dora_ryanmen_bonus * self.params.get('DORA_RYANMEN_BONUS', 15)
+            score += dora_bonus
+            self.record_detail(tile, f"ドラ受けリャンメン維持ボーナス (+{dora_bonus})")
+
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
@@ -863,6 +883,15 @@ class AttackEvaluator:
                 base_w = self.params.get('UKEIRE_QUAL_CONNECT_BASE', 0.4)
                 per = self.params.get('UKEIRE_QUAL_CONNECT_PER', 0.2)
                 weight = min(1.0, base_w + connect * per)
+                # 3 consecutive meld completion bonus: drawn tile completes a meld from existing partial
+                if tid < 27:
+                    has_left_seq = (off >= 2 and new_counts[base + off - 2] >= 1 and new_counts[base + off - 1] >= 1)
+                    has_right_seq = (off <= 6 and new_counts[base + off + 1] >= 1 and new_counts[base + off + 2] >= 1)
+                    has_kanchan = (off >= 1 and off <= 7 and new_counts[base + off - 1] >= 1 and new_counts[base + off + 1] >= 1)
+                    if has_left_seq or has_right_seq:
+                        weight = max(weight, 1.0)
+                    elif has_kanchan:
+                        weight = max(weight, 0.9)
             total_weighted += remaining * weight
         if total == 0:
             return 0.0
@@ -1211,7 +1240,10 @@ class AttackEvaluator:
                 connect = 0
                 if off > 0: connect += counts[base + off - 1] if counts[base + off - 1] > 0 else 0
                 if off < 8: connect += counts[base + off + 1] if counts[base + off + 1] > 0 else 0
-                if connect == 0:
+                has_kanchan_l = off >= 2 and counts[base + off - 2] > 0
+                has_kanchan_r = off <= 6 and counts[base + off + 2] > 0
+                is_truly_isolated = connect == 0 and not has_kanchan_l and not has_kanchan_r
+                if is_truly_isolated:
                     if 2 <= off <= 6:
                         # 孤立中張牌: 序盤は手幅のために保持したいが、巡目が進むほど危険なため徐々に嫌う（ペナルティの減衰）
                         middle_penalty = self.params.get('ISOLATED_MIDDLE_BONUS', 10)
