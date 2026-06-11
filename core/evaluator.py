@@ -2095,22 +2095,24 @@ class Evaluator:
         threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
         return riichi_score > threshold
 
-    def _estimate_open_han(self) -> int:
+    def _estimate_open_han(self, hand: List[str] = None, melds: List = None) -> int:
         """
         @title 鳴き時の期待飜数の見積もり
-        @description 鳴いた後の期待飜数をHeuristicに見積もる。
+        @description 鳴いた後の仮想手牌と仮想副露から期待飜数を見積もる。
+        @param hand 仮想手牌（None=現在の手牌）
+        @param melds 仮想副露リスト（None=現在の副露）
         @returns {int} 期待飜数（エラー時は0）
         """
-        # アガる前の進行中の手牌から役を推測するため、strictなyaku_detectorではなくheuristicな予測ロジックを使用する
         try:
             from hand_value import estimate_han_advanced
+            h = hand if hand is not None else self.state.my_hand
+            m = melds if melds is not None else self.state.my_melds
             return estimate_han_advanced(
-                self.state.my_hand, self.state.my_melds, self.state.doras,
+                h, m, self.state.doras,
                 is_open=True, has_reach=False, is_ippatsu=False, is_tsumo=False,
                 seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju
             )
         except Exception:
-            # エラー発生時のフォールバック値0
             return 0
 
     def _yaku_meld_bias(self, type_: int, tiles: List[str]) -> Optional[bool]:
@@ -2278,7 +2280,27 @@ class Evaluator:
                 return False
             return False
         is_closed = open_meld_count == 0
-        expected_han = self._estimate_open_han()
+
+        # 鳴いた後の仮想手牌・仮想副露を構築して期待飜数を計算
+        from game_state import Meld
+        hand_after = list(self.state.my_hand)
+        consumed = []
+        if type_ == 1:
+            consumed = [tiles[0], tiles[0]]
+        elif type_ == 0:
+            consumed = tiles[1:]
+        elif type_ == 2:
+            consumed = [tiles[0], tiles[0], tiles[0]]
+        for t in consumed:
+            target_id = tile_to_id(t)
+            for h_tile in list(hand_after):
+                if tile_to_id(h_tile) == target_id:
+                    hand_after.remove(h_tile)
+                    break
+        new_meld = Meld(type=type_, tiles=list(tiles), froms=[from_seat] * len(tiles), tile_states=[0] * len(tiles))
+        melds_after = list(self.state.my_melds) + [new_meld]
+
+        expected_han = self._estimate_open_han(hand_after, melds_after)
 
         # 役牌ポン or 高価値手は防御ペナルティを無視
         is_yakuhai_meld = False
@@ -2375,8 +2397,8 @@ class Evaluator:
         if is_closed and before_shanten <= 1 and expected_han >= 2 and turn < 6:
             return False
 
-        # 終盤: テンパイになるか形式テンパイが必要な場合のみ許可
-        if turn >= 10:
+        # 終盤制限の緩和: 押し引きと巡目に応じて適用
+        if turn >= 12 or (turn >= 10 and push < 0.4):
             if after_shanten <= 0:
                 return True
             if self.state.my_score_rank() == 3 and self.state.left_tile_count <= 20:
