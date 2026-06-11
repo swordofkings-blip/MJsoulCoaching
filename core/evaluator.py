@@ -557,27 +557,6 @@ class AttackEvaluator:
             self.record_detail(tile, f"シャンテン後退ペナルティ ({SHANTEN_BACKTRACK_PENALTY})")
             return SHANTEN_BACKTRACK_PENALTY
 
-        # 通常手（面子手）の形状破壊ペナルティ: 七対子優先で全体シャンテンが変わらなくても
-        # 通常手としてのシャンテンが後退する場合はペナルティ
-        hand_counts = self.state.my_hand_counts()
-        discard_id = tile_to_id(tile)
-        new_counts = list(hand_counts)
-        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
-        best_std_shanten = 8
-        for t in self.state.my_hand:
-            tid = tile_to_id(t)
-            tmp = list(hand_counts)
-            tmp[tid] -= 1
-            s = ShantenCalculator.calculate_standard(tmp)
-            if s < best_std_shanten:
-                best_std_shanten = s
-        std_after = ShantenCalculator.calculate_standard(new_counts)
-        if std_after > best_std_shanten:
-            shape_pen = self.params.get('PENALTY_STANDARD_SHANTEN_BACKWARD', 350)
-            score = -shape_pen
-            self.record_detail(tile, f"通常手シャンテン後退（形状破壊）ペナルティ (-{shape_pen})")
-            return score
-
         USE_P2 = self.params.get('USE_PHASE2_ATTACK', True)
         if USE_P2:
             quality = self._ukeire_quality_mult(tile)
@@ -672,6 +651,27 @@ class AttackEvaluator:
                     penalty = self.params.get('OPEN_TENPAI_NO_YAKU_PENALTY', 1500)
                     score -= penalty
                     self.record_detail(tile, f"役なしテンパイペナルティ (-{penalty})")
+
+        # 通常手（面子手）の形状破壊ペナルティ: 七対子優先で全体シャンテンが変わらなくても
+        # 通常手としてのシャンテンが後退する場合はペナルティ（即時returnはせず減算のみ）
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+        best_std_shanten = 8
+        for t in self.state.my_hand:
+            tid = tile_to_id(t)
+            tmp = list(hand_counts)
+            tmp[tid] -= 1
+            s = ShantenCalculator.calculate_standard(tmp)
+            if s < best_std_shanten:
+                best_std_shanten = s
+        std_after = ShantenCalculator.calculate_standard(new_counts)
+        if std_after > best_std_shanten:
+            shape_pen = self.params.get('PENALTY_STANDARD_SHANTEN_BACKWARD', 350)
+            score -= shape_pen
+            self.record_detail(tile, f"通常手シャンテン後退（形状破壊）ペナルティ (-{shape_pen})")
+
         furiten_reserve, fr_reason = self._furiten_reserve_penalty(tile)
         if furiten_reserve > 0:
             score -= furiten_reserve
@@ -1015,14 +1015,9 @@ class AttackEvaluator:
                     bonus -= val_penalty
                     self.record_detail(tile, f"不要自風切りペナルティ (-{val_penalty})")
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
-                if turn <= 5 and shanten >= 3:
-                    honor_keep_pen = self.params.get('EARLY_HONOR_KEEP_PENALTY', 50)
-                    bonus -= honor_keep_pen
-                    self.record_detail(tile, f"序盤安全オタ風放出ペナルティ (-{honor_keep_pen})")
-                else:
-                    val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
-                    bonus += val_bonus
-                    self.record_detail(tile, f"不要客風整理ボーナス (+{val_bonus})")
+                val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
+                bonus += val_bonus
+                self.record_detail(tile, f"不要客風整理ボーナス (+{val_bonus})")
 
             ratio_base = self.params.get('VISIBLE_RATIO_HONOR', 80)
             is_keeping_safe = False
@@ -1104,20 +1099,15 @@ class AttackEvaluator:
                 if off < 8: connect += counts[base + off + 1] if counts[base + off + 1] > 0 else 0
                 if connect == 0:
                     if 2 <= off <= 6:
-                        if turn <= 5 and shanten >= 3:
-                            discard_isolated_mid_bonus = self.params.get('EARLY_ISOLATED_MID_DISCARD_BONUS', 30)
-                            bonus += discard_isolated_mid_bonus
-                            self.record_detail(tile, f"序盤孤立中張牌処分ボーナス (+{discard_isolated_mid_bonus})")
-                        else:
-                            # 孤立中張牌: 序盤は手幅のために保持したいが、巡目が進むほど危険なため徐々に嫌う（ペナルティの減衰）
-                            middle_penalty = self.params.get('ISOLATED_MIDDLE_BONUS', 10)
-                            decay = max(-1.0, 1.0 - turn / 10.0) # 10巡目以降は逆に廃棄ボーナスに転じる
-                            offset = int(middle_penalty * decay)
-                            bonus -= offset
-                            if offset > 0:
-                                self.record_detail(tile, f"孤立中張牌保持ペナルティ (-{offset})")
-                            elif offset < 0:
-                                self.record_detail(tile, f"孤立中張牌整理ボーナス (+{-offset})")
+                        # 孤立中張牌: 序盤は手幅のために保持したいが、巡目が進むほど危険なため徐々に嫌う（ペナルティの減衰）
+                        middle_penalty = self.params.get('ISOLATED_MIDDLE_BONUS', 10)
+                        decay = max(-1.0, 1.0 - turn / 10.0) # 10巡目以降は逆に廃棄ボーナスに転じる
+                        offset = int(middle_penalty * decay)
+                        bonus -= offset
+                        if offset > 0:
+                            self.record_detail(tile, f"孤立中張牌保持ペナルティ (-{offset})")
+                        elif offset < 0:
+                            self.record_detail(tile, f"孤立中張牌整理ボーナス (+{-offset})")
                         
                         # 進行度が高くブロックが十分な場合は、不要な孤立中張牌を率先して捨てる
                         if shanten <= 2 and blocks >= 5:
