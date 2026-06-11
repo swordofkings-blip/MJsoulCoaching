@@ -2981,8 +2981,14 @@ ${riversStr}
                 return;
             }
             // 手牌が14枚でなくてもlastTsumoがあれば打牌判断（副露後の手番も扱う）
+            // 親の第1巡はツモ牌なしで手牌14枚のため、tsumoTileがなくても許可
             const tsumoTile = engine ? engine.lastTsumo[perspectiveSeat] : null;
-            if (tsumoTile === null || !payload.hand.includes(tsumoTile)) {
+            if (tsumoTile === null) {
+                if (!payload.hand || payload.hand.length < 14) {
+                    clearBotCoachUI();
+                    return;
+                }
+            } else if (!payload.hand.includes(tsumoTile)) {
                 clearBotCoachUI();
                 return;
             }
