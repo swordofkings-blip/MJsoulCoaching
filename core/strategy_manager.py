@@ -403,10 +403,10 @@ class StrategyManager:
         bonuses: List[Tuple[str, float]] = []
         if self._has_yakuhai_or_dora_meld(open_melds):
             bonuses.append(('役牌・ドラポン', self.params.get('YAKUHAI_DORA_MELD_BONUS', 0.15)))
-        if self.state.tsumo_count >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
+        if (self.state.tsumo_count - 1) // 4 + 1 >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
             bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_OPEN', 0.10)))
         value = min(1.0, base + sum(b[1] for b in bonuses))
-        tsumo = self.state.tsumo_count
+        tsumo = (self.state.tsumo_count - 1) // 4 + 1
         if tsumo < 8:
             turn_scale = max(0.3, tsumo / 12.0)
             value = value * turn_scale
@@ -430,7 +430,7 @@ class StrategyManager:
         """
         bonuses: List[Tuple[str, float]] = []
         base = 0.0
-        tsumo = self.state.tsumo_count
+        tsumo = (self.state.tsumo_count - 1) // 4 + 1
         if 10 <= tsumo <= 14:
             base = self.params.get('CLOSED_TSUMO_10_14', 0.05)
         elif tsumo >= 15:

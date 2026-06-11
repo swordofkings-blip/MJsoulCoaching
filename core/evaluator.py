@@ -639,7 +639,7 @@ class AttackEvaluator:
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
-        turn = self.state.tsumo_count
+        turn = (self.state.tsumo_count - 1) // 4 + 1
         if not (5 <= turn <= 10):
             return 0
         if shanten < 3:
@@ -834,7 +834,7 @@ class AttackEvaluator:
                 bonus = int(bonus * damp)
             self.record_detail(tile, f"手役・打点評価ボーナス (+{bonus})")
         blocks = ShantenCalculator.calculate_blocks(counts, open_meld_count)
-        turn = self.state.tsumo_count
+        turn = (self.state.tsumo_count - 1) // 4 + 1
 
         # ホンイツ・清一色への移行判断
         # 萬子、筒子、索子の枚数を数える（字牌を除く）
@@ -990,9 +990,9 @@ class AttackEvaluator:
                 safe_ramp = self.params.get('SAFE_TILE_RAMP_DURATION', 10)
                 has_threat = self.state.is_any_opponent_reach() or Evaluator._any_opponent_has_open_meld(self.state)
                 if has_threat:
-                    effective_turn = max(self.state.tsumo_count, safe_start)
+                    effective_turn = max((self.state.tsumo_count - 1) // 4 + 1, safe_start)
                 else:
-                    effective_turn = self.state.tsumo_count
+                    effective_turn = (self.state.tsumo_count - 1) // 4 + 1
                 turn_factor = max(0.0, min(1.0, (effective_turn - safe_start) / safe_ramp))
                 if is_keeping_safe or turn_factor > 0:
                     ratio = 4.0 / max(1, 4 - vis) - 1.0
@@ -1018,9 +1018,9 @@ class AttackEvaluator:
             safe_ramp = self.params.get('SAFE_TILE_RAMP_DURATION', 10)
             has_threat = self.state.is_any_opponent_reach() or Evaluator._any_opponent_has_open_meld(self.state)
             if has_threat:
-                effective_turn = max(self.state.tsumo_count, safe_start)
+                effective_turn = max((self.state.tsumo_count - 1) // 4 + 1, safe_start)
             else:
-                effective_turn = self.state.tsumo_count
+                effective_turn = (self.state.tsumo_count - 1) // 4 + 1
             turn_factor = max(0.0, min(1.0, (effective_turn - safe_start) / safe_ramp))
             if vis >= 1 and counts[discard_id] == 1 and turn_factor > 0:
                 ratio = 4.0 / max(1, 4 - vis) - 1.0
@@ -1105,7 +1105,7 @@ class AttackEvaluator:
         results = evaluator.evaluate_all()
 
         total_bonus = 0
-        turn = self.state.tsumo_count
+        turn = (self.state.tsumo_count - 1) // 4 + 1
         tile_id = tile_to_id(tile)
 
         # パラメータ読み込み
@@ -1465,7 +1465,7 @@ class Evaluator:
         @param tile 捨てる牌の文字列 (例: "5m")
         @returns int ボーナス値（条件を満たさない場合は0）
         """
-        tsumo = self.state.tsumo_count
+        tsumo = (self.state.tsumo_count - 1) // 4 + 1
         if 15 <= tsumo <= 17:
             shanten_after = self.attack.shanten_after_discard(tile)
             if shanten_after <= 0:
@@ -1826,7 +1826,7 @@ class Evaluator:
         visible = self.state.all_visible_counts()
         total_remaining = sum(max(0, 4 - visible[i]) for i in self._YAOCHU_INDICES)
         remaining_ratio = total_remaining / (13 * 4)
-        tsumo = self.state.tsumo_count
+        tsumo = (self.state.tsumo_count - 1) // 4 + 1
         turn_factor = max(0.0, 1.0 - tsumo / 18.0)
 
         my_score = self.state.scores[self.state.my_seat]
@@ -1957,7 +1957,7 @@ class Evaluator:
 
         late_score = 0.0
         late_threshold = self.params.get('RIICHI_LATE_TURN', 14)
-        if self.state.tsumo_count >= late_threshold:
+        if (self.state.tsumo_count - 1) // 4 + 1 >= late_threshold:
             late_score = self.params.get('RIICHI_LATE_PENALTY', -0.2)
 
         rank_bonus = 0.0
@@ -2030,7 +2030,7 @@ class Evaluator:
         riichi_score += dora_count * self.params.get('RIICHI_DORA_PENALTY', -0.1)
 
         late_threshold = self.params.get('RIICHI_LATE_TURN', 14)
-        if self.state.tsumo_count >= late_threshold:
+        if (self.state.tsumo_count - 1) // 4 + 1 >= late_threshold:
             riichi_score += self.params.get('RIICHI_LATE_PENALTY', -0.2)
 
         rank = self.state.my_score_rank()
@@ -2218,7 +2218,7 @@ class Evaluator:
         if after_shanten >= before_shanten:
             return False
 
-        turn = self.state.tsumo_count // 4
+        turn = (self.state.tsumo_count - 1) // 4 + 1
 
         # ベタオリ時は原則副露禁止
         if self.strategy.get_strategy_mode() == '防御':
@@ -2295,7 +2295,7 @@ class Evaluator:
             if not safe_after:
                 return False
 
-        turn = self.state.tsumo_count // 4
+        turn = (self.state.tsumo_count - 1) // 4 + 1
         is_dealer = self.state.my_seat == 0
 
         # 副露封印モード
