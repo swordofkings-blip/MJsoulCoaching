@@ -2115,12 +2115,12 @@ class Evaluator:
         except Exception:
             return 0
 
-    def _yaku_meld_bias(self, type_: int, tiles: List[str]) -> Optional[bool]:
+    def _yaku_meld_bias(self, type_: int, tiles: List[str], hand_after: List[str] = None, melds_after: List = None) -> Optional[bool]:
         try:
             from yaku_detector import analyze_all
-            yaku_infos = analyze_all(self.state.my_hand, self.state.my_melds,
-                                      seat=self.state.my_seat, chang=self.state.chang,
-                                      ju=self.state.ju)
+            h = hand_after if hand_after is not None else self.state.my_hand
+            m = melds_after if melds_after is not None else self.state.my_melds
+            yaku_infos = analyze_all(h, m, seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
         except Exception:
             return None
 
@@ -2129,7 +2129,8 @@ class Evaluator:
         toitoi_cfg = yaku_strategy.get('toitoi', {})
         if toitoi_cfg.get('meld_bias') == 'pon_only':
             toitoi = yaku_infos.get('toitoi')
-            if toitoi and toitoi.progress >= toitoi_cfg.get('pairs_threshold', 3):
+            target_threshold = toitoi_cfg.get('pairs_threshold', 3) / 5.0
+            if toitoi and toitoi.progress >= target_threshold:
                     if type_ == 0:
                         return False
                     if type_ == 1:
@@ -2230,7 +2231,26 @@ class Evaluator:
         if open_meld_count >= 4:
             return False
 
-        bias = self._yaku_meld_bias(type_, tiles)
+        # 鳴いた後の仮想手牌・仮想副露を構築
+        from game_state import Meld
+        hand_after = list(self.state.my_hand)
+        consumed = []
+        if type_ == 1:
+            consumed = [tiles[0], tiles[0]]
+        elif type_ == 0:
+            consumed = tiles[1:]
+        elif type_ == 2:
+            consumed = [tiles[0], tiles[0], tiles[0]]
+        for t in consumed:
+            target_id = tile_to_id(t)
+            for h_tile in list(hand_after):
+                if tile_to_id(h_tile) == target_id:
+                    hand_after.remove(h_tile)
+                    break
+        new_meld = Meld(type=type_, tiles=list(tiles), froms=[from_seat] * len(tiles), tile_states=[0] * len(tiles))
+        melds_after = list(self.state.my_melds) + [new_meld]
+
+        bias = self._yaku_meld_bias(type_, tiles, hand_after, melds_after)
         if bias is not None:
             return bias
 
@@ -2280,25 +2300,6 @@ class Evaluator:
                 return False
             return False
         is_closed = open_meld_count == 0
-
-        # 鳴いた後の仮想手牌・仮想副露を構築して期待飜数を計算
-        from game_state import Meld
-        hand_after = list(self.state.my_hand)
-        consumed = []
-        if type_ == 1:
-            consumed = [tiles[0], tiles[0]]
-        elif type_ == 0:
-            consumed = tiles[1:]
-        elif type_ == 2:
-            consumed = [tiles[0], tiles[0], tiles[0]]
-        for t in consumed:
-            target_id = tile_to_id(t)
-            for h_tile in list(hand_after):
-                if tile_to_id(h_tile) == target_id:
-                    hand_after.remove(h_tile)
-                    break
-        new_meld = Meld(type=type_, tiles=list(tiles), froms=[from_seat] * len(tiles), tile_states=[0] * len(tiles))
-        melds_after = list(self.state.my_melds) + [new_meld]
 
         expected_han = self._estimate_open_han(hand_after, melds_after)
 
