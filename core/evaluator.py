@@ -1564,8 +1564,8 @@ class Evaluator:
 
         keiten_bonus = self._get_keiten_bonus(tile)
         if keiten_bonus > 0:
-            v += keiten_bonus
-            self.record_detail(tile, f"形テンボーナス (+{keiten_bonus})")
+            v += push_score * keiten_bonus
+            self.record_detail(tile, f"形テンボーナス (押し補正: {push_score:.2f}) (+{push_score * keiten_bonus:.0f})")
 
         threat = self.strategy.compute_opponent_threat()
         if is_honor(tile_to_id(tile)) and threat > 0.1 and mode != "防御":
