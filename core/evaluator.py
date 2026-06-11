@@ -2398,7 +2398,7 @@ class Evaluator:
             return False
 
         # 終盤制限の緩和: 押し引きと巡目に応じて適用
-        if turn >= 12 or (turn >= 10 and push < 0.4):
+        if turn >= 12 or push < 0.4:
             if after_shanten <= 0:
                 return True
             if self.state.my_score_rank() == 3 and self.state.left_tile_count <= 20:
