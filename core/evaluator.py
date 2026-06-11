@@ -2084,18 +2084,123 @@ class Evaluator:
         threshold = self.params.get('KOKUSHI_13_THRESHOLD', 0.5)
         return benefit >= threshold
 
-    def should_kan(self) -> bool:
-        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
-        if open_meld_count > 0:
+    def is_emergency_reverse_needed(self) -> bool:
+        if not self.state.is_last_round():
             return False
-        hand_counts = self.state.my_hand_counts()
-        push = self.strategy.compute_push_score()
+        if self.state.my_score_rank() != 3:
+            return False
+        scores = self.state.scores
+        my_score = scores[self.state.my_seat]
+        sorted_scores = sorted(scores, reverse=True)
+        third_score = sorted_scores[2]
+        diff = third_score - my_score
         kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
-        min_push = kan_cfg.get('min_push_score', 0.6)
-        for i, c in enumerate(hand_counts):
-            if c == 4:
-                if push > min_push:
-                    return True
+        threshold = kan_cfg.get('emergency_reverse_diff_threshold', 8000)
+        return diff >= threshold
+
+    def should_ankan(self) -> bool:
+        kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
+        ankan_min_push_tenpai = kan_cfg.get('ankan_min_push_tenpai', 0.6)
+        ankan_max_turn_non_tenpai = kan_cfg.get('ankan_max_turn_non_tenpai', 9)
+
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        hand_counts = self.state.my_hand_counts()
+        if open_meld_count == 0:
+            shanten = ShantenCalculator.calculate_closed_effective(hand_counts)
+        else:
+            shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        push = self.strategy.compute_push_score()
+        t_max = self.strategy.compute_opponent_threat()
+        has_opponent_reach = self.state.is_any_opponent_reach()
+
+        emergency = self.is_emergency_reverse_needed()
+
+        if emergency:
+            if not has_opponent_reach:
+                return True
+            if shanten <= 1:
+                return True
+            return False
+
+        if has_opponent_reach or t_max >= 0.5:
+            if shanten == 0 and push >= ankan_min_push_tenpai:
+                return True
+            return False
+
+        if shanten == 0:
+            return True
+        if shanten == 1 and turn < ankan_max_turn_non_tenpai:
+            return True
+        return False
+
+    def should_kakan(self, tile: str) -> bool:
+        kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
+        kakan_max_threat = kan_cfg.get('kakan_max_threat', 0.3)
+
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        hand_counts = self.state.my_hand_counts()
+        if open_meld_count == 0:
+            shanten = ShantenCalculator.calculate_closed_effective(hand_counts)
+        else:
+            shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+        push = self.strategy.compute_push_score()
+        t_max = self.strategy.compute_opponent_threat()
+        has_opponent_reach = self.state.is_any_opponent_reach()
+
+        emergency = self.is_emergency_reverse_needed()
+
+        if emergency:
+            if not has_opponent_reach:
+                return True
+            if shanten == 0:
+                return True
+            return False
+
+        if has_opponent_reach or t_max >= kakan_max_threat:
+            return False
+
+        if shanten == 0:
+            return True
+        if shanten == 1 and push >= 0.7:
+            return True
+        return False
+
+    def should_daiminkan(self, tiles: List[str], from_seat: int) -> bool:
+        kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
+        daiminkan_min_turn = kan_cfg.get('daiminkan_min_turn', 15)
+        daiminkan_max_threat = kan_cfg.get('daiminkan_max_threat', 0.2)
+
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        hand_counts = self.state.my_hand_counts()
+        if open_meld_count == 0:
+            shanten = ShantenCalculator.calculate_closed_effective(hand_counts)
+        else:
+            shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        t_max = self.strategy.compute_opponent_threat()
+        has_opponent_reach = self.state.is_any_opponent_reach()
+
+        emergency = self.is_emergency_reverse_needed()
+
+        if emergency:
+            if shanten == 0 and not has_opponent_reach:
+                return True
+            return False
+
+        if has_opponent_reach:
+            return False
+        if t_max >= daiminkan_max_threat:
+            return False
+        if turn < daiminkan_min_turn:
+            return False
+
+        after_counts = list(hand_counts)
+        target = tile_to_id(tiles[0])
+        after_counts[target] = max(0, after_counts[target] - 3)
+        after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
+        if after_shanten == 0:
+            return True
         return False
 
     def _wait_tiles_for_tenpai(self) -> List[int]:
@@ -2455,6 +2560,10 @@ class Evaluator:
         new_meld = Meld(type=type_, tiles=list(tiles), froms=[from_seat] * len(tiles), tile_states=[0] * len(tiles))
         melds_after = list(self.state.my_melds) + [new_meld]
 
+        # 大明槓は専用判定に委ねる（シャンテン計算や副露封印より優先）
+        if type_ == 2:
+            return self.should_daiminkan(tiles, from_seat)
+
         bias = self._yaku_meld_bias(type_, tiles, hand_after, melds_after)
         if bias is not None:
             return bias
@@ -2574,18 +2683,6 @@ class Evaluator:
             round_wind = 27 + (self.state.chang % 4)
             if target_id in (31,32,33,seat_wind,round_wind) and expected_han >= 1:
                 return True
-
-        # 大明槓
-        if type_ == 2:
-            if push > 0.6:
-                return True
-            dora_gain = 0
-            for d in self.state.doras:
-                if tile_to_id(tiles[0]) == tile_to_id(d):
-                    dora_gain += 1
-            if dora_gain > 0 and push > 0.3:
-                return True
-            return False
 
         # 0飜開局 = 和了れない → 絶対に鳴かない
         if expected_han < 1:

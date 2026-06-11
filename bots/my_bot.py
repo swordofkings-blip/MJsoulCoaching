@@ -131,8 +131,11 @@ class MyBot(MajsoulHandler):
             self.actionHu()
             return
         if can_actions.get(Operation.JiaGang.value):
-            if self.evaluator.should_kan():
-                self._execute_kang(can_actions[Operation.JiaGang.value])
+            op = can_actions[Operation.JiaGang.value]
+            combo = op.get('combination', [])
+            kakan_tile = combo[0] if combo else None
+            if kakan_tile and self.evaluator.should_kakan(kakan_tile):
+                self._execute_kang(op)
                 return
         if can_actions.get(Operation.Liqi.value):
             if self.evaluator.should_riichi():
@@ -141,7 +144,7 @@ class MyBot(MajsoulHandler):
                     self.actionLiqi(discard)
                     return
         if can_actions.get(Operation.MingGang.value):
-            if self.evaluator.should_kan():
+            if self.evaluator.should_ankan():
                 self._execute_kang(can_actions[Operation.MingGang.value])
                 return
         self._decide_and_discard()
@@ -159,8 +162,11 @@ class MyBot(MajsoulHandler):
         if not meld_allowed:
             return
         if can_actions.get(Operation.MingGang.value):
-            self._execute_kang(can_actions[Operation.MingGang.value])
-            return
+            ming_op = can_actions[Operation.MingGang.value]
+            combo = ming_op.get('combination', [])
+            if self.evaluator.should_daiminkan(combo, discarder_seat):
+                self._execute_kang(ming_op)
+                return
         if can_actions.get(Operation.Peng.value):
             self._execute_meld(Operation.Peng, can_actions[Operation.Peng.value])
             return

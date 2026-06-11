@@ -180,7 +180,13 @@
       "enabled": true,
       "min_push_score": 0.6,
       "chankan_risk_threshold": 0.3,
-      "decline_if_wait_reduces": true
+      "decline_if_wait_reduces": true,
+      "ankan_min_push_tenpai": 0.6,
+      "ankan_max_turn_non_tenpai": 9,
+      "kakan_max_threat": 0.3,
+      "daiminkan_min_turn": 15,
+      "daiminkan_max_threat": 0.2,
+      "emergency_reverse_diff_threshold": 8000
     },
     "yakuhai": {
       "enabled": true,

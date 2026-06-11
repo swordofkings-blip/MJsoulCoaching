@@ -429,8 +429,22 @@ def evaluate_meld(payload: dict) -> dict:
                 open_cnt = sum(1 for m in st.my_melds if m.is_open)
                 cnts = hand_to_counts(st.my_hand)
                 shanten_after = ShantenCalculator.calculate_open(cnts, open_cnt)
-            # 槓はシャンテンが進まないため、スキップより低いスコアに
-            kan_score = -max(1, shanten_after) * 500 if shanten_after < 99 else -9999
+
+            # 人読み対応: should_ankan/should_kakan の判定でスコアを動的設定
+            kan_allowed = False
+            if ctype == "ankan":
+                kan_allowed = ev.should_ankan()
+            elif ctype == "kakan":
+                kakan_tile = list(tiles)[0] if tiles else None
+                if kakan_tile:
+                    kan_allowed = ev.should_kakan(kakan_tile)
+
+            if kan_allowed:
+                # スキップの best_score を取得して槓を最優先
+                skip_score = results[0]["best_score"] if results else 0
+                kan_score = skip_score + 1
+            else:
+                kan_score = -9999
             results.append({
                 "type": ctype,
                 "label": cand.get("label", ctype),
