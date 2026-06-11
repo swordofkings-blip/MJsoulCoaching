@@ -47,11 +47,35 @@ class MeldSealTracker:
         self._sealed: bool | None = None
 
     def evaluate(self, hand, melds, seat, chang, ju) -> bool:
+        # トイトイ移行条件（対子4以上 + 役牌/ドラ対子）を最優先で動的チェック
+        # キャッシュより先に判定し、条件成立時は常に封印解除
+        counts = hand_to_counts(hand)
+        n_pairs = sum(1 for c in counts if c >= 2)
+        if n_pairs >= 4:
+            has_valuable_pair = False
+            for tid in range(34):
+                if counts[tid] >= 2:
+                    if tid in SANGEN:
+                        has_valuable_pair = True
+                        break
+                    seat_wind = 27 + ((seat - ju) % 4)
+                    round_wind = 27 + (chang % 4)
+                    if tid == seat_wind or tid == round_wind:
+                        has_valuable_pair = True
+                        break
+            if not has_valuable_pair and counts[31] >= 2:
+                has_valuable_pair = True
+            if not has_valuable_pair and counts[32] >= 2:
+                has_valuable_pair = True
+            if not has_valuable_pair and counts[33] >= 2:
+                has_valuable_pair = True
+            if has_valuable_pair:
+                self._sealed = False
+                return False
         if self._sealed is not None:
             return self._sealed
         # 初期向聴が4以上 = 手が極端に悪い → 門前維持（来るべき手を待つ）
         from strategy_manager import ShantenCalculator
-        counts = hand_to_counts(hand)
         initial_shanten = ShantenCalculator.calculate_closed(counts)
         if initial_shanten >= 4:
             self._sealed = True
@@ -668,9 +692,13 @@ class AttackEvaluator:
                 best_std_shanten = s
         std_after = ShantenCalculator.calculate_standard(new_counts)
         if std_after > best_std_shanten:
-            shape_pen = self.params.get('PENALTY_STANDARD_SHANTEN_BACKWARD', 350)
-            score -= shape_pen
-            self.record_detail(tile, f"通常手シャンテン後退（形状破壊）ペナルティ (-{shape_pen})")
+            chiitoi_mode = self._is_chiitoi_toitoi_mode(hand_counts)
+            if chiitoi_mode != 'none':
+                self.record_detail(tile, f"七対子/トイトイ移行モード: 形状破壊ペナルティ免除")
+            else:
+                shape_pen = self.params.get('PENALTY_STANDARD_SHANTEN_BACKWARD', 350)
+                score -= shape_pen
+                self.record_detail(tile, f"通常手シャンテン後退（形状破壊）ペナルティ (-{shape_pen})")
 
         furiten_reserve, fr_reason = self._furiten_reserve_penalty(tile)
         if furiten_reserve > 0:
@@ -842,6 +870,43 @@ class AttackEvaluator:
                 else:
                     n_bad += remaining
         return {'total': total, 'good': n_good, 'bad': n_bad}
+
+    def _count_pairs(self, counts=None) -> int:
+        if counts is None:
+            counts = self.state.my_hand_counts()
+        return sum(1 for c in counts if c >= 2)
+
+    def _is_chiitoi_toitoi_mode(self, counts=None) -> str:
+        if counts is None:
+            counts = self.state.my_hand_counts()
+        n_pairs = sum(1 for c in counts if c >= 2)
+        if n_pairs < self.params.get('CHIITOI_PAIRS_THRESHOLD', 4):
+            return 'none'
+        has_valuable_pair = False
+        for tid in range(34):
+            if counts[tid] >= 2:
+                if tid in SANGEN:
+                    has_valuable_pair = True
+                    break
+                seat_wind = 27 + ((self.state.my_seat - self.state.ju) % 4)
+                round_wind = 27 + (self.state.chang % 4)
+                if tid == seat_wind or tid == round_wind:
+                    has_valuable_pair = True
+                    break
+        if not has_valuable_pair:
+            for d in self.state.actual_doras:
+                if counts[tile_to_id(d)] >= 2:
+                    has_valuable_pair = True
+                    break
+        if has_valuable_pair:
+            return 'toitoi'
+        shanten = self.state.tsumo_count  # approximate
+        from strategy_manager import ShantenCalculator
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        std_shanten = ShantenCalculator.calculate_standard(counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(counts, open_meld_count)
+        if std_shanten >= self.params.get('CHIITOI_MODE_SHANTEN_LIMIT', 3):
+            return 'chiitoi'
+        return 'none'
 
     def _hand_value_bonus(self, tile: str) -> int:
         """
@@ -1126,6 +1191,75 @@ class AttackEvaluator:
                         decayed_28 = int(bonus_28 * max(0.2, 1.0 - turn / 18.0))
                         bonus += decayed_28
                         self.record_detail(tile, f"孤立2/8牌整理ボーナス (+{decayed_28})")
+
+        # 5ブロックスリム化ボーナス（6ブロック以上で弱いブロック破壊時）
+        if blocks >= 6 and not is_honor(discard_id):
+            base = (discard_id // 9) * 9
+            off = discard_id - base
+            has_l = off > 0 and counts[base + off - 1] > 0
+            has_r = off < 8 and counts[base + off + 1] > 0
+            is_isolated = not has_l and not has_r and counts[discard_id] == 1
+            is_penchan = (off == 0 and counts[base + 1] > 0) or (off == 8 and counts[base + 7] > 0)
+            is_kanchan = (off >= 2 and counts[base + off - 2] > 0 and not has_l) or \
+                         (off <= 6 and counts[base + off + 2] > 0 and not has_r)
+            is_ryanmen = has_l and has_r and counts[discard_id] == 1
+            if (is_isolated or is_penchan or is_kanchan) and not is_ryanmen:
+                slim_bonus = self.params.get('SLIM_WEAK_BLOCK_BONUS', 40)
+                bonus += slim_bonus
+                self.record_detail(tile, f"5ブロックスリム化ボーナス (+{slim_bonus})")
+
+        # 動的良形変化シミュレータ（1-2向聴、12巡目まで）
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        if 1 <= shanten <= 2 and turn <= self.params.get('GOOD_SHAPE_TURN_LIMIT', 12):
+            after_counts = list(counts)
+            after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
+            shanten_after = self.shanten_after_discard(tile)
+            good_draws = 0
+            total_draws = 0
+            visible = self.state.all_visible_counts()
+            for tid in range(34):
+                if after_counts[tid] >= 4:
+                    continue
+                remaining = 4 - visible[tid]
+                if remaining <= 0:
+                    continue
+                test = list(after_counts)
+                test[tid] += 1
+                if open_meld_count == 0:
+                    ns = ShantenCalculator.calculate_closed_effective(test)
+                else:
+                    ns = ShantenCalculator.calculate_open(test, open_meld_count)
+                if ns < shanten_after:
+                    is_good = False
+                    if tid < 27:
+                        base2 = (tid // 9) * 9
+                        off2 = tid - base2
+                        has_l2 = off2 > 0 and after_counts[base2 + off2 - 1] >= 1
+                        has_r2 = off2 < 8 and after_counts[base2 + off2 + 1] >= 1
+                        is_good = has_l2 and has_r2
+                    if is_good:
+                        good_draws += remaining
+                    total_draws += remaining
+            if total_draws > 0:
+                good_ratio = good_draws / total_draws
+                shape_bonus = int(self.params.get('GOOD_SHAPE_CHANGE_BONUS', 30) * good_ratio)
+                if shape_bonus > 0:
+                    bonus += shape_bonus
+                    self.record_detail(tile, f"良形変化ボーナス (+{shape_bonus})")
+
+        # スジ引っ掛け（罠待ち）ボーナス（1向聴、8巡目まで）
+        if shanten <= 1 and turn <= self.params.get('TRAP_WAIT_TURN_LIMIT', 8):
+            for base in [0, 9, 18]:
+                for i in range(5):
+                    if counts[base + i] >= 1 and counts[base + i + 2] >= 1 and counts[base + i + 4] >= 1:
+                        if discard_id == base + i or discard_id == base + i + 4:
+                            trap_bonus = self.params.get('TRAP_WAIT_BONUS', 50)
+                            bonus += trap_bonus
+                            self.record_detail(tile, f"罠待ち（スジ引っ掛け）ボーナス (+{trap_bonus})")
+                            break
+                else:
+                    continue
+                break
 
         # 役満ボーナス
         yakuman_bonus = self._yakuman_bonus(tile)

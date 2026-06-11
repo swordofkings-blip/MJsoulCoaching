@@ -118,9 +118,9 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
     baseline_placements.append(gr.final_placements)
     baseline_scores.append(gr.final_scores)
     for s, ps in enumerate(gr.player_stats):
-        ps.yakuman_bonus_count = players[s].yakuman_bonus_count
-        ps.meld_seal_count = players[s].meld_seal_count
-        ps.gap_relaxation_count = players[s].gap_relaxation_count
+        ps.yakuman_bonus_count = getattr(players[s], 'yakuman_bonus_count', 0)
+        ps.meld_seal_count = getattr(players[s], 'meld_seal_count', 0)
+        ps.gap_relaxation_count = getattr(players[s], 'gap_relaxation_count', 0)
         baseline_player_stats.append(ps)
 
     test_pts = []
@@ -146,9 +146,9 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
         test_scores.append(gr.final_scores)
         ps = gr.player_stats[test_seat] if test_seat < len(gr.player_stats) else None
         if ps is not None:
-            ps.yakuman_bonus_count = players[test_seat].yakuman_bonus_count
-            ps.meld_seal_count = players[test_seat].meld_seal_count
-            ps.gap_relaxation_count = players[test_seat].gap_relaxation_count
+            ps.yakuman_bonus_count = getattr(players[test_seat], 'yakuman_bonus_count', 0)
+            ps.meld_seal_count = getattr(players[test_seat], 'meld_seal_count', 0)
+            ps.gap_relaxation_count = getattr(players[test_seat], 'gap_relaxation_count', 0)
         test_player_stats.append(ps)
 
     return BattleResult(
