@@ -735,8 +735,12 @@ class StrategyManager:
         top_score = max(scores)
         if top_score >= 29000 and remaining <= 2:
             if rank == 0:
-                # トップ目の場合は放銃回避を最優先するため安全運転（0.3はテンパイ時のみ押し、通常はオリる基準）
-                return min(push_score, 0.3)
+                # オーラスor残り僅かでダントツトップ → 完璧ベタオリ(0.0)
+                second_score = sorted(scores, reverse=True)[1] if len(scores) >= 2 else 25000
+                gap_to_second = top_score - second_score
+                if remaining <= 1 or gap_to_second >= 20000:
+                    return 0.0
+                return min(push_score, 0.2)
             if rank >= 2:
                 # ラス回避のためのプッシュ（進行度に応じて動的に制限）
                 if shanten <= 0:

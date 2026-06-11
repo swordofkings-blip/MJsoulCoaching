@@ -391,13 +391,7 @@ def analyze_toitoi(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo]
     """
     counts = hand_to_counts(hand)
     dec = decompose_hand(counts, melds)
-    
-    # 順子がある場合は対々和の構成が不可能なので判定外とする
-    has_sequence = any(b.is_sequence() for b in dec['blocks'])
-    if has_sequence:
-        return None
 
-    # 対々和に必要なコーツ（明刻・暗刻・槓子）と対子の数をカウント
     n_triplets = sum(1 for b in dec['blocks'] if b.is_triplet() or b.kind == 'kan')
     n_pairs = sum(1 for b in dec['blocks'] if b.is_pair())
     if dec['pair']:
@@ -406,7 +400,11 @@ def analyze_toitoi(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo]
     raw_count = n_triplets + n_pairs
     is_complete = dec['complete']
 
+    # 順子チェックは完成時のみ（進行中は順子を壊してトイトイへ向かえる）
     if is_complete:
+        has_sequence = any(b.is_sequence() for b in dec['blocks'])
+        if has_sequence:
+            return None
         return YakuInfo('toitoi', progress=1.0, closed_han=2, open_han=2, is_complete=True)
     elif raw_count >= 3:
         progress_val = min(float(raw_count) / 5.0, 0.95)
