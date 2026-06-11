@@ -34,24 +34,30 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
                           is_open: bool, has_reach: bool, is_ippatsu: bool,
                           is_tsumo: bool, seat: int = 0, chang: int = 0, ju: int = 0) -> int:
     han = 0
+    yaku_han = 0  # non-dora yaku han count
     counts = hand_to_counts(hand)
     all_ids = _all_ids(hand, melds)
     suits, has_hon = _suit_dist(all_ids)
 
     if has_reach:
         han += 1
+        yaku_han += 1
     if is_ippatsu:
         han += 1
+        yaku_han += 1
     if is_tsumo and not is_open:
         han += 1
+        yaku_han += 1
 
-    han += sum(1 for tid in all_ids if is_red_five(id_to_tile(tid)))
+    # Count dora and red five separately
+    dora_han = 0
+    dora_han += sum(1 for tid in all_ids if is_red_five(id_to_tile(tid)))
 
     from str_converter import dora_indicator_to_dora
     actual_doras = [dora_indicator_to_dora(d) for d in doras]
     for d in actual_doras:
         did = tile_to_id(d)
-        han += sum(1 for tid in all_ids if tid == did)
+        dora_han += sum(1 for tid in all_ids if tid == did)
 
     has_term = any(is_terminal(tid) for tid in all_ids)
     has_honor = any(is_honor(tid) for tid in all_ids)
@@ -59,17 +65,21 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
 
     if all_2to8:
         han += 1
+        yaku_han += 1
 
     n_suits = len(suits)
     if n_suits == 1 and not has_hon:
         han += 6 if not is_open else 5
+        yaku_han += 6 if not is_open else 5
     elif n_suits == 1 and has_hon:
         han += 3 if not is_open else 2
+        yaku_han += 3 if not is_open else 2
     elif n_suits == 2 and has_hon and not is_open:
         honitsu_check = any(tid >= 27 for tid in all_ids)
         one_suit = len({tid // 9 for tid in all_ids if tid < 27}) == 1
         if honitsu_check and one_suit:
             han += 3 if not is_open else 2
+            yaku_han += 3 if not is_open else 2
 
     yakuhai_ids = {31, 32, 33}
     sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(seat)
@@ -87,12 +97,14 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
         if counts[yid] >= 3 or mc >= 1:
             if han < 13:
                 han += 1
+                yaku_han += 1
 
     open_meld_count = sum(1 for m in melds if getattr(m, 'is_open', True))
     if not is_open:
         pairs = sum(1 for c in counts if c >= 2)
         if pairs >= 6:
             han += 2
+            yaku_han += 2
 
     # yaku_detector補完（二重計上防止のため既存計上役を除外）
     _already_counted = {'yakuhai', 'honitsu', 'chinitsu', 'tanyao', 'chiitoitsu', 'dora'}
@@ -115,6 +127,9 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
     except Exception:
         pass
 
+    han += dora_han
+    if is_open and yaku_han == 0:
+        return 0
     return han
 
 

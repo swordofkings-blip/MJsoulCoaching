@@ -7,7 +7,9 @@ from game_state import GameState, Meld
 from str_converter import (
     hand_to_counts,
     is_red_five,
+    is_honor,
     tile_to_id,
+    dora_indicator_to_dora,
 )
 
 
@@ -437,6 +439,57 @@ class StrategyManager:
             return 0.0, f'{seat_name}: 序盤（{tsumo}巡）で脅威低'
         if tsumo >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
             bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_CLOSED', 0.08)))
+
+        # Damaten signal detection (late turn, no riichi)
+        if tsumo >= 12:
+            river = self.state.river[seat]
+            moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+            # Check last 3 discards for danger signals
+            recent_tedashi = []
+            for idx in range(max(0, len(river)-5), len(river)):
+                is_moqie = moqie[idx] if idx < len(moqie) else False
+                if not is_moqie:
+                    t = river[idx]
+                    recent_tedashi.append(t)
+
+            # Signal A: discarded dora from hand
+            for d in self.state.doras:
+                dora_tile = dora_indicator_to_dora(d)
+                if dora_tile in recent_tedashi:
+                    bonuses.append(('ドラ手出し', 0.15))
+                    break
+
+            # Signal B: discarded live honor tile (sangen/seat/round wind not yet visible)
+            yakuhai_tiles = {31, 32, 33}  # haku, hatsu, chun
+            sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(seat)
+            rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.chang % 4)
+            if sw: yakuhai_tiles.add(sw)
+            if rw: yakuhai_tiles.add(rw)
+            # Check if any yakuhai tile was tedashi
+            try:
+                for t in recent_tedashi:
+                    tid = tile_to_id(t)
+                    if tid in yakuhai_tiles:
+                        # Check if it's a live tile (not yet visible in any river)
+                        visible = sum(
+                            1 for s in range(4)
+                            for rt in self.state.river[s]
+                            if tile_to_id(rt) == tid
+                        )
+                        if visible <= 1:  # only the one we just checked
+                            bonuses.append(('生牌役牌手出し', 0.20))
+                            break
+            except Exception:
+                pass
+
+            # Signal C: multiple (>=2) consecutive middle tile tedashi in last 3 hand discards
+            middle_tedashi_count = sum(
+                1 for t in recent_tedashi[-3:]
+                if not is_honor(tile_to_id(t)) and 2 <= (tile_to_id(t) % 9) <= 6
+            )
+            if middle_tedashi_count >= 2:
+                bonuses.append(('中張連続手出し', 0.10))
+
         value = min(1.0, base + sum(b[1] for b in bonuses))
         reason = f'{seat_name}: 門前 (基礎 {base:.2f}, {tsumo}巡)'
         for label, b in bonuses:

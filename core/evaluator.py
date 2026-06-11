@@ -585,6 +585,51 @@ class AttackEvaluator:
                             penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                             score -= penalty
                             self.record_detail(tile, f"6ブロック維持ペナルティ (-{penalty})")
+            # テンパイかつ副露時の役なしチェック
+            if open_meld_count > 0:
+                has_yaku = False
+                counts_after = list(hand_counts)
+                counts_after[discard_id] = max(0, counts_after[discard_id] - 1)
+                for tid in range(34):
+                    if counts_after[tid] >= 4:
+                        continue
+                    temp = list(counts_after)
+                    temp[tid] += 1
+                    ns = ShantenCalculator._suit_shanten(temp, open_meld_count)
+                    if ns < 0:
+                        temp_hand = []
+                        for i in range(34):
+                            temp_hand.extend([id_to_tile(i)] * temp[i])
+                        # Check tanyao (all 2-8, no terminals/honors)
+                        all_tanyao = all(
+                            not is_terminal(tile_to_id(t)) and not is_honor(tile_to_id(t))
+                            for t in temp_hand
+                        )
+                        if all_tanyao:
+                            has_yaku = True
+                            break
+                        # Check yakuhai in melds (dragon, seat wind, round wind)
+                        yakuhai_ids = {31, 32, 33}
+                        sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.my_seat)
+                        rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.chang % 4)
+                        if sw: yakuhai_ids.add(sw)
+                        if rw: yakuhai_ids.add(rw)
+                        for m in self.state.my_melds:
+                            if getattr(m, 'is_open', True) and len(getattr(m, 'tiles', [])) >= 3:
+                                mt = m.tiles[0]
+                                mtid = tile_to_id(mt)
+                                yakuhai_ids = {31, 32, 33}
+                                sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.my_seat)
+                                rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.chang % 4)
+                                if sw: yakuhai_ids.add(sw)
+                                if rw: yakuhai_ids.add(rw)
+                                if mtid in yakuhai_ids:
+                                    has_yaku = True  # yakuhai
+                                    break
+                if not has_yaku:
+                    penalty = self.params.get('OPEN_TENPAI_NO_YAKU_PENALTY', 1500)
+                    score -= penalty
+                    self.record_detail(tile, f"役なしテンパイペナルティ (-{penalty})")
         furiten_reserve, fr_reason = self._furiten_reserve_penalty(tile)
         if furiten_reserve > 0:
             score -= furiten_reserve

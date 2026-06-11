@@ -340,6 +340,18 @@ def analyze_ittsuu(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo]
 def analyze_sanshoku(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo]:
     all_ids = _all_tile_ids(hand, melds)
     counts = hand_to_counts(hand + [t for m in melds for t in m.tiles])
+    dec = decompose_hand(counts, melds)
+
+    if dec['complete']:
+        seqs = [b for b in dec['blocks'] if b.is_sequence()]
+        for num in range(1, 8):
+            has_m = any(s.suit == SUIT_MAN and s.num == num for s in seqs)
+            has_p = any(s.suit == SUIT_PIN and s.num == num for s in seqs)
+            has_s = any(s.suit == SUIT_SOU and s.num == num for s in seqs)
+            if has_m and has_p and has_s:
+                is_open = any(m.is_open for m in melds if hasattr(m, 'is_open'))
+                return YakuInfo('sanshoku', progress=1.0, closed_han=2, open_han=1, is_complete=True)
+
     for num in range(1, 8):
         ids_needed = [num - 1, num, num + 1]
         suits_found = 0
@@ -347,11 +359,9 @@ def analyze_sanshoku(hand: List[str], melds: List, **kwargs) -> Optional[YakuInf
             base = suit * 9
             if all(counts[base + n] >= 1 for n in ids_needed):
                 suits_found += 1
-        if suits_found >= 3:
-            is_open = any(m.is_open for m in melds if hasattr(m, 'is_open'))
-            return YakuInfo('sanshoku', progress=1.0, closed_han=2, open_han=1, is_complete=True)
         if suits_found == 2:
             return YakuInfo('sanshoku', progress=2/3, closed_han=2, open_han=1, is_complete=False)
+
     return None
 
 
@@ -393,16 +403,14 @@ def analyze_toitoi(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo]
     if dec['pair']:
         n_pairs += 1
 
-    progress = n_triplets + n_pairs
+    raw_count = n_triplets + n_pairs
     is_complete = dec['complete']
 
     if is_complete:
-        # 和了に必要な対々和の飜数2（門前/副露ともに2飜）
         return YakuInfo('toitoi', progress=1.0, closed_han=2, open_han=2, is_complete=True)
-    elif progress >= 3:
-        # pairs_threshold 3 に対応するため、progressの値を対子・コーツ数としてそのまま返す。
-        # 3つ以上のトイツ・コーツがある場合に進行中とみなす。
-        return YakuInfo('toitoi', progress=float(progress), closed_han=2, open_han=2, is_complete=False)
+    elif raw_count >= 3:
+        progress_val = min(float(raw_count) / 5.0, 0.95)
+        return YakuInfo('toitoi', progress=progress_val, closed_han=2, open_han=2, is_complete=False)
 
     return None
 
@@ -444,12 +452,15 @@ def _calc_chanta_progress(hand: List[str], melds: List, allow_honors: bool) -> f
 
 
 def analyze_chanta(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo]:
+    all_ids = _all_tile_ids(hand, melds)
+    counts = hand_to_counts(hand + [t for m in melds for t in m.tiles])
+    dec = decompose_hand(counts, melds)
     progress = _calc_chanta_progress(hand, melds, allow_honors=True)
-    if progress >= 1.0:
+    if dec['complete'] and progress >= 1.0:
         is_open = any(m.is_open for m in melds if hasattr(m, 'is_open'))
         return YakuInfo('chanta', progress=1.0, closed_han=2, open_han=1, is_complete=True)
     if progress > 0:
-        return YakuInfo('chanta', progress=progress, closed_han=2, open_han=1, is_complete=False)
+        return YakuInfo('chanta', progress=min(progress, 0.95), closed_han=2, open_han=1, is_complete=False)
     return None
 
 
@@ -457,12 +468,14 @@ def analyze_junchan(hand: List[str], melds: List, **kwargs) -> Optional[YakuInfo
     all_ids = _all_tile_ids(hand, melds)
     if any(is_honor(t) for t in all_ids):
         return None
+    counts = hand_to_counts(hand + [t for m in melds for t in m.tiles])
+    dec = decompose_hand(counts, melds)
     progress = _calc_chanta_progress(hand, melds, allow_honors=False)
-    if progress >= 1.0:
+    if dec['complete'] and progress >= 1.0:
         is_open = any(m.is_open for m in melds if hasattr(m, 'is_open'))
         return YakuInfo('junchan', progress=1.0, closed_han=3, open_han=2, is_complete=True)
     if progress > 0:
-        return YakuInfo('junchan', progress=progress, closed_han=3, open_han=2, is_complete=False)
+        return YakuInfo('junchan', progress=min(progress, 0.95), closed_han=3, open_han=2, is_complete=False)
     return None
 
 
