@@ -2981,10 +2981,14 @@ ${riversStr}
                 return;
             }
             // 手牌が14枚でなくてもlastTsumoがあれば打牌判断（副露後の手番も扱う）
-            // 親の第1巡はツモ牌なしで手牌14枚のため、tsumoTileがなくても許可
+            // 親の第1巡（手牌14枚・ツモなし）やチー後（手牌11枚+副露=14枚）も許可
             const tsumoTile = engine ? engine.lastTsumo[perspectiveSeat] : null;
             if (tsumoTile === null) {
-                if (!payload.hand || payload.hand.length < 14) {
+                const mySeat = payload.my_seat || 0;
+                const myMelds = (payload.melds && payload.melds[mySeat]) || [];
+                const myMeldTiles = myMelds.reduce((s, m) => s + (m.tiles ? m.tiles.length : 0), 0);
+                const totalTiles = (payload.hand ? payload.hand.length : 0) + myMeldTiles;
+                if (totalTiles < 14) {
                     clearBotCoachUI();
                     return;
                 }
