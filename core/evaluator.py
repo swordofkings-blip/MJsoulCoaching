@@ -335,6 +335,17 @@ class DefenseEvaluator:
                             meld_score_adjust -= 100
                             self.record_detail(tile, f"人読み: S{s}高ダマテン率({damaten_rate:.1%})の手出し警戒 (-100)")
                             break
+            matagi = self._matagi_penalty_for_tile(tile_id)
+            if matagi > 0:
+                meld_score_adjust -= matagi
+                self.record_detail(tile, f"またぎスジ危険 (-{matagi})")
+            impact = self._early_discard_safety_impact(tile_id)
+            if impact > 0:
+                meld_score_adjust += impact
+                self.record_detail(tile, f"序盤の利安全 (+{impact})")
+            elif impact < 0:
+                meld_score_adjust += impact
+                self.record_detail(tile, f"中盤手出し危険 ({impact})")
             return meld_score_adjust
 
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
@@ -431,18 +442,28 @@ class DefenseEvaluator:
                 return score
 
         if use_p1:
-            matagi = self._matagi_danger_ids(reach_seats)
             score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
             score += n_reach * self.params.get('SCORE_MUSUJI_PER_REACH', SCORE_MUSUJI_PER_REACH)
             self.record_detail(tile, f"無筋危険 ({score})")
-            if tile_id in matagi:
-                penalty = self.params.get('MATAGI_PENALTY', MATAGI_PENALTY)
-                score -= penalty
-                self.record_detail(tile, f"マタギスジ危険 (-{penalty})")
+            matagi = self._matagi_penalty_for_tile(tile_id)
+            if matagi > 0:
+                score -= matagi
+                self.record_detail(tile, f"またぎスジ危険 (-{matagi})")
             if tile_id in riichi_neighbor_ids:
                 penalty = self.params.get('RIICHI_NEIGHBOR_PENALTY', 200)
                 score -= penalty
                 self.record_detail(tile, f"リーチ宣言牌隣接危険 (-{penalty})")
+            ura_suji = self._ura_suji_penalty_for_tile(tile_id)
+            if ura_suji > 0:
+                score -= ura_suji
+                self.record_detail(tile, f"裏スジ危険 (-{ura_suji})")
+            impact = self._early_discard_safety_impact(tile_id)
+            if impact > 0:
+                score += impact
+                self.record_detail(tile, f"序盤の利安全 (+{impact})")
+            elif impact < 0:
+                score += impact
+                self.record_detail(tile, f"中盤手出し危険 ({impact})")
             return score
         score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
         self.record_detail(tile, f"無筋安全基準 ({score})")
@@ -476,6 +497,259 @@ class DefenseEvaluator:
                     result.add(base + off - 1)
                 if off < 8:
                     result.add(base + off + 1)
+        return result
+
+    def _ura_suji_tiles(self, tile_id: int) -> List[int]:
+        if is_honor(tile_id):
+            return []
+        base = (tile_id // 9) * 9
+        off = tile_id - base
+        result = []
+        if off < 4:
+            if off + 1 <= 8:
+                result.append(base + off + 1)
+            if off + 4 <= 8:
+                result.append(base + off + 4)
+        elif off > 4:
+            if off - 4 >= 0:
+                result.append(base + off - 4)
+            if off - 1 >= 0:
+                result.append(base + off - 1)
+        else:
+            result.append(base + 0)
+            result.append(base + 3)
+            result.append(base + 5)
+            result.append(base + 8)
+        return result
+
+    def _ura_suji_penalty_for_tile(self, tile_id: int) -> int:
+        params = self.params or {}
+        penalty = params.get('URASUJI_PENALTY', 100)
+        lookback = params.get('URASUJI_LOOKBACK_TURNS', 2)
+        decay = params.get('URASUJI_LOOKBACK_DECAY', 0.7)
+        total = 0
+        for seat in range(4):
+            if seat == self.state.my_seat:
+                continue
+            if not self.state.reach_states[seat].is_reach:
+                continue
+            river = self.state.river[seat]
+            moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+            if not river:
+                continue
+            genbutsu_ids = set()
+            for t in river:
+                try:
+                    genbutsu_ids.add(tile_to_id(t))
+                except Exception:
+                    continue
+            for m in self.state.melds[seat]:
+                for t in m.tiles:
+                    try:
+                        genbutsu_ids.add(tile_to_id(t))
+                    except Exception:
+                        continue
+            if tile_id in genbutsu_ids:
+                continue
+            post_riichi = 0
+            for m in reversed(moqie):
+                if m:
+                    post_riichi += 1
+                else:
+                    break
+            riichi_idx = len(river) - post_riichi - 1
+            if riichi_idx < 0:
+                continue
+            dist = 0
+            for idx in range(riichi_idx - 1, -1, -1):
+                if dist >= lookback:
+                    break
+                if not moqie[idx]:
+                    turn = idx // 4 + 1
+                    try:
+                        tid = tile_to_id(river[idx])
+                    except Exception:
+                        dist += 1
+                        continue
+                    if is_honor(tid) or tid >= 27:
+                        dist += 1
+                        continue
+                    off = tid % 9
+                    if off < 2 or off > 6:
+                        dist += 1
+                        continue
+                    if turn < 3 or turn > 9:
+                        dist += 1
+                        continue
+                    if tile_id in self._ura_suji_tiles(tid):
+                        p = penalty if dist == 0 else int(penalty * (decay ** dist))
+                        total += p
+                    dist += 1
+        return total
+
+    def _matagi_suji_tiles(self, tile_id: int) -> List[int]:
+        if is_honor(tile_id) or tile_id >= 27:
+            return []
+        base = (tile_id // 9) * 9
+        off = tile_id - base
+        if off < 2 or off > 6:
+            return []
+        result = []
+        for delta in (-2, -1, 1, 2):
+            adj = off + delta
+            if 0 <= adj <= 8:
+                result.append(base + adj)
+        return result
+
+    def _matagi_penalty_for_tile(self, tile_id: int) -> int:
+        params = self.params or {}
+        m_penalty = params.get('MATAGI_PENALTY', 100)
+        m_lookback = params.get('MATAGI_LOOKBACK_TURNS', 2)
+        m_decay = params.get('MATAGI_LOOKBACK_DECAY', 0.7)
+        total = 0
+        for seat in range(4):
+            if seat == self.state.my_seat:
+                continue
+            river = self.state.river[seat]
+            moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+            if not river:
+                continue
+            genbutsu_ids = set()
+            for t in river:
+                try:
+                    genbutsu_ids.add(tile_to_id(t))
+                except Exception:
+                    continue
+            for m in self.state.melds[seat]:
+                for t in m.tiles:
+                    try:
+                        genbutsu_ids.add(tile_to_id(t))
+                    except Exception:
+                        continue
+            if tile_id in genbutsu_ids:
+                continue
+            is_reach = self.state.reach_states[seat].is_reach
+            sources = []
+            if is_reach:
+                post_riichi = 0
+                for m in reversed(moqie):
+                    if m:
+                        post_riichi += 1
+                    else:
+                        break
+                riichi_idx = len(river) - post_riichi - 1
+                if riichi_idx < 0:
+                    continue
+                sources.append((riichi_idx, 0))
+                dist = 1
+                for idx in range(riichi_idx - 1, -1, -1):
+                    if dist > m_lookback:
+                        break
+                    if not moqie[idx]:
+                        sources.append((idx, dist))
+                        dist += 1
+            else:
+                local_turn = (self.state.tsumo_count - 1) // 4 + 1
+                max_threat = 0.0
+                if self.evaluator and self.evaluator.strategy:
+                    max_threat = self.evaluator.strategy.compute_opponent_threat()
+                if max_threat < 0.15 or local_turn < 10:
+                    continue
+                for idx in range(len(river) - 1, -1, -1):
+                    if not moqie[idx]:
+                        sources.append((idx, 0))
+                        break
+            for idx, dist in sources:
+                turn = idx // 4 + 1
+                if turn < 4:
+                    continue
+                try:
+                    tid = tile_to_id(river[idx])
+                except Exception:
+                    continue
+                if is_honor(tid) or tid >= 27:
+                    continue
+                off = tid % 9
+                if off < 2 or off > 6:
+                    continue
+                if tile_id in self._matagi_suji_tiles(tid):
+                    p = m_penalty if dist == 0 else int(m_penalty * (m_decay ** dist))
+                    total += p
+        return total
+
+    def _early_discard_safe_tiles(self, tile_id: int) -> List[int]:
+        if is_honor(tile_id) or tile_id >= 27:
+            return []
+        base = (tile_id // 9) * 9
+        off = tile_id - base
+        if off < 2 or off > 6:
+            result = []
+            for delta in (-1, 1):
+                adj = off + delta
+                if 0 <= adj <= 8:
+                    result.append(base + adj)
+            return result
+        return self._matagi_suji_tiles(tile_id)
+
+    def _early_discard_safety_impact(self, tile_id: int) -> int:
+        params = self.params or {}
+        bonus_early = params.get('EARLY_DISCARD_SAFETY_BONUS', 300)
+        bonus_mid = params.get('EARLY_DISCARD_SAFETY_BONUS_MID', 150)
+        penalty_mid = params.get('EARLY_MID_HAND_DRAWN_PENALTY', 100)
+        result = 0
+        safety_applied = False
+        for seat in range(4):
+            if seat == self.state.my_seat:
+                continue
+            river = self.state.river[seat]
+            moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+            if not river:
+                continue
+            genbutsu = set()
+            for t in river:
+                try:
+                    genbutsu.add(tile_to_id(t))
+                except Exception:
+                    continue
+            for m in self.state.melds[seat]:
+                for t in m.tiles:
+                    try:
+                        genbutsu.add(tile_to_id(t))
+                    except Exception:
+                        continue
+            if tile_id in genbutsu:
+                continue
+            for idx, t in enumerate(river):
+                if idx >= len(moqie):
+                    break
+                try:
+                    tid = tile_to_id(t)
+                except Exception:
+                    continue
+                if is_honor(tid) or tid >= 27:
+                    continue
+                if tile_id not in self._early_discard_safe_tiles(tid):
+                    continue
+                turn = idx // 4 + 1
+                if turn <= 3:
+                    if not safety_applied:
+                        result += bonus_early
+                        safety_applied = True
+                elif turn <= 6:
+                    is_hand = not moqie[idx]
+                    if not is_hand:
+                        if not safety_applied:
+                            result += bonus_mid
+                            safety_applied = True
+                    else:
+                        is_reach = self.state.reach_states[seat].is_reach
+                        is_high_threat = False
+                        if not is_reach and self.evaluator and self.evaluator.strategy:
+                            lt = (self.state.tsumo_count - 1) // 4 + 1
+                            mt = self.evaluator.strategy.compute_opponent_threat()
+                            is_high_threat = mt >= 0.15 and lt >= 10
+                        if not is_reach and not is_high_threat:
+                            result -= penalty_mid
         return result
 
     def _collect_suji_from_river(self, seat: int) -> List[int]:
