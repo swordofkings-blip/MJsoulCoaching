@@ -905,15 +905,13 @@ class AttackEvaluator:
                 base_w = self.params.get('UKEIRE_QUAL_CONNECT_BASE', 0.4)
                 per = self.params.get('UKEIRE_QUAL_CONNECT_PER', 0.2)
                 weight = min(1.0, base_w + connect * per)
-                # 3 consecutive meld completion bonus: drawn tile completes a meld from existing partial
-                if tid < 27:
-                    has_left_seq = (off >= 2 and new_counts[base + off - 2] >= 1 and new_counts[base + off - 1] >= 1)
-                    has_right_seq = (off <= 6 and new_counts[base + off + 1] >= 1 and new_counts[base + off + 2] >= 1)
-                    has_kanchan = (off >= 1 and off <= 7 and new_counts[base + off - 1] >= 1 and new_counts[base + off + 1] >= 1)
-                    if has_left_seq or has_right_seq:
-                        weight = max(weight, 1.0)
-                    elif has_kanchan:
-                        weight = max(weight, 0.9)
+                # カンチャン補完後のリャンメン判定: 引いた牌が1枚隣接し、
+                # その隣接牌が端でなければ実質リャンメン相当
+                if connect == 1 and tid < 27:
+                    if (off > 0 and new_counts[base + off - 1] > 0 and off >= 2):
+                        weight = max(weight, 0.8)
+                    elif (off < 8 and new_counts[base + off + 1] > 0 and off <= 6):
+                        weight = max(weight, 0.8)
             total_weighted += remaining * weight
         if total == 0:
             return 0.0
@@ -1776,6 +1774,13 @@ class Evaluator:
                     return True
         return False
 
+    def _should_ignore_meld_for_defense(self) -> bool:
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        if turn > 6:
+            return False
+        threat = self.strategy.compute_opponent_threat()
+        return threat < 0.15
+
     def evaluate_tile(self, tile: str) -> float:
         use_ev = self.params.get('USE_EV_FRAMEWORK', False)
         if use_ev:
@@ -1800,7 +1805,7 @@ class Evaluator:
                 v = float(v_defense + v_attack * 0.05)
                 self.record_detail(tile, "戦略モード「防御」（非安牌・危険回避）を適用")
         else:
-            if not self.state.is_any_opponent_reach() and not self._any_opponent_has_open_meld(self.state):
+            if not self.state.is_any_opponent_reach() and (not self._any_opponent_has_open_meld(self.state) or self._should_ignore_meld_for_defense()):
                 v = float(v_attack)
                 self.record_detail(tile, "戦略モード「平場攻撃」を適用")
             else:
@@ -2312,7 +2317,7 @@ class Evaluator:
         total = n_ryanmen + n_kanchan + n_penchan + n_tanki + n_shanpon
         if total == 0:
             return 0.0
-        return (n_ryanmen * 0.3 + n_shanpon * 0.1 - n_kanchan * 0.1 - n_penchan * 0.2 - n_tanki * 0.2) / total
+        return (n_ryanmen * 0.3 + n_shanpon * 0.1 - n_kanchan * 0.1 - n_penchan * 0.2 - n_tanki * 0.05) / total
 
     def get_riichi_decision_details(self) -> dict:
         """
