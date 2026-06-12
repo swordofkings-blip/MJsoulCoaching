@@ -6,6 +6,7 @@
 
 import base64
 import json
+import re
 import traceback
 import glob
 import os
@@ -672,6 +673,21 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         shanten = 99
         ukeire = 0
 
+    # ブロック数・総グループ数の算出
+    try:
+        from core.strategy_manager import ShantenCalculator
+        from core.str_converter import tile_to_id
+        hand_counts = evaluator.state.my_hand_counts()
+        discard_id = tile_to_id(tile)
+        after_counts = list(hand_counts)
+        after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
+        open_cnt = sum(1 for m in evaluator.state.my_melds if m.is_open)
+        blocks = int(ShantenCalculator.calculate_blocks(after_counts, open_cnt))
+        groups = int(ShantenCalculator.calculate_total_groups(after_counts, open_cnt))
+    except Exception:
+        blocks = 0
+        groups = 0
+
     keiten_bonus = int(evaluator._get_keiten_bonus(tile))
     safety_desc = _safety_description(defense, evaluator)
     attack_desc = _attack_description(shanten, ukeire)
@@ -688,19 +704,14 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         details = evaluator.details.get(tile, [])
         for d in details:
             if "役満ボーナス" in d:
-                import re
                 m = re.search(r'\[(.+?)\] \(\+(\d+)\)', d)
                 if m:
                     yakuman_name = m.group(1)
                     yakuman_bonus = int(m.group(2))
-            # 戦略モードや汎用スコアリング情報は除き、IF判定に基づく具体的な評価因子を抽出
+            # 戦略モードなど冗長なメッセージのみスキップ、数値付き評価因子は全て抽出
             if not any(skip in d for skip in ["戦略モード", "EV期待値評価", "順位状況価値", "形テンボーナス",
-                                               "他家脅威による字牌評価減衰", "一発放銃回避",
-                                                "有効牌枚数", "シャンテン", "手効率基本"]):
-                if any(kw in d for kw in ["ボーナス", "ペナルティ", "危険", "安全", "役満",
-                                           "染め", "搭子", "両面", "ドラ", "6ブロック",
-                                           "フリテン", "不要"]):
-                    key_details.append(d)
+                                               "他家脅威による字牌評価減衰", "一発放銃回避"]):
+                key_details.append(d)
     except:
         pass
 
@@ -718,6 +729,8 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         "yakuman_bonus": yakuman_bonus,
         "yakuman_name": yakuman_name,
         "key_details": key_details,
+        "blocks": blocks,
+        "groups": groups,
         "reason": "",
     }
 
@@ -778,90 +791,48 @@ def _fmt_tile(t):
 
 def _build_decision_reason(entry: dict, strategy_details: dict,
                             evaluator: 'Evaluator', is_best: bool = False) -> str:
-    mode = strategy_details.get("mode", "")
-    push = strategy_details.get("push_score", 0.0)
     tile = _fmt_tile(entry["tile"])
     shanten = entry["shanten"]
     ukeire = entry["ukeire"]
-    defense = entry["defense"]
     attack = entry["attack"]
-    safety_desc = entry["safety_desc"]
-    attack_desc = entry["attack_desc"]
-    hvb = entry.get("hvb", 0)
-    keiten = entry.get("keiten_bonus", 0)
-    yakuman_bonus = entry.get("yakuman_bonus", 0)
-    yakuman_name = entry.get("yakuman_name", "")
+    defense = entry["defense"]
+    key_details = entry.get("key_details", [])
 
-    lines = []
-    if is_best:
-        lines.append(f"「{tile}」を推奨。")
-    else:
-        lines.append(f"「{tile}」を打牌した場合。")
-
-    tile_desc = evaluator.get_tile_description(entry["tile"])
-    if tile_desc:
-        lines.append(tile_desc)
-
-    if mode == "攻撃":
-        lines.append("攻める手です。")
-    elif mode == "防御":
-        if defense >= 800:
-            lines.append("防御モードですが安全牌があるので問題ありません。")
-        else:
-            lines.append("防御モードですが安全牌がなく、苦しい選択です。")
-    else:
-        lines.append("様子見です。")
-
-    tsumo = evaluator.state.tsumo_count
-    human_turn = (tsumo - 1) // 4 + 1
-    lines.append(f"{human_turn}巡目で")
-
-    if shanten <= -1:
-        lines.append("打牌後和了形です。")
-    elif shanten == 0:
-        lines.append("打牌後テンパイです。")
-    else:
-        lines.append(f"{shanten}向聴です。")
-
-    if "危険" in safety_desc:
-        lines.append("無筋のため危険です。")
-    elif "現物" in safety_desc or "壁" in safety_desc:
-        lines.append("安牌です。")
-    elif "スジ" in safety_desc:
-        lines.append("スジのためやや安牌です。")
-    elif "ノーチャンス" in safety_desc:
-        lines.append("ノーチャンスのため比較的安全です。")
-
+    # ヘッダー行
+    label = "推奨" if is_best else "打牌"
     try:
         bd = evaluator.attack._ukeire_quality_breakdown(entry["tile"])
-        lines.append(f"有効牌{ukeire}枚（良形{bd['good']}枚、悪形{bd['bad']}枚）。")
+        ukeire_str = f"有効牌{ukeire}枚(良形{bd['good']} 悪形{bd['bad']})"
     except:
-        lines.append(f"有効牌{ukeire}枚。")
+        ukeire_str = f"有効牌{ukeire}枚"
 
-    if hvb:
-        lines.append(f"手役評価+{hvb}。")
+    if shanten <= -1:
+        shanten_str = "和了形"
+    elif shanten == 0:
+        shanten_str = "聴牌"
+    else:
+        shanten_str = f"{shanten}向聴"
 
-    if keiten:
-        lines.append(f"終盤の形テンボーナス+{keiten}。")
+    blocks = entry.get("blocks", 0)
+    groups = entry.get("groups", 0)
+    lines = [f"「{tile}」{label} | {shanten_str} {ukeire_str} [{blocks}ブロック / {groups}グループ]"]
 
-    if yakuman_bonus > 0:
-        name_jp = {"kokushi":"国士無双","suuankou":"四暗刻","daisangen":"大三元",
-                   "tsuuiisou":"字一色","chinroutou":"清老頭","chuuren":"九蓮宝燈",
-                   "daisuushii":"大四喜","shousuushii":"小四喜","ryuuiisou":"緑一色",
-                   "suukantsu":"四槓子"}.get(yakuman_name, yakuman_name)
-        lines.append(f"{name_jp}狙いで打点向上+{yakuman_bonus}。")
+    # key_details を数値付き箇条書きに変換
+    for d in key_details:
+        m = re.search(r'\(([+-]?\d+(?:\.\d+)?)\)', d)
+        if m:
+            val = m.group(1)
+            # メッセージ中の (値) 部分を除去
+            label_text = re.sub(r'\s*\([+-]?\d+(?:\.\d+)?\)', '', d).strip()
+            lines.append(f"{val}: {label_text}")
+        else:
+            # 数値なしのメッセージは「・」で表示
+            lines.append(f"・{d}")
 
-    text = "".join(lines)
-    text += f" 【攻撃:{attack:.0f} 防御:{defense:.0f}"
-    if hvb:
-        text += f" 手役:{hvb}"
-    if keiten:
-        text += f" 形テン:{keiten}"
-    if yakuman_bonus:
-        text += f" 役満:{yakuman_bonus}"
-    text += "】"
+    # 最終評価値行
+    lines.append(f"【最終評価値: {entry['score']:.0f}  攻撃:{attack:.0f}  防御:{defense:.0f}】")
 
-    return text
+    return "\n".join(lines)
 
 
 def _restore_game_state(payload: dict) -> GameState:

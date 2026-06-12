@@ -1,11 +1,9 @@
 import json, sys, glob, os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from core.game_state import GameState
 from core.evaluator import Evaluator
 from core.str_converter import tile_to_id
-
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'config_parameters.json')) as f:
-    params = json.load(f)
 
 SEAT_NAMES = ['東', '南', '西', '北']
 CALL_NAMES = {0: 'チー', 1: 'ポン', 2: '大明槓', 3: '暗槓', 4: '加槓'}
@@ -14,18 +12,13 @@ def fmt_tile(t):
     m = {'1z':'東','2z':'南','3z':'西','4z':'北','5z':'白','6z':'發','7z':'中'}
     return m.get(t, t)
 
-lines = []
-def out(s=''):
-    lines.append(s)
 
-paths = sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'record_*_trimmed.json')))
+def process_file(path, params):
+    """1ファイルを処理し (lines, total_discard, discard_match, total_meld, meld_match, fname) を返す"""
+    lines = []
+    def out(s=''):
+        lines.append(s)
 
-total_discard = 0
-discard_match = 0
-total_meld = 0
-meld_match = 0
-
-for path in paths:
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
     actions = data.get('detail_records', {}).get('actions', [])
@@ -41,6 +34,10 @@ for path in paths:
 
     fname = os.path.basename(path)
     mismatch_idx = 0
+    total_discard = 0
+    discard_match = 0
+    total_meld = 0
+    meld_match = 0
 
     for a in actions:
         if a['type'] != 1:
@@ -181,16 +178,61 @@ for path in paths:
         elif cls in ('RecordHule', 'RecordNoTile'):
             awaiting = [False] * 4
 
-out('=' * 40)
-out('集計')
-out('=' * 40)
-out(f'ファイル数: {len(paths)}')
-out(f'捨牌: 合計{total_discard} 一致{discard_match} 不一致{total_discard-discard_match} ({discard_match/total_discard*100:.1f}%)')
-out(f'副露: 合計{total_meld} 一致{meld_match} 不一致{total_meld-meld_match} ({meld_match/total_meld*100:.1f}%)')
-out(f'総合: {discard_match+meld_match}/{total_discard+total_meld} = {(discard_match+meld_match)/(total_discard+total_meld)*100:.1f}%')
+    return lines, total_discard, discard_match, total_meld, meld_match, fname
 
-with open('mismatches.txt', 'w', encoding='utf-8') as f:
-    f.write('\n'.join(lines))
-print(f'Output: {total_discard + total_meld} decisions, {total_discard+total_meld-discard_match-meld_match} mismatches')
-print(f'Discard: {discard_match}/{total_discard} = {discard_match/total_discard*100:.1f}%')
-print(f'Meld:    {meld_match}/{total_meld} = {meld_match/total_meld*100:.1f}%')
+
+if __name__ == '__main__':
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'config_parameters.json')) as f:
+        params = json.load(f)
+
+    paths = sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'record_*_trimmed.json')))
+    total_files = len(paths)
+
+    all_lines = []
+    total_discard = 0
+    discard_match = 0
+    total_meld = 0
+    meld_match = 0
+
+    n_workers = min(os.cpu_count() or 4, total_files)
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        futures = {executor.submit(process_file, path, params): i for i, path in enumerate(paths)}
+        file_results = {}
+        completed = 0
+        for future in as_completed(futures):
+            idx = futures[future]
+            lines, td, dm, tm, mm, fname = future.result()
+            file_results[idx] = lines
+            total_discard += td
+            discard_match += dm
+            total_meld += tm
+            meld_match += mm
+            completed += 1
+            pct_d = f'{discard_match/total_discard*100:.1f}%' if total_discard else 'N/A'
+            pct_m = f'{meld_match/total_meld*100:.1f}%' if total_meld else 'N/A'
+            sys.stdout.write(f'\r({completed}/{total_files}) {fname} ... 捨牌: {discard_match}/{total_discard} ({pct_d}) | 副露: {meld_match}/{total_meld} ({pct_m})')
+            sys.stdout.flush()
+
+    # ファイル順にlinesを結合
+    for idx in range(total_files):
+        all_lines.extend(file_results[idx])
+
+    sys.stdout.write('\n')
+    summary = []
+    def out(s=''):
+        summary.append(s)
+    out('=' * 40)
+    out('集計')
+    out('=' * 40)
+    out(f'ファイル数: {total_files}')
+    out(f'捨牌: 合計{total_discard} 一致{discard_match} 不一致{total_discard-discard_match} ({discard_match/total_discard*100:.1f}%)')
+    out(f'副露: 合計{total_meld} 一致{meld_match} 不一致{total_meld-meld_match} ({meld_match/total_meld*100:.1f}%)')
+    out(f'総合: {discard_match+meld_match}/{total_discard+total_meld} = {(discard_match+meld_match)/(total_discard+total_meld)*100:.1f}%')
+
+    all_lines.extend(summary)
+
+    with open('mismatches.txt', 'w', encoding='utf-8') as f:
+        f.write('\n'.join(all_lines))
+    print(f'Output: {total_discard + total_meld} decisions, {total_discard+total_meld-discard_match-meld_match} mismatches')
+    print(f'Discard: {discard_match}/{total_discard} = {discard_match/total_discard*100:.1f}%')
+    print(f'Meld:    {meld_match}/{total_meld} = {meld_match/total_meld*100:.1f}%')

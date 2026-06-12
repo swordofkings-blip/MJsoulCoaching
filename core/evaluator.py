@@ -797,6 +797,52 @@ class AttackEvaluator:
             score -= comp_pen
             self.record_detail(tile, f"ブロック競合ペナルティ (-{comp_pen})")
 
+        # === ブロック数・総グループ数による評価 ===
+        if tile and tile != "none":
+            hand_counts = self.state.my_hand_counts()
+            open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+            blocks_before = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
+            blocks_after = ShantenCalculator.calculate_blocks(after_counts, open_meld_count)
+
+            # 4ブロック以下: ブロックを減らす打牌にペナルティ
+            if blocks_before <= 4 and blocks_after < blocks_before:
+                penalty = self.params.get('PENALTY_4BLOCK_DECREASE', 50)
+                score -= penalty
+                self.record_detail(tile, f"4ブロック減少ペナルティ (-{penalty})")
+
+            # 5ブロック維持: 適正状態を維持する打牌にボーナス
+            if blocks_before == 5 and blocks_after == 5:
+                bonus = self.params.get('BONUS_5BLOCK_MAINTAIN', 30)
+                score += bonus
+                self.record_detail(tile, f"5ブロック維持ボーナス (+{bonus})")
+
+            # 6ブロック以上: スリム化ボーナス、維持ペナルティ
+            if blocks_before >= 6:
+                if blocks_after == 5:
+                    bonus = self.params.get('BONUS_5BLOCK_SLIM', 40)
+                    score += bonus
+                    self.record_detail(tile, f"5ブロックスリム化ボーナス (+{bonus})")
+                elif blocks_after >= 6 and shanten <= 0:
+                    is_isolated = (hand_counts[discard_id] == 1 and not is_honor(discard_id))
+                    if is_isolated:
+                        base = (discard_id // 9) * 9
+                        off = discard_id - base
+                        has_l = off > 0 and hand_counts[base + off - 1] > 0
+                        has_r = off < 8 and hand_counts[base + off + 1] > 0
+                        is_isolated = not has_l and not has_r
+                    if not is_isolated:
+                        penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
+                        score -= penalty
+                        self.record_detail(tile, f"6ブロック維持ペナルティ (-{penalty})")
+
+            # 総グループ数: アガリ目標（5グループ）からの乖離に比例したペナルティ
+            groups_after = ShantenCalculator.calculate_total_groups(after_counts, open_meld_count)
+            if groups_after > 5:
+                extra = groups_after - 5
+                penalty = extra * self.params.get('PENALTY_PER_EXTRA_GROUP', 10)
+                score -= penalty
+                self.record_detail(tile, f"余剰グループペナルティ({extra}グループ超過) (-{penalty})")
+
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
