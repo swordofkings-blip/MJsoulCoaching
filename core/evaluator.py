@@ -1003,8 +1003,18 @@ class AttackEvaluator:
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
         std_shanten = ShantenCalculator.calculate_standard(counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(counts, open_meld_count)
         if std_shanten >= self.params.get('CHIITOI_MODE_SHANTEN_LIMIT', 3):
+            # リャンメン搭子が存在する場合は面子手の可能性が高いため、七対子モードに入らない
+            if open_meld_count == 0 and self._has_ryanmen_taatsu(counts):
+                return 'none'
             return 'chiitoi'
         return 'none'
+
+    def _has_ryanmen_taatsu(self, counts) -> bool:
+        for base in [0, 9, 18]:
+            for i in range(7):
+                if counts[base + i] >= 1 and counts[base + i + 1] >= 1:
+                    return True
+        return False
 
     def _hand_value_bonus(self, tile: str) -> int:
         """
@@ -1181,6 +1191,14 @@ class AttackEvaluator:
                 val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
                 bonus += val_bonus
                 self.record_detail(tile, f"不要客風整理ボーナス (+{val_bonus})")
+
+            # 多対子手（4対子以上）では、役牌単騎でも切りやすくする
+            if not is_pair:
+                n_pairs = sum(1 for c in counts if c >= 2)
+                if n_pairs >= self.params.get('CHITOI_PAIRS_THRESHOLD', 4):
+                    pair_offset = self.params.get('PAIR_OVERFLOW_HONOR_OFFSET', 10)
+                    bonus += pair_offset
+                    self.record_detail(tile, f"多対子字牌整理オフセット (+{pair_offset})")
 
             ratio_base = self.params.get('VISIBLE_RATIO_HONOR', 80)
             is_keeping_safe = False
