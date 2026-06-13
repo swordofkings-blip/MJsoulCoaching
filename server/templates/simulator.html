@@ -779,6 +779,60 @@
             margin-top: 2px;
         }
 
+        .bot-coach-strategy-map-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1.6 / 1;
+            margin: 8px 0;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .bot-coach-strategy-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 100%;
+            height: 100%;
+        }
+        .bot-coach-strategy-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.58rem;
+            color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.02);
+            text-align: center;
+            padding: 2px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .cell-attack { background: rgba(239, 68, 68, 0.07); }
+        .cell-normal { background: rgba(245, 158, 11, 0.07); }
+        .cell-defend { background: rgba(59, 130, 246, 0.07); }
+        .cell-active-match {
+            color: #fff !important;
+            background: rgba(139, 92, 246, 0.45) !important;
+            box-shadow: inset 0 0 8px rgba(139, 92, 246, 0.6);
+            text-shadow: 0 0 4px #fff;
+        }
+        .bot-coach-strategy-plot-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #a29bfe;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #a29bfe, 0 0 16px #a29bfe;
+            transform: translate(-50%, -50%);
+            transition: left 0.3s ease, top 0.3s ease;
+            pointer-events: none;
+            z-index: 5;
+        }
+
         .bot-coach-reason {
             display: flex;
             flex-direction: column;
@@ -1483,6 +1537,20 @@
                         <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
                             <div class="bot-coach-strategy-title">戦略モードの内訳</div>
                             <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
+                            <div class="bot-coach-strategy-map-container">
+                                <div class="bot-coach-strategy-grid">
+                                    <div class="bot-coach-strategy-cell cell-attack" id="cell_全力攻撃">全力攻撃</div>
+                                    <div class="bot-coach-strategy-cell cell-attack" id="cell_押し気味">押し気味</div>
+                                    <div class="bot-coach-strategy-cell cell-normal" id="cell_危険度勝負">危険度勝負</div>
+                                    <div class="bot-coach-strategy-cell cell-attack" id="cell_積極駒組み">積極駒組み</div>
+                                    <div class="bot-coach-strategy-cell cell-normal" id="cell_様子見">様子見</div>
+                                    <div class="bot-coach-strategy-cell cell-defend" id="cell_回し打ち">回し打ち</div>
+                                    <div class="bot-coach-strategy-cell cell-normal" id="cell_スリム化">スリム化</div>
+                                    <div class="bot-coach-strategy-cell cell-defend" id="cell_撤退準備">撤退準備</div>
+                                    <div class="bot-coach-strategy-cell cell-defend" id="cell_完全撤退">完全撤退</div>
+                                </div>
+                                <div class="bot-coach-strategy-plot-dot" id="botCoachStrategyPlotDot" style="left: 0%; top: 100%;"></div>
+                            </div>
                             <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
                             <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
                         </div>
@@ -2735,21 +2803,61 @@ ${riversStr}
             const modeEl = document.getElementById('botCoachStrategyMode');
             const paramsEl = document.getElementById('botCoachStrategyParams');
             const threatEl = document.getElementById('botCoachStrategyThreat');
+            const plotDot = document.getElementById('botCoachStrategyPlotDot');
+
             if (!details) {
                 box.style.display = 'none';
                 return;
             }
             box.style.display = 'flex';
             modeEl.innerText = details.mode || '--';
+
             const params = [
-                { label: '攻撃度', value: (details.base_attack || 0).toFixed(2) },
-                { label: '脅威度', value: (details.max_threat || 0).toFixed(2) },
-                { label: '押し度', value: (details.push_score || 0).toFixed(2) }
+                { label: '手牌価値', value: (details.base_attack || 0).toFixed(2) },
+                { label: '場の脅威', value: (details.max_threat || 0).toFixed(2) },
+                { label: '押し引き度', value: (details.push_score || 0).toFixed(2) }
             ];
-            paramsEl.innerHTML = params.map(p =>
+
+            let paramsHtml = params.map(p =>
                 `<div class="bot-coach-strategy-param"><span class="bot-coach-strategy-param-label">${p.label}</span><span class="bot-coach-strategy-param-value">${p.value}</span></div>`
             ).join('');
+
+            if (details.fuzzy_scores) {
+                const activeScores = Object.entries(details.fuzzy_scores)
+                    .filter(([_, score]) => score > 0)
+                    .sort((a, b) => b[1] - a[1]);
+                if (activeScores.length > 0) {
+                    paramsHtml += `<div style="grid-column: span 3; font-size: 0.78rem; border-top: 1px dashed rgba(255,255,255,0.15); padding-top: 6px; margin-top: 6px;">`;
+                    paramsHtml += `<div style="font-weight: bold; margin-bottom: 4px; color: #a29bfe;">ファジィ適合度内訳:</div>`;
+                    paramsHtml += activeScores.map(([m, s]) =>
+                        `<div style="display:flex; justify-content:space-between; margin-bottom: 2px;">` +
+                        `<span>${m}</span><span style="font-family: monospace;">${(s * 100).toFixed(0)}%</span>` +
+                        `</div>`
+                    ).join('');
+                    paramsHtml += `</div>`;
+                }
+            }
+            paramsEl.innerHTML = paramsHtml;
             threatEl.innerText = '⚠ 脅威度根拠: ' + (details.threat_reason || '--');
+
+            if (plotDot) {
+                const xPct = Math.max(0, Math.min(100, (details.max_threat || 0) * 100));
+                const yPct = Math.max(0, Math.min(100, (1.0 - (details.base_attack || 0)) * 100));
+                plotDot.style.left = `${xPct.toFixed(1)}%`;
+                plotDot.style.top = `${yPct.toFixed(1)}%`;
+            }
+
+            const allModes = ["全力攻撃", "押し気味", "危険度勝負", "積極駒組み", "様子見", "回し打ち", "スリム化", "撤退準備", "完全撤退"];
+            allModes.forEach(m => {
+                const cellEl = document.getElementById(`cell_${m}`);
+                if (cellEl) {
+                    if (m === details.mode) {
+                        cellEl.classList.add('cell-active-match');
+                    } else {
+                        cellEl.classList.remove('cell-active-match');
+                    }
+                }
+            });
         }
 
         /**

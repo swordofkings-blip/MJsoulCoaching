@@ -1,4 +1,6 @@
 import json, sys, glob, os
+import itertools
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from core.game_state import GameState
@@ -11,6 +13,96 @@ CALL_NAMES = {0: 'チー', 1: 'ポン', 2: '大明槓', 3: '暗槓', 4: '加槓'
 def fmt_tile(t):
     m = {'1z':'東','2z':'南','3z':'西','4z':'北','5z':'白','6z':'發','7z':'中'}
     return m.get(t, t)
+
+
+def generate_meld_candidates(hand: list[str], tile: str, is_kamicha_discard: bool) -> list[tuple[int, list[str]]]:
+    """
+    @title 副露候補の生成
+    @description 手牌と他家の打牌から、可能な副露（チー、ポン、カン）の組み合わせをすべて生成します。
+    @param {list[str]} hand - 手牌のリスト
+    @param {str} tile - 切られた牌
+    @param {bool} is_kamicha_discard - 切ったプレイヤーが上家かどうか
+    @returns {list[tuple[int, list[str]]]} 副露候補 (type, tiles) のリスト
+    """
+    candidates = []
+    tid = tile_to_id(tile)
+    
+    # 手牌の出現回数をカウント
+    # 4は赤五などのカウント判定で手牌に何枚あるか確認するためのものです。
+    hand_counts = Counter(hand)
+    
+    # IDごとのユニークな牌文字列リスト
+    hand_by_id = {}
+    for h in hand:
+        htid = tile_to_id(h)
+        if htid not in hand_by_id:
+            hand_by_id[htid] = []
+        if h not in hand_by_id[htid]:
+            hand_by_id[htid].append(h)
+            
+    # 手牌の中の target_id の総数
+    target_id_count = sum(hand_counts[h] for h in hand_by_id.get(tid, []))
+    
+    # 1. ポン (type=1) の判定
+    # 2はポンに必要な同じID of 牌の最小枚数です。
+    if target_id_count >= 2:
+        sub = hand_by_id[tid]
+        # 同じ牌を2枚使う
+        for c in sub:
+            if hand_counts[c] >= 2:
+                candidates.append((1, [tile, c, c]))
+        # 異なる牌を1枚ずつ使う (例: 5s と 0s)
+        if len(sub) >= 2:
+            for c1, c2 in itertools.combinations(sub, 2):
+                candidates.append((1, [tile, c1, c2]))
+                
+    # 2. 大明槓 (type=2) の判定
+    # 3は大明槓に必要な同じID of 牌の最小枚数です。
+    if target_id_count == 3:
+        sub = hand_by_id[tid]
+        # 同じ牌を3枚
+        for c in sub:
+            if hand_counts[c] >= 3:
+                candidates.append((2, [tile, c, c, c]))
+        # 1種類の牌2枚と、別の牌1枚 (例: 5sが2枚、0sが1枚)
+        if len(sub) >= 2:
+            for c1 in sub:
+                if hand_counts[c1] >= 2:
+                    for c2 in sub:
+                        if c1 != c2 and hand_counts[c2] >= 1:
+                            candidates.append((2, [tile, c1, c1, c2]))
+                            
+    # 3. チー (type=0) の判定
+    # 27は萬子・筒子・索子の数牌IDの上限（これ未満が数牌）です。
+    if is_kamicha_discard and tid < 27:
+        # スートの境界を超えないように制限
+        # 9は萬子・筒子・索子のそれぞれ9種類の牌の範囲を表します。
+        # パターンA: (tid+1, tid+2)
+        if (tid + 1) // 9 == tid // 9 and (tid + 2) // 9 == tid // 9:
+            id1, id2 = tid + 1, tid + 2
+            if id1 in hand_by_id and id2 in hand_by_id:
+                for c1 in hand_by_id[id1]:
+                    for c2 in hand_by_id[id2]:
+                        candidates.append((0, [tile, c1, c2]))
+                        
+        # パターンB: (tid-1, tid+1)
+        if (tid - 1) // 9 == tid // 9 and (tid + 1) // 9 == tid // 9:
+            id1, id2 = tid - 1, tid + 1
+            if id1 in hand_by_id and id2 in hand_by_id:
+                for c1 in hand_by_id[id1]:
+                    for c2 in hand_by_id[id2]:
+                        candidates.append((0, [tile, c1, c2]))
+                        
+        # パターンC: (tid-2, tid-1)
+        if (tid - 2) // 9 == tid // 9 and (tid - 1) // 9 == tid // 9:
+            id1, id2 = tid - 2, tid - 1
+            if id1 in hand_by_id and id2 in hand_by_id:
+                for c1 in hand_by_id[id1]:
+                    for c2 in hand_by_id[id2]:
+                        candidates.append((0, [tile, c1, c2]))
+                        
+    return candidates
+
 
 
 def process_file(path, params):
@@ -39,7 +131,7 @@ def process_file(path, params):
     total_meld = 0
     meld_match = 0
 
-    for a in actions:
+    for idx, a in enumerate(actions):
         if a['type'] != 1:
             continue
         r = a['result']
@@ -125,6 +217,70 @@ def process_file(path, params):
                                 rc = ' リーチ' if s_state.reach_states[i].is_reach else ''
                                 out(f'  {label}: {rivs[i]}{rc}')
                             out()
+
+            # 他家が切った時、自分が鳴ける状況でスキップしたケースをチェック
+            next_meld_action = None
+            if idx + 1 < len(actions):
+                next_act = actions[idx+1]
+                if next_act['type'] == 1:
+                    next_res = next_act['result']
+                    if next_res['class_name'] == 'RecordChiPengGang':
+                        next_meld_action = next_res['data']
+
+            for opp in range(4):
+                if opp == seat:
+                    continue
+                if states[opp].reach_states[opp].is_reach:
+                    continue
+                
+                # 実際にこの打牌の直後にこのプレイヤーが RecordChiPengGang を行った場合は除外
+                is_actual_meld_by_opp = False
+                if next_meld_action is not None:
+                    if next_meld_action['seat'] == opp:
+                        is_actual_meld_by_opp = True
+                
+                if is_actual_meld_by_opp:
+                    continue
+                
+                is_kamicha = ((opp - 1) % 4 == seat)
+                opp_hand = list(states[opp].my_hand)
+                cands = generate_meld_candidates(opp_hand, tile, is_kamicha)
+                
+                if cands:
+                    # このプレイヤーは鳴くことができたのにスキップした
+                    ev = Evaluator(states[opp], params)
+                    ai_wants_to_meld = False
+                    ai_wants_list = []
+                    for c_type, c_tiles in cands:
+                        if ev.should_call_meld(c_type, c_tiles, seat):
+                            ai_wants_to_meld = True
+                            ai_wants_list.append(f'{CALL_NAMES.get(c_type)} {" ".join(fmt_tile(t) for t in c_tiles)}')
+                    
+                    total_meld += 1
+                    if not ai_wants_to_meld:
+                        # 人間もAIもスルー
+                        meld_match += 1
+                    else:
+                        # 人間はスルーしたがAIは鳴こうとした（不一致）
+                        mismatch_idx += 1
+                        s_state = states[opp]
+                        rivs = [', '.join(fmt_tile(t) for t in s_state.river[i]) if s_state.river[i] else 'なし' for i in range(4)]
+                        doras_str = ', '.join(fmt_tile(t) for t in s_state.doras) if s_state.doras else 'なし'
+                        human_turn = (s_state.tsumo_count - 1) // 4 + 1
+                        is_dealer = '(親)' if s_state.my_seat == 0 else ''
+
+                        out(f'===== 不一致 #{mismatch_idx} [{fname}] =====')
+                        out(f'{SEAT_NAMES[opp]}家{is_dealer} / {s_state.chang*4+s_state.ju+1}局 {s_state.ben}本場 / {human_turn}巡目({s_state.tsumo_count}ツモ)')
+                        out(f'手牌({len(opp_hand)}枚): {",".join(opp_hand)}')
+                        out(f'actual: スルーした')
+                        out(f'AI判断: 鳴くべき ({", ".join(ai_wants_list)})')
+                        out(f'ドラ: {doras_str} | 点数: {s_state.scores}')
+                        out(f'河:')
+                        for i in range(4):
+                            label = '自分' if i == opp else SEAT_NAMES[i]
+                            rc = ' リーチ' if s_state.reach_states[i].is_reach else ''
+                            out(f'  {label}: {rivs[i]}{rc}')
+                        out()
 
             awaiting[seat] = False
             for s in range(4):

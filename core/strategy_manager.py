@@ -282,6 +282,8 @@ class StrategyManager:
     def __init__(self, state: GameState, params: dict = None):
         self.state = state
         self.params = params or {}
+        from fuzzy_logic import FuzzyLogicEngine
+        self.fuzzy_engine = FuzzyLogicEngine(self.params)
 
     def compute_opponent_threat(self) -> float:
         """
@@ -614,13 +616,19 @@ class StrategyManager:
             return self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
         if shanten == 1:
             return self.params.get('BASE_ATTACK_1SHANTEN', 0.4)
+        max_shanten = self.params.get('BASE_ATTACK_MAX_SHANTEN', 6)
         if shanten >= 2:
+            if shanten > max_shanten:
+                return 0.0
+
+            default_val = 0.4 * (0.5 ** (shanten - 1))
+            param_key = f'BASE_ATTACK_{shanten}SHANTEN'
+            base_val = self.params.get(param_key, default_val)
+
             blocks = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
             block_factor = max(0.0, (blocks - 4) / 3.0)
-            if shanten == 2:
-                return min(0.2, 0.10 * block_factor)
-            if shanten == 3:
-                return min(0.1, 0.05 * block_factor)
+
+            return max(0.01, min(base_val, (base_val / 2.0) * block_factor))
 
         # 役満攻撃ブースト
         yakuman_boost = self._yakuman_attack_boost()
@@ -826,37 +834,31 @@ class StrategyManager:
         return True
 
     def get_strategy_mode(self) -> str:
-        push = self.compute_push_score()
-        zentsu_th = self.params.get('MODE_ZENTSU_THRESHOLD', 0.7)
-        betaori_th = self.params.get('MODE_BETAORI_THRESHOLD', 0.05)
-        if push >= zentsu_th or self.is_zenchi_mode():
-            return "攻撃"
-        if push <= betaori_th:
-            return "防御"
-        return "様子見"
+        if self.is_zenchi_mode():
+            return "全力攻撃"
 
-    def is_zenchi_mode(self) -> bool:
-        if not self.state.is_last_round():
-            return False
-        return self.state.my_score_rank() == 3
+        base_attack = self.compute_base_attack()
+        max_threat = self.compute_opponent_threat()
+
+        mode, _ = self.fuzzy_engine.evaluate_strategy(base_attack, max_threat)
+        return mode
 
     def get_strategy_details(self) -> dict:
-        """
-        @title 戦略パラメータ開示
-        @description UIで可視化するために、戦略計算の中間パラメータを辞書形式で返す。最大脅威度と脅威理由テキストも含む。
-        @returns {dict} base_attack, max_threat, push_score, mode, threat_reason などを含む辞書
-        """
         a_base = self.compute_base_attack()
         t_max, threat_reason = self._max_threat_with_reason()
         push = self.compute_push_score()
+
+        mode, scores = self.fuzzy_engine.evaluate_strategy(a_base, t_max)
+
         return {
             "base_attack": round(a_base, 3),
             "max_threat": round(t_max, 3),
             "push_score": round(push, 3),
-        "mode": self.get_strategy_mode(),
-        "threat_reason": threat_reason,
-        "is_last_round": self.state.is_last_round(),
-        "my_rank": self.state.my_score_rank(),
-        "yakuman_seal": not self.is_meld_open_allowed(),
-        "yakuman_boost": round(self._yakuman_attack_boost(), 3),
-    }
+            "mode": mode,
+            "threat_reason": threat_reason,
+            "is_last_round": self.state.is_last_round(),
+            "my_rank": self.state.my_score_rank(),
+            "yakuman_seal": not self.is_meld_open_allowed(),
+            "yakuman_boost": round(self._yakuman_attack_boost(), 3),
+            "fuzzy_scores": {k: round(v, 3) for k, v in scores.items()}
+        }

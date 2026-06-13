@@ -802,15 +802,15 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     if tile_desc:
         lines.append(tile_desc)
 
-    if mode == "攻撃":
-        lines.append("攻める手です。")
-    elif mode == "防御":
+    if mode in ("全力攻撃", "積極駒組み", "押し気味", "危険度勝負"):
+        lines.append(f"戦略【{mode}】: 攻める手です。")
+    elif mode in ("完全撤退", "撤退準備", "回し打ち"):
         if defense >= 800:
-            lines.append("防御モードですが安全牌があるので問題ありません。")
+            lines.append(f"戦略【{mode}】: 防御的ですが安全牌があるので問題ありません。")
         else:
-            lines.append("防御モードですが安全牌がなく、苦しい選択です。")
+            lines.append(f"戦略【{mode}】: 防御的ですが安全牌がなく、苦しい選択です。")
     else:
-        lines.append("様子見です。")
+        lines.append(f"戦略【{mode}】: 様子見またはスリム化の手です。")
 
     tsumo = evaluator.state.tsumo_count
     human_turn = (tsumo - 1) // 4 + 1

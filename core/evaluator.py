@@ -1766,14 +1766,23 @@ class AttackEvaluator:
                     best_yakuman_name = name
 
         if max_yakuman_bonus > 0:
-            total_bonus += max_yakuman_bonus
-            self.record_detail(tile, f"役満ボーナス[{best_yakuman_name}] (+{max_yakuman_bonus})")
-            # 統計
-            ai = getattr(getattr(self, 'evaluator', None), '_ai_player', None)
-            if ai is not None:
-                ai.yakuman_bonus_count += 1
-                if min_shanten > yakuman_cfg.get('YAKUMAN_MIN_SHANTEN', 2):
-                    ai.gap_relaxation_count += 1
+            mode = self.evaluator.strategy.get_strategy_mode()
+            yakuman_scale = 1.0
+            if mode == "完全撤退":
+                yakuman_scale = 0.0
+            elif mode in ("撤退準備", "回し打ち"):
+                yakuman_scale = 0.5
+
+            scaled_bonus = int(max_yakuman_bonus * yakuman_scale)
+            if scaled_bonus > 0:
+                total_bonus += scaled_bonus
+                self.record_detail(tile, f"役満ボーナス[{best_yakuman_name}] (+{scaled_bonus})")
+
+                ai = getattr(getattr(self, 'evaluator', None), '_ai_player', None)
+                if ai is not None:
+                    ai.yakuman_bonus_count += 1
+                    if min_shanten > yakuman_cfg.get('YAKUMAN_MIN_SHANTEN', 2):
+                        ai.gap_relaxation_count += 1
 
         return total_bonus
 
@@ -2085,24 +2094,55 @@ class Evaluator:
         push_score = self.strategy.compute_push_score()
         mode = self.strategy.get_strategy_mode()
 
-        if mode == "攻撃":
+        alpha = self.params.get('FUZZY_VAL_ALPHA', 0.70)
+        beta = self.params.get('FUZZY_VAL_BETA', 0.85)
+        gamma = self.params.get('FUZZY_VAL_GAMMA', 0.40)
+        safe_threshold = self.params.get('SCORE_SUJI', 500)
+
+        if mode == "全力攻撃":
             v = float(v_attack)
-            self.record_detail(tile, "戦略モード「攻撃」を適用")
-        elif mode == "防御":
-            safe_threshold = self.params.get('SCORE_SUJI', 500)
+            self.record_detail(tile, "戦略モード「全力攻撃」を適用")
+
+        elif mode == "押し気味":
+            v = float(alpha * v_attack + (1.0 - alpha) * v_defense)
+            self.record_detail(tile, f"戦略モード「押し気味」(攻撃比率: {alpha:.2f})を適用")
+
+        elif mode == "危険度勝負":
+            v = float(beta * v_attack + (1.0 - beta) * v_defense)
+            self.record_detail(tile, f"戦略モード「危険度勝負」(攻撃比率: {beta:.2f})を適用")
+
+        elif mode == "積極駒組み":
+            v = float(v_attack)
+            self.record_detail(tile, "戦略モード「積極駒組み」を適用")
+
+        elif mode == "様子見":
+            v = float(push_score * v_attack + (1.0 - push_score) * v_defense)
+            self.record_detail(tile, f"戦略モード「様子見」(Push={push_score:.2f})を適用")
+
+        elif mode == "回し打ち":
+            v = float(gamma * v_attack + (1.0 - gamma) * v_defense)
+            self.record_detail(tile, f"戦略モード「回し打ち」(攻撃比率: {gamma:.2f})を適用")
+
+        elif mode == "スリム化":
+            # スリム化時は他家が静かであるが手が悪いため、安全牌を少しだけ抱える（過剰抱え込み防止のためパラメータ化）
+            slim_weight = self.params.get('FUZZY_SLIM_DEFENSE_WEIGHT', 0.05)
+            v = float(v_attack + v_defense * slim_weight)
+            self.record_detail(tile, f"戦略モード「スリム化」(安全比率: {slim_weight:.2f})を適用")
+
+        elif mode == "撤退準備":
+            v = float(0.1 * v_attack + v_defense)
+            self.record_detail(tile, "戦略モード「撤退準備」を適用")
+
+        elif mode == "完全撤退":
             if v_defense >= safe_threshold:
-                v = float(v_defense * 2 + v_attack * 0.1)
-                self.record_detail(tile, "戦略モード「防御」（安牌評価強化）を適用")
+                v = float(v_defense * 2 + v_attack * 0.01)
+                self.record_detail(tile, "戦略モード「完全撤退」（安牌評価強化）を適用")
             else:
                 v = float(v_defense + v_attack * 0.05)
-                self.record_detail(tile, "戦略モード「防御」（非安牌・危険回避）を適用")
+                self.record_detail(tile, "戦略モード「完全撤退」（非安牌・危険回避）を適用")
+
         else:
-            if not self.state.is_any_opponent_reach() and (not self._any_opponent_has_open_meld(self.state) or self._should_ignore_meld_for_defense()):
-                v = float(v_attack)
-                self.record_detail(tile, "戦略モード「平場攻撃」を適用")
-            else:
-                v = push_score * v_attack + (1.0 - push_score) * v_defense
-                self.record_detail(tile, f"戦略モード「押し引きバランス」(Push={push_score:.2f})を適用")
+            v = float(push_score * v_attack + (1.0 - push_score) * v_defense)
 
         is_ippatsu_turn = any(
             rs.is_ippatsu for i, rs in enumerate(self.state.reach_states) if i != self.state.my_seat
@@ -2124,7 +2164,7 @@ class Evaluator:
             self.record_detail(tile, f"形テンボーナス (押し補正: {push_score:.2f}) (+{push_score * keiten_bonus:.0f})")
 
         threat = self.strategy.compute_opponent_threat()
-        if is_honor(tile_to_id(tile)) and threat > 0.1 and mode != "防御":
+        if is_honor(tile_to_id(tile)) and threat > 0.1 and mode not in ("完全撤退", "撤退準備"):
             danger_scale = max(0.0, 1.0 - threat * 2.5)
             v *= 0.3 + 0.7 * danger_scale
             self.record_detail(tile, f"他家脅威による字牌評価減衰 (脅威度: {threat:.2f})")
@@ -2381,7 +2421,7 @@ class Evaluator:
             return None, float('inf')
         unique_tiles = list(dict.fromkeys(hand))
         mode = self.strategy.get_strategy_mode()
-        if mode == "防御":
+        if mode in ("完全撤退", "撤退準備"):
             threshold = self.params.get('SCORE_SUJI', 500)
             safe = [(self.evaluate_tile(t), t) for t in unique_tiles
                     if self.defense.defense_score_for_tile(t) >= threshold]
@@ -2916,8 +2956,9 @@ class Evaluator:
             return self.should_daiminkan(tiles, from_seat)
 
         bias = self._yaku_meld_bias(type_, tiles, hand_after, melds_after)
-        if bias is not None:
-            return bias
+        if bias is False:
+            return False
+        bias_accept = (bias is True)
 
         hand_counts = self.state.my_hand_counts()
         before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
@@ -2938,8 +2979,8 @@ class Evaluator:
 
         turn = (self.state.tsumo_count - 1) // 4 + 1
 
-        # ベタオリ時は原則副露禁止
-        if self.strategy.get_strategy_mode() == '防御':
+        # 防御姿勢（完全撤退・撤退準備）のときは原則副露（鳴き）禁止
+        if self.strategy.get_strategy_mode() in ("完全撤退", "撤退準備"):
             if after_shanten <= 0:
                 # 形式テンパイ: 12-15巡かつ必要性がある場合のみ許可
                 if turn < 12 or turn > 15:
@@ -3038,6 +3079,10 @@ class Evaluator:
         # 0飜開局 = 和了れない → 絶対に鳴かない
         if expected_han < 1:
             return False
+
+        # 役バイアスで鳴きが肯定されており、最低限の役とシャンテン進行、安全性が確認できたなら鳴く
+        if bias_accept:
+            return True
 
         # テンパイ → 鳴く（速度優先）
         if after_shanten <= 0:
