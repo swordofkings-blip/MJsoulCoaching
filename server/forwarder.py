@@ -6,6 +6,7 @@
 
 import base64
 import json
+import re
 import traceback
 import glob
 import os
@@ -688,19 +689,14 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         details = evaluator.details.get(tile, [])
         for d in details:
             if "役満ボーナス" in d:
-                import re
                 m = re.search(r'\[(.+?)\] \(\+(\d+)\)', d)
                 if m:
                     yakuman_name = m.group(1)
                     yakuman_bonus = int(m.group(2))
-            # 戦略モードや汎用スコアリング情報は除き、IF判定に基づく具体的な評価因子を抽出
+            # 戦略モードなど冗長なメッセージのみスキップ、数値付き評価因子は全て抽出
             if not any(skip in d for skip in ["戦略モード", "EV期待値評価", "順位状況価値", "形テンボーナス",
-                                               "他家脅威による字牌評価減衰", "一発放銃回避",
-                                                "有効牌枚数", "シャンテン", "手効率基本"]):
-                if any(kw in d for kw in ["ボーナス", "ペナルティ", "危険", "安全", "役満",
-                                           "染め", "搭子", "両面", "ドラ", "6ブロック",
-                                           "フリテン", "不要"]):
-                    key_details.append(d)
+                                               "他家脅威による字牌評価減衰", "一発放銃回避"]):
+                key_details.append(d)
     except:
         pass
 
@@ -778,90 +774,44 @@ def _fmt_tile(t):
 
 def _build_decision_reason(entry: dict, strategy_details: dict,
                             evaluator: 'Evaluator', is_best: bool = False) -> str:
-    mode = strategy_details.get("mode", "")
-    push = strategy_details.get("push_score", 0.0)
     tile = _fmt_tile(entry["tile"])
     shanten = entry["shanten"]
     ukeire = entry["ukeire"]
-    defense = entry["defense"]
     attack = entry["attack"]
-    safety_desc = entry["safety_desc"]
-    attack_desc = entry["attack_desc"]
-    hvb = entry.get("hvb", 0)
-    keiten = entry.get("keiten_bonus", 0)
-    yakuman_bonus = entry.get("yakuman_bonus", 0)
-    yakuman_name = entry.get("yakuman_name", "")
+    defense = entry["defense"]
+    key_details = entry.get("key_details", [])
 
-    lines = []
-    if is_best:
-        lines.append(f"「{tile}」を推奨。")
-    else:
-        lines.append(f"「{tile}」を打牌した場合。")
-
-    tile_desc = evaluator.get_tile_description(entry["tile"])
-    if tile_desc:
-        lines.append(tile_desc)
-
-    if mode in ("全力攻撃", "積極駒組み", "押し気味", "危険度勝負"):
-        lines.append(f"戦略【{mode}】: 攻める手です。")
-    elif mode in ("完全撤退", "撤退準備", "回し打ち"):
-        if defense >= 800:
-            lines.append(f"戦略【{mode}】: 防御的ですが安全牌があるので問題ありません。")
-        else:
-            lines.append(f"戦略【{mode}】: 防御的ですが安全牌がなく、苦しい選択です。")
-    else:
-        lines.append(f"戦略【{mode}】: 様子見またはスリム化の手です。")
-
-    tsumo = evaluator.state.tsumo_count
-    human_turn = (tsumo - 1) // 4 + 1
-    lines.append(f"{human_turn}巡目で")
-
-    if shanten <= -1:
-        lines.append("打牌後和了形です。")
-    elif shanten == 0:
-        lines.append("打牌後テンパイです。")
-    else:
-        lines.append(f"{shanten}向聴です。")
-
-    if "危険" in safety_desc:
-        lines.append("無筋のため危険です。")
-    elif "現物" in safety_desc or "壁" in safety_desc:
-        lines.append("安牌です。")
-    elif "スジ" in safety_desc:
-        lines.append("スジのためやや安牌です。")
-    elif "ノーチャンス" in safety_desc:
-        lines.append("ノーチャンスのため比較的安全です。")
-
+    # ヘッダー行
+    label = "推奨" if is_best else "打牌"
     try:
         bd = evaluator.attack._ukeire_quality_breakdown(entry["tile"])
-        lines.append(f"有効牌{ukeire}枚（良形{bd['good']}枚、悪形{bd['bad']}枚）。")
+        ukeire_str = f"有効牌{ukeire}枚(良形{bd['good']} 悪形{bd['bad']})"
     except:
-        lines.append(f"有効牌{ukeire}枚。")
+        ukeire_str = f"有効牌{ukeire}枚"
 
-    if hvb:
-        lines.append(f"手役評価+{hvb}。")
+    if shanten <= -1:
+        shanten_str = "和了形"
+    elif shanten == 0:
+        shanten_str = "聴牌"
+    else:
+        shanten_str = f"{shanten}向聴"
 
-    if keiten:
-        lines.append(f"終盤の形テンボーナス+{keiten}。")
+    lines = [f"「{tile}」{label} | {shanten_str} {ukeire_str}"]
 
-    if yakuman_bonus > 0:
-        name_jp = {"kokushi":"国士無双","suuankou":"四暗刻","daisangen":"大三元",
-                   "tsuuiisou":"字一色","chinroutou":"清老頭","chuuren":"九蓮宝燈",
-                   "daisuushii":"大四喜","shousuushii":"小四喜","ryuuiisou":"緑一色",
-                   "suukantsu":"四槓子"}.get(yakuman_name, yakuman_name)
-        lines.append(f"{name_jp}狙いで打点向上+{yakuman_bonus}。")
+    # key_details を数値付き箇条書きに変換
+    for d in key_details:
+        m = re.search(r'\(([+-]?\d+(?:\.\d+)?)\)', d)
+        if m:
+            val = m.group(1)
+            label_text = re.sub(r'\s*\([+-]?\d+(?:\.\d+)?\)', '', d).strip()
+            lines.append(f"{val}: {label_text}")
+        else:
+            lines.append(f"・{d}")
 
-    text = "".join(lines)
-    text += f" 【攻撃:{attack:.0f} 防御:{defense:.0f}"
-    if hvb:
-        text += f" 手役:{hvb}"
-    if keiten:
-        text += f" 形テン:{keiten}"
-    if yakuman_bonus:
-        text += f" 役満:{yakuman_bonus}"
-    text += "】"
+    # 最終評価値行
+    lines.append(f"【最終評価値: {entry['score']:.0f}  攻撃:{attack:.0f}  防御:{defense:.0f}】")
 
-    return text
+    return "\n".join(lines)
 
 
 def _restore_game_state(payload: dict) -> GameState:
@@ -1099,7 +1049,7 @@ class PacketHandler(BaseHTTPRequestHandler):
                     content = f.read()
 
                 if filename.endswith('.mjson'):
-                    majsoul = self._convert_mjson_to_majsoul(content)
+                    majsoul = self._convert_mjson_to_majsoul(content, uuid)
                     content = json.dumps(majsoul, ensure_ascii=False)
 
                 self.send_response(200)
@@ -1112,6 +1062,312 @@ class PacketHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _convert_mjson_to_majsoul(self, content: str, uuid: str = None) -> dict:
+        """
+        @title MJAIログから雀魂（Majsoul）形式への変換関数
+        @description MJAI形式のJSON Linesデータを、牌譜シミュレーター（simulator.html）が解析可能な雀魂/MajsoulのJSON構造に変換します。
+        @param {str} content - MJAI形式のログファイルテキスト
+        @param {str} uuid - 牌譜のUUID
+        @returns {dict} 変換後のMajsoul形式辞書データ
+        """
+        def to_majsoul_tile(tile_str):
+            if not tile_str or tile_str == '?':
+                return tile_str
+            
+            # 赤ドラの変換
+            if tile_str == '5mr': return '0m'
+            if tile_str == '5pr': return '0p'
+            if tile_str == '5sr': return '0s'
+            
+            # 字牌の変換
+            z_map = {
+                'E': '1z', 'S': '2z', 'W': '3z', 'N': '4z',
+                'P': '5z', 'F': '6z', 'C': '7z'
+            }
+            if tile_str in z_map:
+                return z_map[tile_str]
+                
+            return tile_str
+
+        clean_events = []
+        names = []
+        
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+                
+            t = ev.get('type')
+            if not t:
+                continue
+                
+            if t == 'start_game' and 'names' in ev:
+                if not names:
+                    names = ev['names']
+                continue
+                
+            if t == 'start_kyoku':
+                tehais = ev.get('tehais', [])
+                has_question = False
+                for hand in tehais:
+                    if '?' in hand:
+                        has_question = True
+                        break
+                if has_question:
+                    continue
+                    
+                is_dup = False
+                for old_ev in reversed(clean_events):
+                    if old_ev['type'] == 'start_kyoku':
+                        if old_ev.get('kyoku') == ev.get('kyoku') and old_ev.get('honba') == ev.get('honba'):
+                            is_dup = True
+                        break
+                if is_dup:
+                    continue
+                clean_events.append(ev)
+                
+            elif t == 'tsumo':
+                if ev.get('pai') == '?':
+                    continue
+                if clean_events and clean_events[-1]['type'] == 'tsumo':
+                    if clean_events[-1].get('actor') == ev.get('actor') and clean_events[-1].get('pai') == ev.get('pai'):
+                        continue
+                clean_events.append(ev)
+                
+            elif t == 'dahai':
+                if clean_events and clean_events[-1]['type'] == 'dahai':
+                    if clean_events[-1].get('actor') == ev.get('actor') and clean_events[-1].get('pai') == ev.get('pai'):
+                        continue
+                clean_events.append(ev)
+                
+            elif t in ('chi', 'pon', 'daiminkan', 'ankan', 'kakan'):
+                if clean_events and clean_events[-1]['type'] == t:
+                    if clean_events[-1].get('actor') == ev.get('actor') and clean_events[-1].get('pai') == ev.get('pai') and clean_events[-1].get('consumed') == ev.get('consumed'):
+                        continue
+                clean_events.append(ev)
+                
+            elif t == 'reach':
+                clean_events.append(ev)
+                
+            elif t in ('hora', 'ryukyoku'):
+                if clean_events and clean_events[-1]['type'] in ('hora', 'ryukyoku'):
+                    if 'scores' not in clean_events[-1] and 'scores' in ev:
+                        clean_events[-1] = ev
+                    continue
+                clean_events.append(ev)
+                
+            elif t == 'end_kyoku':
+                clean_events.append(ev)
+                
+        if not names:
+            names = ["Player 0", "Player 1", "Player 2", "Player 3"]
+            
+        # Why: 四人戦の開始時持ち点として一般的な25000点を使用します。
+        current_scores = [25000, 25000, 25000, 25000]
+        # Why: 136枚の麻雀牌から配牌52枚と王牌14枚を除いた、初期の山牌枚数である70枚を設定します。
+        left_tile_count = 70
+        is_reach_declared = [False, False, False, False]
+        doras = []
+        actions = []
+        
+        for ev in clean_events:
+            t = ev['type']
+            if t == 'start_kyoku':
+                # Why: 136枚の麻雀牌から配牌52枚と王牌14枚を除いた、初期の山牌枚数である70枚を設定します。
+                left_tile_count = 70
+                is_reach_declared = [False, False, False, False]
+                
+                dora_marker = to_majsoul_tile(ev.get('dora_marker'))
+                doras = [dora_marker] if dora_marker else []
+                
+                tehais = ev.get('tehais', [])
+                tiles = [[to_majsoul_tile(tile) for tile in hand] for hand in tehais]
+                oya = ev.get('oya', 0)
+                
+                action = {
+                    "result": {
+                        "class_name": "RecordNewRound",
+                        "data": {
+                            "chang": {"E": 0, "S": 1, "W": 2, "N": 3}.get(ev.get('bakaze'), 0),
+                            "ju": ev.get('kyoku', 1) - 1,
+                            "ben": ev.get('honba', 0),
+                            "liqibang": ev.get('kyotaku', 0),
+                            "leftTileCount": left_tile_count,
+                            "doras": doras,
+                            "scores": list(current_scores),
+                            "tiles0": tiles[0] if len(tiles) > 0 else [],
+                            "tiles1": tiles[1] if len(tiles) > 1 else [],
+                            "tiles2": tiles[2] if len(tiles) > 2 else [],
+                            "tiles3": tiles[3] if len(tiles) > 3 else [],
+                            "operation": {"seat": oya}
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'tsumo':
+                seat = ev.get('actor')
+                tile = to_majsoul_tile(ev.get('pai'))
+                left_tile_count -= 1
+                
+                action = {
+                    "result": {
+                        "class_name": "RecordDealTile",
+                        "data": {
+                            "seat": seat,
+                            "tile": tile,
+                            "leftTileCount": left_tile_count
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'dahai':
+                seat = ev.get('actor')
+                tile = to_majsoul_tile(ev.get('pai'))
+                tsumogiri = ev.get('tsumogiri', False)
+                
+                is_liqi = is_reach_declared[seat]
+                if is_liqi:
+                    is_reach_declared[seat] = False
+                    
+                action = {
+                    "result": {
+                        "class_name": "RecordDiscardTile",
+                        "data": {
+                            "seat": seat,
+                            "tile": tile,
+                            "isLiqi": is_liqi,
+                            "moqie": tsumogiri
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'reach':
+                seat = ev.get('actor')
+                is_reach_declared[seat] = True
+                
+            elif t in ('chi', 'pon', 'daiminkan'):
+                seat = ev.get('actor')
+                pai = to_majsoul_tile(ev.get('pai'))
+                consumed = [to_majsoul_tile(c) for c in ev.get('consumed', [])]
+                target = ev.get('target')
+                
+                tiles_list = consumed + [pai]
+                froms_list = [seat] * len(consumed) + [target]
+                
+                action = {
+                    "result": {
+                        "class_name": "RecordChiPengGang",
+                        "data": {
+                            "seat": seat,
+                            "tiles": tiles_list,
+                            "froms": froms_list,
+                            # Why: 2は明槓を表し、0はチー・ポンを表します。
+                            "type": 2 if t == 'daiminkan' else 0
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'ankan':
+                seat = ev.get('actor')
+                consumed = [to_majsoul_tile(c) for c in ev.get('consumed', [])]
+                tile = consumed[0] if consumed else ""
+                
+                action = {
+                    "result": {
+                        "class_name": "RecordAnGangAddGang",
+                        "data": {
+                            "seat": seat,
+                            "tiles": tile,
+                            # Why: 3は暗槓アクションを表す数値です。
+                            "type": 3
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'kakan':
+                seat = ev.get('actor')
+                tile = to_majsoul_tile(ev.get('pai'))
+                
+                action = {
+                    "result": {
+                        "class_name": "RecordAnGangAddGang",
+                        "data": {
+                            "seat": seat,
+                            "tiles": tile,
+                            # Why: 0は加槓アクションを表す数値です。
+                            "type": 0
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'hora':
+                if 'scores' in ev:
+                    current_scores = ev['scores']
+                    
+                action = {
+                    "result": {
+                        "class_name": "RecordHule",
+                        "data": {
+                            "scores": list(current_scores)
+                        }
+                    }
+                }
+                actions.append(action)
+                
+            elif t == 'ryukyoku':
+                if 'scores' in ev:
+                    current_scores = ev['scores']
+                    
+                action = {
+                    "result": {
+                        "class_name": "RecordNoTile",
+                        "data": {
+                            "scores": list(current_scores)
+                        }
+                    }
+                }
+                actions.append(action)
+
+        accounts = [{"seat": i, "nickname": name} for i, name in enumerate(names)]
+        players_result = [{"seat": i, "partPoint1": current_scores[i]} for i in range(len(names))]
+
+        # ファイル更新日などをタイムスタンプフォールバックとして取得
+        file_mtime = 0
+        if uuid:
+            mjson_path = os.path.join(_FW_ROOT, 'logs', f'{uuid}.mjson')
+            if os.path.exists(mjson_path):
+                file_mtime = int(os.path.getmtime(mjson_path))
+
+        majsoul_data = {
+            "head": {
+                "uuid": uuid or "mjson_converted_game",
+                "startTime": file_mtime,
+                "config": {
+                    # Why: 2は四人戦を示す雀魂の対局カテゴリコードです。
+                    "category": 2
+                },
+                "accounts": accounts,
+                "result": {
+                    "players": players_result
+                }
+            },
+            "detail_records": {
+                "actions": actions
+            },
+            "decoded_rounds": []
+        }
+        return majsoul_data
 
     def _handle_evaluate(self, post_data: bytes):
         """

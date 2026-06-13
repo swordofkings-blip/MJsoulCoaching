@@ -271,15 +271,16 @@ class DefenseEvaluator:
             # 字牌の見え枚数で安全判定
             if is_honor(tile_id):
                 visible = self.state.all_visible_counts()
-                count = visible[tile_id]
-                if count >= 2:
+                my_counts = self.state.my_hand_counts()
+                total_count = visible[tile_id]
+                public_count = total_count - my_counts[tile_id]
+                # なぜこのようにするか：自分が3枚や4枚持っている場合も残数は1枚以下になり、他家はトイツを作れずシャボ待ちが否定されるため安全だからです。
+                # また、河に2枚見えている場合も他家はトイツを持てないのでシャボが否定されます。
+                if total_count >= 3 or public_count >= 2:
                     score = self.params.get('SCORE_HONOR', SCORE_HONOR)
-                    self.record_detail(tile, f"字牌{count}枚見え安全 (+{score})")
+                    self.record_detail(tile, f"字牌安牌判定 (全体{total_count}/公開{public_count}) (+{score})")
                     return score
-                if count == 0:
-                    score = self.params.get('SCORE_HONOR', SCORE_HONOR)
-                    self.record_detail(tile, f"字牌・生牌安全 (+{score})")
-                    return score
+                return 0
             # 現物（誰かの河にある牌）は基本安全
             for s in range(4):
                 if s == self.state.my_seat:
@@ -431,15 +432,24 @@ class DefenseEvaluator:
                     return score
         if is_honor(tile_id):
             visible = self.state.all_visible_counts()
-            count = visible[tile_id]
-            if count >= 2:
+            my_counts = self.state.my_hand_counts()
+            total_count = visible[tile_id]
+            public_count = total_count - my_counts[tile_id]
+            # なぜこのようにするか：
+            # 1. 全体で3枚以上見えている（自分が3枚/4枚持っている等）か、公開2枚以上の場合は他家のシャボ待ちが物理的に否定されるため安全（+300点）。
+            # 2. 公開1枚見えの字牌は、加点も減算も行わない（0点）。
+            # 3. 公開0枚見え（生牌）は、他家トイツ所持によるシャボ待ちの本命になりやすく極めて危険なため、無スジと同等の危険ペナルティ（-200点）を課します。
+            if total_count >= 3 or public_count >= 2:
                 score = self.params.get('SCORE_HONOR', SCORE_HONOR)
-                self.record_detail(tile, f"字牌{count}枚見え安全 (+{score})")
+                self.record_detail(tile, f"字牌安牌判定 (全体{total_count}/公開{public_count}) (+{score})")
                 return score
-            if count == 0:
-                score = self.params.get('SCORE_HONOR', SCORE_HONOR)
-                self.record_detail(tile, f"字牌・生牌安全 (+{score})")
+            if public_count == 0:
+                score = self.params.get('SCORE_MUSUJI_PER_REACH', SCORE_MUSUJI_PER_REACH)
+                self.record_detail(tile, f"字牌公開{public_count}枚見え（生牌）危険 ({score})")
                 return score
+            if public_count == 1:
+                self.record_detail(tile, "字牌公開1枚見え加減なし (0)")
+                return 0
 
         if use_p1:
             score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
@@ -1501,6 +1511,11 @@ class AttackEvaluator:
                         self.record_detail(tile, f"安全字牌抱えペナルティ ({offset})")
                     else:
                         self.record_detail(tile, f"安牌字牌整理ボーナス (+{offset})")
+            # 序盤の孤立字牌優先整理ボーナス: 孤立字牌は巡目が浅いうちに切るほど価値が高い
+            if turn <= 8 and not is_pair and not is_dora and not is_keeping_safe:
+                early_honor_bonus = self.params.get('EARLY_HONOR_DISCARD_BONUS', 50)
+                bonus += early_honor_bonus
+                self.record_detail(tile, f"序盤字牌整理促進ボーナス (+{early_honor_bonus})")
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.actual_doras)
             if is_dora:
@@ -1584,6 +1599,19 @@ class AttackEvaluator:
                         decayed_28 = int(bonus_28 * max(0.2, 1.0 - turn / 18.0))
                         bonus += decayed_28
                         self.record_detail(tile, f"孤立2/8牌整理ボーナス (+{decayed_28})")
+
+        # 孤立字牌が手牌に残っている状態で搭子を崩すのを抑制
+        if not is_honor(discard_id) and turn <= 10 and shanten >= 2:
+            isolated_honor_ids = [t for t in range(27, 34) if counts[t] == 1]
+            if isolated_honor_ids and discard_id < 27:
+                base = (discard_id // 9) * 9
+                off = discard_id - base
+                has_shape = (off > 0 and counts[base + off - 1] > 0) or \
+                            (off < 8 and counts[base + off + 1] > 0)
+                if has_shape:
+                    penalty = self.params.get('SHAPE_BREAK_WHILE_HONOR_PENALTY', 100)
+                    bonus -= penalty
+                    self.record_detail(tile, f"孤立字牌({len(isolated_honor_ids)}枚)残存で搭子破壊ペナルティ (-{penalty})")
 
         # 5ブロックスリム化ボーナス（6ブロック以上で弱いブロック破壊時）
         if blocks >= 6 and not is_honor(discard_id):
@@ -2163,11 +2191,33 @@ class Evaluator:
             v += push_score * keiten_bonus
             self.record_detail(tile, f"形テンボーナス (押し補正: {push_score:.2f}) (+{push_score * keiten_bonus:.0f})")
 
-        threat = self.strategy.compute_opponent_threat()
-        if is_honor(tile_to_id(tile)) and threat > 0.1 and mode not in ("完全撤退", "撤退準備"):
-            danger_scale = max(0.0, 1.0 - threat * 2.5)
-            v *= 0.3 + 0.7 * danger_scale
-            self.record_detail(tile, f"他家脅威による字牌評価減衰 (脅威度: {threat:.2f})")
+        if is_honor(tile_to_id(tile)):
+            # Why: 字牌（役牌・風牌等）の評価減衰を、単一の比例計算から「現在の戦略モードに応じた閾値と減衰係数（スレッショルド方式）」に変更します。
+            # これにより、攻撃的なモードでは無闇に字牌を抱え込まず、守備的・様子見モードでは状況に応じて適切に字牌（安牌候補）を抱えるようになります。
+            # 0.85/0.70などの閾値・減衰率は、config_parameters.json の 'HONOR_THREAT_THRESHOLDS' から読み込まれます。
+            mode_configs = self.params.get('HONOR_THREAT_THRESHOLDS', {
+                "全力攻撃": [0.85, 0.70],
+                "積極駒組み": [0.75, 0.60],
+                "危険度勝負": [0.60, 0.50],
+                "押し気味": [0.50, 0.50],
+                "様子見": [0.35, 0.40],
+                "スリム化": [0.25, 0.30],
+                "回し打ち": [0.20, 0.30],
+                "撤退準備": [0.00, 0.30],
+                "完全撤退": [0.00, 0.30]
+            })
+            config = mode_configs.get(mode)
+            if config:
+                # 0番目は他家脅威度の閾値、1番目は字牌の評価値減衰率（小さいほど強力に抱え込む）
+                threshold, discount_factor = config[0], config[1]
+                threat = self.strategy.compute_opponent_threat()
+                if threat >= threshold:
+                    # Why: 「安牌でなければ捨てづらく」するため、安牌（防御スコアがスジ安全度閾値500以上）でない場合のみ評価値を減衰させます。
+                    # すでに現物などの安全牌になっている字牌は、防御時に優先して切りたいため減衰させません。
+                    safe_threshold = self.params.get('SCORE_SUJI', 500)
+                    if v_defense < safe_threshold:
+                        v *= discount_factor
+                        self.record_detail(tile, f"他家脅威による字牌評価減衰 (モード:{mode}, 脅威度:{threat:.2f} >= 閾値:{threshold:.2f}, 減衰:{discount_factor:.2f})")
 
         if self.params.get('USE_POSITIONAL_EV', True):
             pos_ev = self._positional_ev()
@@ -2399,20 +2449,15 @@ class Evaluator:
         """
         @title 最良打牌の選択
         @description 手牌の各牌タイプを評価し、最も評価値の高い牌を返す。
-        手牌が既に和了形の場合は None を返す（和了を選択すべき）。
+        完全撤退・撤退準備モード時は、best_discard_with_score の安全牌絞り込みロジックを適用します。
         @param hand 自家手牌のリスト
         @returns Optional[str] 最良打牌の文字列。handが空または和了形なら None。
         """
-        if not hand:
-            return None
-        if self._hand_is_winning():
-            return None
-        if hasattr(self.attack, '_best_shanten_cache'):
-            del self.attack._best_shanten_cache
-        unique_tiles = list(dict.fromkeys(hand))
-        scored = [(self.evaluate_tile(t), t) for t in unique_tiles]
-        scored.sort(key=lambda x: (-x[0], x[1]))
-        return scored[0][1]
+        # なぜこのようにするか：best_discard_with_score にのみ安全牌の絞り込み処理が実装されており、
+        # 従来の best_discard は撤退モードを無視して打牌を選択してしまっていたため。
+        # この関数を経由させることで、ベタオリの安全牌選択を有効化します。
+        discard, _ = self.best_discard_with_score(hand)
+        return discard
 
     def best_discard_with_score(self, hand: List[str]) -> Tuple[Optional[str], float]:
         if not hand:
@@ -2795,6 +2840,26 @@ class Evaluator:
 
         threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
         return riichi_score > threshold
+
+    def should_kan(self) -> bool:
+        hand_counts = self.state.my_hand_counts()
+        # アンカン可能か（手牌に4枚ある牌が存在する）
+        ankan_tile = None
+        for i in range(34):
+            if hand_counts[i] == 4:
+                from str_converter import id_to_tile
+                ankan_tile = id_to_tile(i)
+                break
+        if ankan_tile is not None and self.should_ankan():
+            return True
+        # カカン可能か（自分がポンした牌かつツモ牌が一致）
+        if self.state.last_self_drawn is not None:
+            for m in self.state.my_melds:
+                if m.type == 2 and m.tiles[0] == self.state.last_self_drawn:
+                    if self.should_kakan(self.state.last_self_drawn):
+                        return True
+                    break
+        return False
 
     def _estimate_open_han(self, hand: List[str] = None, melds: List = None) -> int:
         """

@@ -64,7 +64,7 @@ class BattleResult:
 def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
               room: str, game_type: str, quick: bool = False,
               manue_base_dir: str = None, manue_test_dir: str = None,
-              mjson_dir: str = '') -> BattleResult:
+              mjson_dir: str = '', akochan_test: bool = False) -> BattleResult:
     from strategy_manager import ShantenCalculator
     ShantenCalculator.clear_cache()
 
@@ -78,7 +78,12 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
     else:
         base_ai = AIPlayer("base", Evaluator, logic_a_params)
 
-    if manue_test_dir:
+    if akochan_test:
+        from tools.akochan_battle import AkochanPlayer, _start_container, _reset_pipes
+        _reset_pipes()
+        _start_container()
+        test_ai = AkochanPlayer("akochan")
+    elif manue_test_dir:
         test_ai = make_manue("manue-test", manue_test_dir)
     else:
         test_ai = AIPlayer("test", Evaluator, logic_b_params)
@@ -104,7 +109,7 @@ def _run_seed(seed: int, logic_a_params: dict, logic_b_params: dict,
             return [f'{base_label}{i}' for i in range(4)]
         return [f'{test_label}{s}' if s == seat else f'{base_label}{s}' for s in range(4)]
 
-    test_label = 'Manue' if manue_test_dir else 'Test'
+    test_label = 'Akochan' if akochan_test else ('Manue' if manue_test_dir else 'Test')
     base_label = 'Manue' if manue_base_dir else 'Base'
 
     players = [base_ai.clone(i) for i in range(4)]
@@ -188,6 +193,8 @@ def main():
                         help='LogicB を ManueAI に置き換え')
     parser.add_argument('--manue-base', action='store_true',
                         help='LogicA を ManueAI に置き換え (--manue と併用可)')
+    parser.add_argument('--akochan', action='store_true',
+                        help='LogicB を Akochan に置き換え')
     parser.add_argument('--mjson', default='',
                         help='牌譜出力先ディレクトリ (例: logs/)')
     args = parser.parse_args()
@@ -210,11 +217,14 @@ def main():
     base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
     manue_base_dir = base_dir if args.manue_base else None
     manue_test_dir = base_dir if args.manue else None
+    akochan_test = args.akochan
     mjson_dir = args.mjson
     if args.manue:
         logic_b_params = {}
     if args.manue_base:
         logic_a_params = {}
+    if args.akochan:
+        logic_b_params = {}
 
     n_workers = args.parallel
     if n_workers == 0:
@@ -226,7 +236,7 @@ def main():
         print(f'Room: {args.room}')
         labels = []
         labels.append(f'Logic A: {"ManueAI" if manue_base_dir else args.logic_a_params}')
-        labels.append(f'Logic B: {"ManueAI" if manue_test_dir else (args.logic_b_params or "(same as A)")}')
+        labels.append(f'Logic B: {"Akochan" if akochan_test else ("ManueAI" if manue_test_dir else (args.logic_b_params or "(same as A)"))}')
         for l in labels:
             print(l)
         print(f'Workers: {n_workers}')
@@ -244,7 +254,7 @@ def main():
             t0 = time.time()
             br = _run_seed(seed, logic_a_params, logic_b_params, args.room, args.game_type,
                            quick=args.quick, manue_base_dir=manue_base_dir, manue_test_dir=manue_test_dir,
-                           mjson_dir=mjson_dir)
+                           mjson_dir=mjson_dir, akochan_test=akochan_test)
             all_results.append(br)
             t = time.time() - t0
             if args.verbose:
@@ -277,7 +287,8 @@ def main():
                          quick=args.quick,
                          manue_base_dir=manue_base_dir,
                          manue_test_dir=manue_test_dir,
-                         mjson_dir=mjson_dir)
+                         mjson_dir=mjson_dir,
+                         akochan_test=akochan_test)
 
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
             futures = {pool.submit(worker, seed): seed for seed in seeds}

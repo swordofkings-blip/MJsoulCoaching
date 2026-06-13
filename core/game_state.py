@@ -67,7 +67,14 @@ class GameState:
         self.tenhou_chiihou_locked: bool = False
         self.river_moqie: List[List[bool]] = [[], [], [], []]
         self.player_stats: Dict[str, Dict[str, float]] = {}
-        # Why: 捨牌が「手出し」か「ツモ切り」かを記録し、戦略側の手役進行度推定の基礎データとする
+        self.wall_seed: int = 0
+        self.kyoku_count: int = 0
+        self.all_hands: List[List[str]] = [[], [], [], []]
+        self.initial_hands: List[List[str]] = [[], [], [], []]
+        self.player_tsumo: List[int] = [0, 0, 0, 0]
+        self.wall: List[str] = []
+        self.wall_pos: int = 0
+        self.global_tsumo_count: int = 0
 
     def on_new_round(self, chang, ju, ben, liqibang, tiles, scores, left_tile_count, doras):
         self.chang = chang

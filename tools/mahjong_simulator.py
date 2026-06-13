@@ -423,6 +423,7 @@ class MahjongSimulator:
         self._dead_wall_pos = WALL_SIZE - 1
 
         self._hands = [[], [], [], []]
+        self._initial_hands = [[], [], [], []]
         self._melds: List[List[Meld]] = [[], [], [], []]
         self._rivers: List[List[str]] = [[], [], [], []]
         self._river_moqie: List[List[bool]] = [[], [], [], []]
@@ -445,6 +446,7 @@ class MahjongSimulator:
             t = self._draw_live()
             if t:
                 self._hands[s].append(t)
+        self._initial_hands = [list(h) for h in self._hands]
 
         self._dora_indicators = []
         self._reveal_dora()
@@ -948,6 +950,14 @@ class MahjongSimulator:
         s.last_discard_seat = self._last_discard_seat
         s.last_discard_tile = self._last_discard
         s.river_moqie = [list(r) for r in self._river_moqie]
+        s.all_hands = [list(h) for h in self._hands]
+        s.initial_hands = [list(h) for h in self._initial_hands]
+        s.player_tsumo = list(self._player_tsumo)
+        s.wall = list(self._wall)
+        s.wall_pos = self._wall_pos
+        s.global_tsumo_count = self._tsumo_count
+        s.kyoku_count = self._kyoku_count
+        s.wall_seed = self.wall_seed
         return s
 
     def _should_game_end(self) -> bool:

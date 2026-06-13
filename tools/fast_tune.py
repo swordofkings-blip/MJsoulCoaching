@@ -9,6 +9,40 @@ BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 CONFIG = os.path.join(BASE, 'config', 'config_parameters.json')
 DATA = os.path.join(BASE, 'data')
 
+def update_nested_param(d, target_key, new_value) -> bool:
+    """辞書 d を再帰的に探索し、対象キーの値を上書きします。"""
+    if isinstance(d, dict):
+        if target_key in d:
+            d[target_key] = new_value
+            return True
+        for k, v in d.items():
+            if isinstance(v, (dict, list)):
+                if update_nested_param(v, target_key, new_value):
+                    return True
+    elif isinstance(d, list):
+        for item in d:
+            if isinstance(item, (dict, list)):
+                if update_nested_param(item, target_key, new_value):
+                    return True
+    return False
+
+def set_nested_param(d, path, value) -> bool:
+    """ドット区切りのパスまたは単一キー名でパラメータを更新します。"""
+    if '.' in path:
+        parts = path.split('.')
+        curr = d
+        for part in parts[:-1]:
+            if isinstance(curr, dict) and part in curr:
+                curr = curr[part]
+            else:
+                return False
+        if isinstance(curr, dict) and parts[-1] in curr:
+            curr[parts[-1]] = value
+            return True
+        return False
+    else:
+        return update_nested_param(d, path, value)
+
 def eval_file(args):
     rp, params = args
     return evaluate_all(rp, params)
@@ -39,10 +73,15 @@ def main():
     # Parse values
     values = []
     for v in args.values:
-        try:
-            values.append(float(v) if '.' in v else int(v))
-        except:
-            values.append(v)
+        if v.lower() == 'true':
+            values.append(True)
+        elif v.lower() == 'false':
+            values.append(False)
+        else:
+            try:
+                values.append(float(v) if '.' in v else int(v))
+            except:
+                values.append(v)
 
     all_records = sorted(glob.glob(os.path.join(DATA, 'record_*_trimmed.json')))
     
@@ -59,8 +98,10 @@ def main():
     print(f'Baseline: {bm}/{bt} = {base_rate*100:.2f}% ({time.time()-t0:.0f}s with {n_workers} workers)')
     
     for v in values:
-        p = dict(base_params)
-        p[args.param] = v
+        p = copy.deepcopy(base_params)
+        success = set_nested_param(p, args.param, v)
+        if not success:
+            p[args.param] = v  # キーが見つからなかった場合の最終フォールバック
         t0 = time.time()
         rate, m, t = evaluate_params(p, records, n_workers)
         delta = (rate - base_rate) * 100

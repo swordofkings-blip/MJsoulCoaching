@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from functools import lru_cache
-from typing import List, Tuple, Set, Set
+from typing import List, Tuple, Set
+import threading
 
 from game_state import GameState, Meld
 from str_converter import (
@@ -14,50 +15,97 @@ from str_converter import (
 
 
 class ShantenCalculator:
-    _cache: dict = {}
+    _thread_local = threading.local()
+
+    @staticmethod
+    def _get_cache() -> dict:
+        """
+        @title スレッドローカルなキャッシュの取得
+        @description 現在実行中のスレッドに紐づくシャンテン数キャッシュ辞書を返します。
+        @returns {dict} スレッドローカルなキャッシュ辞書
+        """
+        # なぜこのようにするか：各AIクライアントが同一プロセス内の別スレッドで並行して動作するため、
+        # 共有キャッシュの競合と破壊を防ぐためにスレッドごとにキャッシュを分離する必要があるからです。
+        if not hasattr(ShantenCalculator._thread_local, 'cache'):
+            ShantenCalculator._thread_local.cache = {}
+        return ShantenCalculator._thread_local.cache
 
     @staticmethod
     def clear_cache():
-        ShantenCalculator._cache.clear()
+        """
+        @title キャッシュのクリア
+        @description 現在のスレッドのシャンテン数キャッシュをクリアします。
+        """
+        ShantenCalculator._get_cache().clear()
 
     @staticmethod
     def calculate_standard(hand_counts: List[int]) -> int:
-        return ShantenCalculator._suit_shanten(hand_counts, 0)
+        """
+        @title 標準形シャンテン数計算
+        @description 一般的な4面子1雀頭の形における最小シャンテン数を計算し、スレッドローカルキャッシュに保存します。
+        @param {List[int]} hand_counts - 手牌の34種牌カウント
+        @returns {int} シャンテン数
+        """
+        # 重複計算によるCPU負荷とタイムアウトを防ぐため、スレッドローカルキャッシュを利用します。
+        key = (tuple(hand_counts), 's')
+        cache = ShantenCalculator._get_cache()
+        if key in cache:
+            return cache[key]
+        result = ShantenCalculator._suit_shanten(hand_counts, 0)
+        cache[key] = result
+        return result
 
     @staticmethod
     def calculate_closed(hand_counts: List[int]) -> int:
+        """
+        @title 門前手シャンテン数計算
+        @description 門前時の標準形・七対子・国士無双のうち最小のシャンテン数を計算し、スレッドローカルキャッシュに保存します。
+        @param {List[int]} hand_counts - 手牌の34種牌カウント
+        @returns {int} 最小のシャンテン数
+        """
+        # 評価値計算で繰り返し呼び出されるため、スレッドローカルキャッシュにより再計算を防止します。
+        key = (tuple(hand_counts), 'c')
+        cache = ShantenCalculator._get_cache()
+        if key in cache:
+            return cache[key]
         std = ShantenCalculator._suit_shanten(hand_counts, 0)
         chiitoi = ShantenCalculator._chiitoitsu_shanten(hand_counts)
         kokushi = ShantenCalculator._kokushi_shanten(hand_counts)
-        return min(std, chiitoi, kokushi)
-
-    @staticmethod
-    def calculate_open(hand_counts: List[int], open_meld_count: int) -> int:
-        key = (tuple(hand_counts), open_meld_count)
-        if key in ShantenCalculator._cache:
-            return ShantenCalculator._cache[key]
-        if open_meld_count >= 4:
-            return -1
-        result = ShantenCalculator._suit_shanten(hand_counts, open_meld_count)
-        ShantenCalculator._cache[key] = result
+        result = min(std, chiitoi, kokushi)
+        cache[key] = result
         return result
 
     @staticmethod
     def calculate_open(hand_counts: List[int], open_meld_count: int) -> int:
+        """
+        @title 副露手シャンテン数計算
+        @description 副露が存在する場合の最小シャンテン数を計算し、スレッドローカルキャッシュに保存します。
+        @param {List[int]} hand_counts - 手牌の34種牌カウント
+        @param {int} open_meld_count - 副露数
+        @returns {int} シャンテン数
+        """
         key = (tuple(hand_counts), open_meld_count)
-        if key in ShantenCalculator._cache:
-            return ShantenCalculator._cache[key]
+        cache = ShantenCalculator._get_cache()
+        if key in cache:
+            return cache[key]
         if open_meld_count >= 4:
             return -1
         result = ShantenCalculator._suit_shanten(hand_counts, open_meld_count)
-        ShantenCalculator._cache[key] = result
+        cache[key] = result
         return result
 
     @staticmethod
     def calculate_closed_effective(hand_counts: List[int]) -> int:
+        """
+        @title 門前有効シャンテン数計算
+        @description 門前時の標準手・七対子・国士無双のうち最小の有効シャンテン数を計算し、スレッドローカルキャッシュに保存します。
+        @param {List[int]} hand_counts - 手牌の34種牌カウント
+        @returns {int} 最小の有効シャンテン数
+        """
         key = (tuple(hand_counts), 'ce')
-        if key in ShantenCalculator._cache:
-            return ShantenCalculator._cache[key]
+        cache = ShantenCalculator._get_cache()
+        if key in cache:
+            return cache[key]
         
         std = ShantenCalculator._suit_shanten(hand_counts, 0)
         pairs = sum(1 for c in hand_counts if c >= 2)
@@ -73,7 +121,7 @@ class ShantenCalculator:
             if kokushi < best:
                 best = kokushi
                 
-        ShantenCalculator._cache[key] = best
+        cache[key] = best
         return best
 
     @staticmethod
@@ -118,9 +166,12 @@ class ShantenCalculator:
                 dfs(idx, melds, taatsu + 1, pairs)
                 c[idx] += 1
                 c[idx + 2] += 1
-            c[idx] -= 1
-            dfs(idx, melds, taatsu, pairs)
-            c[idx] += 1
+            # この牌に対する探索を終了し、残りをすべて孤立牌として次の牌に進みます。
+            # 1枚ずつの再帰による指数爆発を防ぐため、一括で次のインデックスに進めます。
+            orig = c[idx]
+            c[idx] = 0
+            dfs(idx + 1, melds, taatsu, pairs)
+            c[idx] = orig
 
         dfs(0, 0, 0, 0)
         return result
@@ -280,10 +331,25 @@ class StrategyManager:
     SEAT_NAMES = ['自家', '下家', '対面', '上家']
 
     def __init__(self, state: GameState, params: dict = None):
+        """
+        @title 役判定初期化
+        @description 各評価キャッシュ変数およびファジィ推論エンジンを初期化します。
+        @param {GameState} state - 対局状態管理オブジェクト
+        @param {dict} [params=None] - 設定パラメータ辞書
+        """
         self.state = state
         self.params = params or {}
         from fuzzy_logic import FuzzyLogicEngine
         self.fuzzy_engine = FuzzyLogicEngine(self.params)
+        
+        # なぜこのようにするか：1回の打牌決定処理（Evaluator実行）の間はGameStateが変更されないため、
+        # 評価関数を再帰的に何度も計算する際の重複処理を避け、評価速度を劇的に高速化するためです。
+        self._opponent_threat_cache = None
+        self._max_threat_with_reason_cache = None
+        self._base_attack_cache = None
+        self._yakuman_attack_boost_cache = None
+        self._push_score_cache = None
+        self._strategy_mode_cache = None
 
     def compute_opponent_threat(self) -> float:
         """
@@ -291,7 +357,10 @@ class StrategyManager:
         @description 各他家のリーチ・副露数・捨牌の手出し中張牌・ドラ/役牌の鳴き状況から脅威度を算出し、その最大値を返す。
         @returns {float} 最大脅威度 0.0〜1.0
         """
+        if self._opponent_threat_cache is not None:
+            return self._opponent_threat_cache
         max_threat, _ = self._max_threat_with_reason()
+        self._opponent_threat_cache = max_threat
         return max_threat
 
     def _max_threat_with_reason(self) -> Tuple[float, str]:
@@ -300,6 +369,8 @@ class StrategyManager:
         @description 各他家の脅威度を計算し、最も高い脅威を持つ他家の脅威値と日本語理由テキストを返す。
         @returns {Tuple[float, str]} (最大脅威度, 理由テキスト)
         """
+        if self._max_threat_with_reason_cache is not None:
+            return self._max_threat_with_reason_cache
         best_value = self.params.get('BASE_THREAT', 0.0)
         best_reason = '他家に脅威なし'
         for i in range(4):
@@ -309,37 +380,249 @@ class StrategyManager:
             if value > best_value:
                 best_value = value
                 best_reason = reason
-        return best_value, best_reason
+        self._max_threat_with_reason_cache = (best_value, best_reason)
+        return self._max_threat_with_reason_cache
+
+    def _get_visible_counts(self) -> List[int]:
+        """
+        @title 見えている牌のカウント
+        @description 自家の手牌、全プレイヤーの捨牌、全副露、およびドラ表示牌から、各牌（0〜33）の自分の目から見えている枚数をカウントします。
+        @returns {List[int]} 各牌の露出枚数配列（サイズ34）
+        """
+        from str_converter import tile_to_id
+        counts = [0] * 34
+        # 自家の手牌
+        for t in self.state.my_hand:
+            try:
+                counts[tile_to_id(t)] += 1
+            except Exception:
+                pass
+        # 全プレイヤーの捨牌
+        for s in range(4):
+            for t in self.state.river[s]:
+                try:
+                    counts[tile_to_id(t)] += 1
+                except Exception:
+                    pass
+        # 全プレイヤーの副露
+        for s in range(4):
+            for m in self.state.melds[s]:
+                for t in m.tiles:
+                    try:
+                        counts[tile_to_id(t)] += 1
+                    except Exception:
+                        pass
+        # ドラ表示牌
+        for d in self.state.doras:
+            try:
+                counts[tile_to_id(d)] += 1
+            except Exception:
+                pass
+        return counts
 
     def _opponent_threat_for_seat(self, seat: int) -> Tuple[float, str]:
+        """
+        @title 各プレイヤーの脅威度算出
+        @description 期待打点 A, 有効枚数 U, 向聴数 S から他家の脅威度 V = (A * U) / (S + 1) を算出します。
+                     フリテン現物や安全牌の残り枚数に応じて有効枚数 U を減衰させ、放銃リスクを反映させます。
+        @param {int} seat - 対象プレイヤーの座席インデックス
+        @returns {Tuple[float, str]} (脅威度 0.0〜1.0, 理由テキスト)
+        """
         seat_name = self.SEAT_NAMES[seat] if 0 <= seat < 4 else f'Player {seat}'
-        if self.state.reach_states[seat].is_reach:
-            reach_threat = self.params.get('REACH_THREAT', 1.0)
-            return reach_threat, f'{seat_name}: リーチ済（=テンパイ確定、脅威度 {reach_threat:.2f}）'
-        # 他家リーチ後にベタオリしている相手は脅威度を大幅に下げる
+        
+        # 1. ベタオリしている他家はアガリを目指していないため脅威度を 0 にする
         if self._is_betaori(seat):
             return self.params.get('BASE_THREAT', 0.0), f'{seat_name}: ベタオリ中（脅威低）'
 
-        # 役満脅威度の確認
+        # 2. 役満脅威度のチェック
         yakuman_threat = self._yakuman_threat_for_seat(seat)
         if yakuman_threat > 0.3:
             return yakuman_threat, f'{seat_name}: 役満警戒（脅威度 {yakuman_threat:.2f}）'
 
+        # 各種情報の取得
+        is_reach = self.state.reach_states[seat].is_reach
         open_melds = [m for m in self.state.melds[seat] if m.is_open]
         n_open = len(open_melds)
-        if n_open > 0:
-            return self._threat_open_player(seat, seat_name, n_open, open_melds)
-        return self._threat_closed_player(seat, seat_name)
+        tsumo = (self.state.tsumo_count - 1) // 4 + 1
+
+        # 3. 推定向聴数 S
+        # 3副露はテンパイ(S=0)、2副露は1向聴(S=1)、1副露は2向聴(S=2)をベースに、
+        # 巡目が進む（10巡目、15巡目など）と向聴数が減少してテンパイに近づく（加速）ようにモデル化
+        if is_reach:
+            S = 0
+        elif n_open >= 3:
+            S = 0
+        elif n_open == 2:
+            S = 0 if tsumo >= 10 else 1
+        elif n_open == 1:
+            if tsumo >= 15:
+                S = 0
+            elif tsumo >= 10:
+                S = 1
+            else:
+                S = 2
+        else:  # 門前ダマ
+            if tsumo >= 13:
+                S = 1
+            elif tsumo >= 7:
+                S = 2
+            else:
+                S = 3
+
+        # 4. 推定期待飜数 H と期待打点 A (点数)
+        # 役牌・ドラ・染め手の露出状況から打点を推定。親の場合は打点が1.5倍になるため脅威度も上がる。
+        is_dealer = (getattr(self.state, 'dealer_seat', 0) == seat)
+        
+        if is_reach:
+            H = 3  # リーチ + 平均2飜
+            reason_detail = "リーチ"
+        elif n_open > 0:
+            H = 1  # 基礎1飜
+            
+            # 役牌ポン数のカウント
+            dealer_seat = getattr(self.state, 'dealer_seat', 0)
+            bakaze_id = 27 + (self.state.chang % 4)
+            jikaze_id = 27 + ((seat - dealer_seat) % 4)
+            yakuhai_ids = {31, 32, 33, bakaze_id, jikaze_id}
+            
+            from str_converter import tile_to_id
+            yakuhai_count = 0
+            dora_count = 0
+            for m in open_melds:
+                if m.type in ('cpg', 'minggang', 'ankan', 'kankan') and len(m.tiles) >= 3:
+                    try:
+                        tid = tile_to_id(m.tiles[0])
+                        if tid in yakuhai_ids:
+                            yakuhai_count += 1
+                    except Exception:
+                        pass
+                for t in m.tiles:
+                    try:
+                        tid = tile_to_id(t)
+                        dora_ids = {tile_to_id(d) for d in self.state.actual_doras}
+                        if tid in dora_ids:
+                            dora_count += 1
+                        if t.startswith('0'):
+                            dora_count += 1
+                    except Exception:
+                        pass
+            
+            H += yakuhai_count + dora_count
+
+            # 染め手（ホンイツ・チンイツ）の簡易判定
+            is_flush = False
+            # Why: 1副露だけでは手牌が染まっているか判別不能なため、2副露以上（n_open >= 2）を条件とする。
+            if n_open >= 2:
+                suits = set()
+                has_honors = False
+                num_tiles_count = 0
+                for m in open_melds:
+                    for t in m.tiles:
+                        try:
+                            tid = tile_to_id(t)
+                            if tid >= 27:
+                                has_honors = True
+                            else:
+                                suits.add(t[1] if len(t) >= 2 else t[0])
+                                num_tiles_count += 1
+                        except Exception:
+                            pass
+
+                # 数牌が1つのスートだけで構成されている場合
+                if len(suits) == 1 and num_tiles_count >= 3:
+                    flush_suit = list(suits)[0]
+                    # 他家の河（捨牌）をチェック。染め手スートの牌が何枚切られているか
+                    river_suit_count = 0
+                    for t in self.state.river[seat]:
+                        try:
+                            tid = tile_to_id(t)
+                            if tid < 27 and t[1] == flush_suit:
+                                river_suit_count += 1
+                        except Exception:
+                            pass
+                    # Why: 染め手スートが2枚以上（2は閾値）切られていない場合のみ、染め手（ flush ）とみなす
+                    if river_suit_count < 2:
+                        is_flush = True
+            
+            if is_flush:
+                if has_honors:
+                    H += 2  # ホンイツの2飜
+                else:
+                    H += 3  # チンイツへの移行期（安全のため3飜に抑える）
+
+            reason_detail = f"{n_open}副露(飜数:{H})"
+        else:  # 門前ダマ
+            H = 3 if tsumo >= 10 else 2
+            reason_detail = "門前"
+
+        # 推定飜数 H から期待打点 A (点数) を算出 (麻雀の得点計算に準拠)
+        if H <= 4:
+            A = 1000 * (2 ** H)
+        elif H == 5:
+            A = 8000
+        elif H in (6, 7):
+            A = 12000
+        elif H in (8, 9, 10):
+            A = 16000
+        else:
+            A = 24000
+
+        # 親なら打点1.5倍
+        if is_dealer:
+            A = int(A * 1.5)
+
+        # 5. 実質有効枚数 U の計算
+        # シャンテン数 S に応じた基礎枚数。テンパイなら平均待ち枚数の 6 枚とする。
+        U_base_map = {0: 6, 1: 12, 2: 18, 3: 24}
+        U_base = U_base_map.get(S, 24)
+
+        # Why: 以前は相手の河にある安全牌の残り割合（safe_ratio）で有効枚数 U を減衰させていましたが、
+        # これにより巡目が進む（河が長くなる）につれて相手の脅威度 V が極端に低下する問題が発生していました。
+        # 相手がテンパイしている場合の危険度（無筋を通すリスク）は巡目が進んでも低下しないため、
+        # 一般的な他家全体の脅威度としては減衰させず、基礎枚数 U_base をそのまま使用します。
+        # 個別の牌の安全度評価は Evaluator 側の v_defense（ベタオリ安全度スコア）で別途処理されます。
+        U = U_base
+
+        # 6. 期待値 V の計算
+        V = (A * U) / (S + 1)
+
+        # 7. 正規化して脅威度（0.0〜1.0）を算出
+        # 子の満貫テンパイ基準値 (V_max = 48000.0) を目安に正規化
+        # Why: 48000.0は子の満貫テンパイ（打点8000 * 有効枚数6）時の期待値 V です。
+        V_max = self.params.get('THREAT_V_MAX', 48000.0)
+        value = min(1.0, V / V_max)
+
+        # 門前ダマテンの場合は、警戒されにくいためダマテン警戒係数（0.15）を掛けて減衰させる
+        # Why: 0.15は門前ダマの警戒度が低いためにかける減衰係数です。
+        if not is_reach and n_open == 0:
+            dama_scale = self.params.get('THREAT_DAMA_SCALE', 0.15)
+            value = value * dama_scale
+
+        reason = f"{seat_name}: {reason_detail} (打点:{A}, 向聴:{S}, 有効枚:{U:.1f}) = {value:.2f}"
+        return value, reason
 
     def _is_betaori(self, seat: int) -> bool:
-        reach_seats = [i for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach]
+        """
+        @title 他家のベタオリ（オリ）状態判定
+        @description 直近の捨牌の安全度とツモ切り率から、他家が降りているかを判定します。
+        @param {int} seat - 対象プレイヤーの座席インデックス
+        @returns {bool} ベタオリ状態であれば True
+        """
+        # Why: 自身がリーチしている場合は、アガリを目指して全ツッパ中（またはツモ切り）であり、オリではないため即座に False を返す
+        if self.state.reach_states[seat].is_reach:
+            return False
+
+        # Why: 自分以外のリーチ者を対象とし、自身（seat）に対する自己参照バグを防ぐため i != seat とする。また、自分がリーチしている場合に他家が自分に対して降りている場合も考慮するため、my_seat を除外しない
+        reach_seats = [i for i in range(4) if i != seat and self.state.reach_states[i].is_reach]
         river = self.state.river[seat]
+        # Why: 捨牌が3枚未満の序盤ではオリ判定を行わないための安全ガード値 3
         if len(river) < 3:
             return False
         moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
         from str_converter import tile_to_id, is_honor
         betaori_count = 0
-        # 直近5枚の捨て牌をチェック
+        
+        # Why: 直近5枚の捨牌（5は分析対象とする直近手数）の安全性をチェックする
         for idx in range(max(0, len(river) - 5), len(river)):
             if idx >= len(river):
                 break
@@ -366,9 +649,12 @@ class StrategyManager:
 
             if is_moqie or is_genbutsu:
                 betaori_count += 1
+                
+        # Why: 直近5枚（またはそれ以下）のうち、ツモ切りまたは現物安全牌を捨てた割合を計算
         recent = min(5, len(river) - max(0, len(river) - 5))
         if recent == 0:
             return False
+        # Why: 80%以上（0.8）が安牌またはツモ切りであれば、オリていると判定する
         return betaori_count / recent >= 0.8
 
     def _yakuman_threat_for_seat(self, seat: int) -> float:
@@ -381,121 +667,6 @@ class StrategyManager:
         from yakuman_evaluator import YakumanEvaluator
         evaluator = YakumanEvaluator(self.state)
         return evaluator.opponent_yakuman_threat(seat)
-
-    def _threat_open_player(self, seat: int, seat_name: str, n_open: int, open_melds: List[Meld]) -> Tuple[float, str]:
-        """
-        @title 副露者の脅威度算出
-        @description 副露数に応じた基礎値に、ドラ/役牌ポン・後半手出し中張牌のボーナス加算を適用する。
-        @param {int} seat - 対象 seat
-        @param {str} seat_name - プレイヤー名
-        @param {int} n_open - 副露数
-        @param {List[Meld]} open_melds - 副露一覧
-        @returns {Tuple[float, str]} (脅威度, 理由テキスト)
-        """
-        open_base_map = {
-            0: 0.0,
-            1: self.params.get('OPEN_BASE_BY_COUNT_1', 0.15),
-            2: self.params.get('OPEN_BASE_BY_COUNT_2', 0.40),
-            3: self.params.get('OPEN_BASE_BY_COUNT_3', 0.75),
-            4: self.params.get('OPEN_BASE_BY_COUNT_4', 0.95),
-        }
-        base = open_base_map.get(n_open, 0.95)
-        bonuses: List[Tuple[str, float]] = []
-        if self._has_yakuhai_or_dora_meld(open_melds):
-            bonuses.append(('役牌・ドラポン', self.params.get('YAKUHAI_DORA_MELD_BONUS', 0.15)))
-        if (self.state.tsumo_count - 1) // 4 + 1 >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
-            bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_OPEN', 0.10)))
-        value = min(1.0, base + sum(b[1] for b in bonuses))
-        tsumo = (self.state.tsumo_count - 1) // 4 + 1
-        if tsumo < 8:
-            turn_scale = max(0.3, tsumo / 12.0)
-            value = value * turn_scale
-        elif tsumo < 12:
-            turn_scale = max(0.5, tsumo / 12.0)
-            value = value * turn_scale
-        value = min(1.0, value)
-        reason = f'{seat_name}: {n_open}副露 (基礎 {base:.2f})'
-        for label, b in bonuses:
-            reason += f' + {label} (+{b:.2f})'
-        reason += f' = {value:.2f}'
-        return value, reason
-
-    def _threat_closed_player(self, seat: int, seat_name: str) -> Tuple[float, str]:
-        """
-        @title 門前者の脅威度算出
-        @description 巡目と手出し中張牌履歴からダマテン接近の脅威度を算出する。
-        @param {int} seat - 対象 seat
-        @param {str} seat_name - プレイヤー名
-        @returns {Tuple[float, str]} (脅威度, 理由テキスト)
-        """
-        bonuses: List[Tuple[str, float]] = []
-        base = 0.0
-        tsumo = (self.state.tsumo_count - 1) // 4 + 1
-        if 10 <= tsumo <= 14:
-            base = self.params.get('CLOSED_TSUMO_10_14', 0.05)
-        elif tsumo >= 15:
-            base = self.params.get('CLOSED_TSUMO_15_PLUS', 0.15)
-        if base <= 0:
-            return 0.0, f'{seat_name}: 序盤（{tsumo}巡）で脅威低'
-        if tsumo >= self.params.get('LATE_THRESHOLD', 10) and self._has_late_tedashi_middle(seat):
-            bonuses.append(('後半手出し中張牌', self.params.get('LATE_TEDASHI_MIDDLE_BONUS_CLOSED', 0.08)))
-
-        # Damaten signal detection (late turn, no riichi)
-        if tsumo >= 12:
-            river = self.state.river[seat]
-            moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
-            # Check last 3 discards for danger signals
-            recent_tedashi = []
-            for idx in range(max(0, len(river)-5), len(river)):
-                is_moqie = moqie[idx] if idx < len(moqie) else False
-                if not is_moqie:
-                    t = river[idx]
-                    recent_tedashi.append(t)
-
-            # Signal A: discarded dora from hand
-            for d in self.state.doras:
-                dora_tile = dora_indicator_to_dora(d)
-                if dora_tile in recent_tedashi:
-                    bonuses.append(('ドラ手出し', 0.15))
-                    break
-
-            # Signal B: discarded live honor tile (sangen/seat/round wind not yet visible)
-            yakuhai_tiles = {31, 32, 33}  # haku, hatsu, chun
-            sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(seat)
-            rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.chang % 4)
-            if sw: yakuhai_tiles.add(sw)
-            if rw: yakuhai_tiles.add(rw)
-            # Check if any yakuhai tile was tedashi
-            try:
-                for t in recent_tedashi:
-                    tid = tile_to_id(t)
-                    if tid in yakuhai_tiles:
-                        # Check if it's a live tile (not yet visible in any river)
-                        visible = sum(
-                            1 for s in range(4)
-                            for rt in self.state.river[s]
-                            if tile_to_id(rt) == tid
-                        )
-                        if visible <= 1:  # only the one we just checked
-                            bonuses.append(('生牌役牌手出し', 0.20))
-                            break
-            except Exception:
-                pass
-
-            # Signal C: multiple (>=2) consecutive middle tile tedashi in last 3 hand discards
-            middle_tedashi_count = sum(
-                1 for t in recent_tedashi[-3:]
-                if not is_honor(tile_to_id(t)) and 2 <= (tile_to_id(t) % 9) <= 6
-            )
-            if middle_tedashi_count >= 2:
-                bonuses.append(('中張連続手出し', 0.10))
-
-        value = min(1.0, base + sum(b[1] for b in bonuses))
-        reason = f'{seat_name}: 門前 (基礎 {base:.2f}, {tsumo}巡)'
-        for label, b in bonuses:
-            reason += f' + {label} (+{b:.2f})'
-        reason += f' = {value:.2f}'
-        return value, reason
 
     def _has_yakuhai_or_dora_meld(self, open_melds: List[Meld]) -> bool:
         """
@@ -603,22 +774,43 @@ class StrategyManager:
         return False
 
     def compute_base_attack(self) -> float:
+        """
+        @title 基礎攻撃度の算出
+        @description 自家的シャンテン数や手牌ブロック数、役満可能性から基礎攻撃度を算出します。
+        @returns {float} 基礎攻撃度 (0.0〜1.0)
+        """
+        if self._base_attack_cache is not None:
+            return self._base_attack_cache
         hand_counts = self.state.my_hand_counts()
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
         shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_meld_count)
         if shanten <= -1:
             han = self._estimate_han()
             if han >= 5:
-                return self.params.get('BASE_ATTACK_TENPAI_HIGH', 1.0)
+                res = self.params.get('BASE_ATTACK_TENPAI_HIGH', 1.0)
             else:
-                return self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
+                res = self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
+            self._base_attack_cache = res
+            return res
         if shanten == 0:
-            return self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
+            res = self.params.get('BASE_ATTACK_TENPAI_LOW', 0.7)
+            self._base_attack_cache = res
+            return res
         if shanten == 1:
-            return self.params.get('BASE_ATTACK_1SHANTEN', 0.4)
+            base_val = self.params.get('BASE_ATTACK_1SHANTEN', 0.4)
+            blocks = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
+            block_factor = max(0.0, min(1.0, (blocks - 4) / 3.0))
+            han = self._estimate_han()
+            score_factor = min(1.0, max(0.0, (han - 1) / 4.0))
+            speed_score = block_factor / (shanten + 1.0)
+            quality_boost = score_factor * speed_score * 0.15
+            res = max(0.01, min(base_val + quality_boost, base_val * 1.3))
+            self._base_attack_cache = res
+            return res
         max_shanten = self.params.get('BASE_ATTACK_MAX_SHANTEN', 6)
         if shanten >= 2:
             if shanten > max_shanten:
+                self._base_attack_cache = 0.0
                 return 0.0
 
             default_val = 0.4 * (0.5 ** (shanten - 1))
@@ -626,15 +818,25 @@ class StrategyManager:
             base_val = self.params.get(param_key, default_val)
 
             blocks = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
-            block_factor = max(0.0, (blocks - 4) / 3.0)
+            block_factor = max(0.0, min(1.0, (blocks - 4) / 3.0))
 
-            return max(0.01, min(base_val, (base_val / 2.0) * block_factor))
+            han = self._estimate_han()
+            score_factor = min(1.0, max(0.0, (han - 1) / 4.0))
+            speed_score = block_factor / (shanten + 1.0)
+            quality_boost = score_factor * speed_score * 0.3
+
+            res = max(0.01, min(base_val * block_factor + quality_boost, base_val * 2))
+            self._base_attack_cache = res
+            return res
 
         # 役満攻撃ブースト
         yakuman_boost = self._yakuman_attack_boost()
         if yakuman_boost > 0:
-            return min(1.0, yakuman_boost)
+            res = min(1.0, yakuman_boost)
+            self._base_attack_cache = res
+            return res
 
+        self._base_attack_cache = 0.0
         return 0.0
 
     def _yakuman_attack_boost(self) -> float:
@@ -644,6 +846,8 @@ class StrategyManager:
                   他家が脅威の場合はブーストしない。
         @returns {float} 攻撃ブースト値（0.0〜1.0）
         """
+        if self._yakuman_attack_boost_cache is not None:
+            return self._yakuman_attack_boost_cache
         from yakuman_evaluator import YakumanEvaluator
 
         # パラメータ読み込み
@@ -655,6 +859,7 @@ class StrategyManager:
         # 注意: compute_opponent_threat()は循環呼び出しを避けるため直接呼ばない
         threat, _ = self._max_threat_with_reason()
         if threat > defense_threshold:
+            self._yakuman_attack_boost_cache = 0.0
             return 0.0
 
         evaluator = YakumanEvaluator(self.state)
@@ -675,7 +880,9 @@ class StrategyManager:
             if boost > max_boost:
                 max_boost = boost
 
-        return min(1.0, max_boost)
+        res = min(1.0, max_boost)
+        self._yakuman_attack_boost_cache = res
+        return res
 
     def _estimate_han(self) -> int:
         """
@@ -696,6 +903,13 @@ class StrategyManager:
         return max(han, 1)
 
     def compute_push_score(self) -> float:
+        """
+        @title 押し引きスコアの計算
+        @description 基礎攻撃度と他家脅威度のバランス、および順位などの補正を加えて総合的な押し引きスコアを計算します。
+        @returns {float} 押し引きスコア (0.0〜1.0)
+        """
+        if self._push_score_cache is not None:
+            return self._push_score_cache
         a_base = self.compute_base_attack()
         t_max = self.compute_opponent_threat()
         if t_max <= 0.0:
@@ -706,13 +920,18 @@ class StrategyManager:
             else:
                 shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count)
             if shanten >= 3:
-                return max(a_base, 0.3)
+                res = max(a_base, 0.3)
+                self._push_score_cache = res
+                return res
+            self._push_score_cache = 1.0
             return 1.0
         push_score = a_base * (1.0 - t_max)
         # --- 人読み: リーチ押し引き補正 ---
         push_score = self._apply_player_stats_riichi_adjust(push_score)
         push_score = self._apply_position_override(push_score)
-        return max(0.0, min(1.0, push_score))
+        res = max(0.0, min(1.0, push_score))
+        self._push_score_cache = res
+        return res
 
     def _apply_player_stats_riichi_adjust(self, push_score: float) -> float:
         player_stats = self.state.player_stats or {}
@@ -834,13 +1053,32 @@ class StrategyManager:
         return True
 
     def get_strategy_mode(self) -> str:
+        """
+        @title 戦略モードの取得
+        @description 押し引きスコア、攻撃度、脅威度から決定される最終的な戦略モード（日本語）を返します。
+        @returns {str} 戦略モード（例: '全力攻撃', '完全撤退' など）
+        """
+        if self._strategy_mode_cache is not None:
+            return self._strategy_mode_cache
         if self.is_zenchi_mode():
+            self._strategy_mode_cache = "全力攻撃"
             return "全力攻撃"
+
+        # なぜこのようにするか：以前のファジィ制御導入前のシステムでは、押し引きスコア (push_score) が
+        # ベタオリ閾値 (MODE_BETAORI_THRESHOLD) 以下のときに「防御」モードに移行していました。
+        # 現在の「完全撤退」モードはかつての「防御」に相当するため、push_score が閾値以下の場合は、
+        # 順位状況や点数差（オーラストップ目など）の押し引き判断を最優先し、ファジィ推論を上書きして強制的に完全撤退にします。
+        push = self.compute_push_score()
+        betaori_th = self.params.get('MODE_BETAORI_THRESHOLD', 0.05)
+        if push <= betaori_th:
+            self._strategy_mode_cache = "完全撤退"
+            return "完全撤退"
 
         base_attack = self.compute_base_attack()
         max_threat = self.compute_opponent_threat()
 
         mode, _ = self.fuzzy_engine.evaluate_strategy(base_attack, max_threat)
+        self._strategy_mode_cache = mode
         return mode
 
     def get_strategy_details(self) -> dict:
@@ -860,5 +1098,12 @@ class StrategyManager:
             "my_rank": self.state.my_score_rank(),
             "yakuman_seal": not self.is_meld_open_allowed(),
             "yakuman_boost": round(self._yakuman_attack_boost(), 3),
-            "fuzzy_scores": {k: round(v, 3) for k, v in scores.items()}
+            "fuzzy_scores": {k: round(v, 3) for k, v in scores.items()},
+            # Why: フロントエンド側でファジィメンバシップ関数の中心点に合わせて
+            # ドットの位置を連続的に折れ線マッピングするための閾値パラメータ。
+            # 0.50 と 0.40 はデフォルト値として定義されている中段ピークの基準値。
+            "fuzzy_params": {
+                "y_med_peak": self.params.get('FUZZY_Y_MED_PEAK', 0.50),
+                "x_med_peak": self.params.get('FUZZY_X_MED_PEAK', 0.40)
+            }
         }

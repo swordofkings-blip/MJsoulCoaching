@@ -703,6 +703,10 @@
             border-radius: 3px;
         }
 
+        .bot-coach-eval-bar-fill.negative {
+            background: linear-gradient(to right, #ef4444, #f97316);
+        }
+
         .bot-coach-eval-score {
             text-align: right;
             font-variant-numeric: tabular-nums;
@@ -841,6 +845,8 @@
             background: rgba(251, 191, 36, 0.07);
             border: 1px solid rgba(251, 191, 36, 0.35);
             border-radius: 8px;
+            height: 140px;
+            overflow-y: auto;
         }
 
         .bot-coach-reason-title {
@@ -1525,15 +1531,6 @@
                             <div id="botCoachKanReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
                             </div>
                         </div>
-                        <div class="bot-coach-push" id="botCoachPush" style="display:none;">
-                            <div class="bot-coach-push-label">
-                                <span>押し (攻め)</span>
-                                <span id="botCoachPushValue">0.00</span>
-                            </div>
-                            <div class="bot-coach-push-bar">
-                                <div class="bot-coach-push-fill" id="botCoachPushFill" style="width:0%"></div>
-                            </div>
-                        </div>
                         <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
                             <div class="bot-coach-strategy-title">戦略モードの内訳</div>
                             <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
@@ -2104,12 +2101,14 @@
          * @param {number} targetStepIndex - ジャンプ先のタイムラインステップのインデックス
          * @returns {void}
          */
-        function jumpToAction(targetStepIndex) {
+        function jumpToAction(targetStepIndex, isFromAutoPlay = false) {
             if (targetStepIndex < 0 || targetStepIndex >= timelineSteps.length) return;
 
-            isPlaying = false;
-            document.getElementById('btnPlay').innerText = '自動再生';
-            if (playInterval) clearInterval(playInterval);
+            if (!isFromAutoPlay) {
+                isPlaying = false;
+                document.getElementById('btnPlay').innerText = '自動再生';
+                if (playInterval) clearInterval(playInterval);
+            }
 
             currentActionIndex = targetStepIndex;
 
@@ -2145,10 +2144,10 @@
          * @param {number} direction - 進む方向（1: 進む, -1: 戻る）
          * @returns {void}
          */
-        function step(direction) {
+        function step(direction, isFromAutoPlay = false) {
             const nextIdx = currentActionIndex + direction;
             if (nextIdx >= 0 && nextIdx < timelineSteps.length) {
-                jumpToAction(nextIdx);
+                jumpToAction(nextIdx, isFromAutoPlay);
             }
         }
 
@@ -2210,7 +2209,7 @@
                 btn.innerText = '一時停止';
                 playInterval = setInterval(() => {
                     if (currentActionIndex < timelineSteps.length - 1) {
-                        step(1);
+                        step(1, true);
                     } else {
                         togglePlay();
                     }
@@ -2786,7 +2785,6 @@ ${riversStr}
             document.getElementById('botCoachRecommend').style.display = 'none';
             document.getElementById('botCoachRiichiPanel').style.display = 'none';
             document.getElementById('botCoachKanPanel').style.display = 'none';
-            document.getElementById('botCoachPush').style.display = 'none';
             document.getElementById('botCoachStrategy').style.display = 'none';
             document.getElementById('botCoachReason').style.display = 'none';
             document.getElementById('botCoachEvalList').innerHTML = '';
@@ -2841,8 +2839,42 @@ ${riversStr}
             threatEl.innerText = '⚠ 脅威度根拠: ' + (details.threat_reason || '--');
 
             if (plotDot) {
-                const xPct = Math.max(0, Math.min(100, (details.max_threat || 0) * 100));
-                const yPct = Math.max(0, Math.min(100, (1.0 - (details.base_attack || 0)) * 100));
+                const baseAttack = details.base_attack || 0;
+                const maxThreat = details.max_threat || 0;
+
+                let xPct, yPct;
+
+                // Why: サーバーからファジィパラメータ（中段ピーク値）が渡されている場合は、
+                // それを基準点として区分線形補間を行い、連続性を保ちつつセルの境界とプロット位置を整合させる。
+                // 16.67, 50.0, 83.33は3x3マスの中心座標（%）であり、これらを基準点として連続値補間を行う。
+                if (details.fuzzy_params) {
+                    const yMed = details.fuzzy_params.y_med_peak || 0.50;
+                    const xMed = details.fuzzy_params.x_med_peak || 0.40;
+
+                    // Y軸（手牌価値）の補間: Y軸は上が1.0、下が0.0。Y=0.0のとき一番下のマスの中心(83.33)、
+                    // Y=yMedのとき中央マスの中心(50.0)、Y=1.0のとき一番上のマスの中心(16.67)にマッピングする。
+                    if (baseAttack <= yMed) {
+                        yPct = 83.33 - (baseAttack / yMed) * (83.33 - 50.0);
+                    } else {
+                        yPct = 50.0 - ((baseAttack - yMed) / (1.0 - yMed)) * (50.0 - 16.67);
+                    }
+
+                    // X軸（場の脅威）の補間: X=0.0のとき一番左のマスの中心(16.67)、
+                    // X=xMedのとき中央マスの中心(50.0)、X=1.0のとき一番右のマスの中心(83.33)にマッピングする。
+                    if (maxThreat <= xMed) {
+                        xPct = 16.67 + (maxThreat / xMed) * (50.0 - 16.67);
+                    } else {
+                        xPct = 50.0 + ((maxThreat - xMed) / (1.0 - xMed)) * (83.33 - 50.0);
+                    }
+                }
+
+                // Why: パラメータが存在しない場合は、従来の線形マッピング（0.0〜1.0 を 0%〜100% に）にフォールバック。
+                // 100はパーセンテージ換算用の基準値。
+                if (xPct === undefined || yPct === undefined) {
+                    xPct = Math.max(0, Math.min(100, maxThreat * 100));
+                    yPct = Math.max(0, Math.min(100, (1.0 - baseAttack) * 100));
+                }
+
                 plotDot.style.left = `${xPct.toFixed(1)}%`;
                 plotDot.style.top = `${yPct.toFixed(1)}%`;
             }
@@ -2865,6 +2897,8 @@ ${riversStr}
          * @description サーバ生成の日本語理由テキストを黄色パネルに表示する。行が選択されたら内容を差し替える。
          * @param {string} text - 表示テキスト
          */
+        let _activeTile = null;
+
         function renderReasonForTile(text) {
             const box = document.getElementById('botCoachReason');
             const txt = document.getElementById('botCoachReasonText');
@@ -2873,7 +2907,7 @@ ${riversStr}
                 return;
             }
             box.style.display = 'flex';
-            txt.innerText = text;
+            txt.innerHTML = text.replace(/\n/g, '<br>');
         }
 
         /**
@@ -2884,6 +2918,8 @@ ${riversStr}
          * @param {string} recommendedTile - 推奨牌
          */
         function selectEvalRow(row, ev, recommendedTile) {
+            if (ev.tile === _activeTile) return;
+            _activeTile = ev.tile;
             const list = document.getElementById('botCoachEvalList');
             Array.from(list.children).forEach(c => c.classList.remove('is-active'));
             row.classList.add('is-active');
@@ -2896,7 +2932,9 @@ ${riversStr}
          * @param {object} data - レスポンスJSON
          */
         function renderBotCoachUI(data) {
-            if (!data || data.status === 'not_your_turn') {
+            // Why: APIからエラー(status !== 'ok')が返された場合、不正な評価データ（undefinedなど）を
+            // 描画しようとして画面表示が壊れるのを防ぐために、UIをクリアして処理を中断する。
+            if (!data || data.status !== 'ok') {
                 clearBotCoachUI();
                 return;
             }
@@ -2925,7 +2963,6 @@ ${riversStr}
                 }
 
                 document.getElementById('botCoachNear').style.display = 'none';
-                document.getElementById('botCoachPush').style.display = 'none';
                 document.getElementById('botCoachStrategy').style.display = 'none';
                 document.getElementById('botCoachEvalList').innerHTML = '';
             } else {
@@ -2948,12 +2985,6 @@ ${riversStr}
                 } else {
                     document.getElementById('botCoachNear').style.display = 'none';
                 }
-
-                const pushBox = document.getElementById('botCoachPush');
-                pushBox.style.display = 'flex';
-                const push = Math.max(0, Math.min(1, data.push_score || 0));
-                document.getElementById('botCoachPushValue').innerText = push.toFixed(2);
-                document.getElementById('botCoachPushFill').style.width = (push * 100).toFixed(1) + '%';
 
                 renderStrategyDetails(data.strategy_details);
             }
@@ -3007,6 +3038,7 @@ ${riversStr}
             // 4. 評価候補リスト（リーチ中でない場合のみ描画）
             const list = document.getElementById('botCoachEvalList');
             if (!isRiichi) {
+                _activeTile = null;
                 list.innerHTML = '';
                 const evals = data.evaluations || [];
                 const maxAbs = Math.max(1, ...evals.map(e => Math.abs(e.score)));
@@ -3022,7 +3054,7 @@ ${riversStr}
                     const bar = document.createElement('div');
                     bar.className = 'bot-coach-eval-bar';
                     const fill = document.createElement('div');
-                    fill.className = 'bot-coach-eval-bar-fill';
+                    fill.className = 'bot-coach-eval-bar-fill' + (ev.score < 0 ? ' negative' : '');
                     const pct = Math.max(0, Math.min(100, (Math.abs(ev.score) / maxAbs) * 100));
                     fill.style.width = pct.toFixed(1) + '%';
                     bar.appendChild(fill);
@@ -3063,6 +3095,7 @@ ${riversStr}
 
                 const recEntry = evals.find(e => e.tile === data.recommended);
                 if (recEntry) {
+                    _activeTile = recEntry.tile;
                     const recRow = list.querySelector(`.bot-coach-eval-row[data-tile="${data.recommended}"]`);
                     if (recRow) {
                         recRow.classList.add('is-active');

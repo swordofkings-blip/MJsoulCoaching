@@ -338,7 +338,7 @@ def process_file(path, params):
 
 
 if __name__ == '__main__':
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'config_parameters.json')) as f:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'config_parameters.json'), encoding='utf-8') as f:
         params = json.load(f)
 
     paths = sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'record_*_trimmed.json')))
