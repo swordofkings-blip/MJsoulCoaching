@@ -260,7 +260,199 @@ class DefenseEvaluator:
                     result.add(base + 8)
         return result
 
+    def _genbutsu_ids_for_seat(self, seat: int) -> set:
+        """
+        @title プレイヤーごとの現物牌IDリスト
+        @description 指定された他家の現物（フリテン対象牌）のID集合を返す。
+        @param {int} seat - 他家のseatインデックス
+        @returns {set} 現物牌IDの集合
+        """
+        # なぜセットを用いるか：重複を排除し、他家現物判定のルックアップ（in 演算）を O(1) で高速化するためです。
+        genbutsu = set()
+        
+        # 1. 河の現物
+        for t in self.state.river[seat]:
+            try:
+                genbutsu.add(tile_to_id(t))
+            except Exception:
+                continue
+                
+        # 2. 副露（メルド）を構成する牌
+        for m in self.state.melds[seat]:
+            for t in m.tiles:
+                try:
+                    genbutsu.add(tile_to_id(t))
+                except Exception:
+                    continue
+                    
+        # 3. リーチ後通過牌（このプレイヤーがリーチ者の場合）
+        # なぜこれを行うか：リーチ後に誰かが切って通った牌はフリテンにより安全となるため、現物として扱います。
+        if self.state.reach_states[seat].is_reach:
+            post_count = 0
+            for m in reversed(self.state.river_moqie[seat]):
+                if m:
+                    post_count += 1
+                else:
+                    break
+            if post_count > 0:
+                for rseat in range(4):
+                    if rseat == seat:
+                        continue
+                    river = self.state.river[rseat]
+                    start = max(0, len(river) - post_count)
+                    for i in range(start, len(river)):
+                        try:
+                            genbutsu.add(tile_to_id(river[i]))
+                        except Exception:
+                            continue
+        return genbutsu
+
+    def _tile_remaining_weights(self, opponent_seat: int) -> List[float]:
+        """
+        @title 待ちパターンの残余重み計算
+        @description 指定された立直者に対し、全34種の牌が当たり牌となり得る待ちの形の残り重み合計を返す。
+        @param {int} opponent_seat - 立直者のseatインデックス
+        @returns {List[float]} 34種の牌ごとの残余重みリスト
+        """
+        # なぜ visible_counts と genbutsu を事前に取得するか：ループ内での再計算を防ぎ、カベとスジの論理判定を高速に行うためです。
+        visible = self._visible_counts()
+        genbutsu = self._genbutsu_ids_for_seat(opponent_seat)
+        weights = [0.0] * 34
+
+        for tile_id in range(34):
+            # なぜ現物を 0.0 にするか：フリテンによりどの待ちパターンでも放銃し得ないことが確定しているからです。
+            if tile_id in genbutsu:
+                weights[tile_id] = 0.0
+                continue
+
+            is_h = is_honor(tile_id)
+            
+            # なぜこのようにするか：字牌は順子を作れないため、単騎(1.0)と双碰(2.0)のみを考慮します。
+            # これらの重み（1.0, 2.0）は電脳麻将の最良パラメータ定義に従っています。
+            if is_h:
+                w_tanki = 1.0 if visible[tile_id] < 4 else 0.0
+                w_shanpon = 2.0 if visible[tile_id] < 3 else 0.0
+                weights[tile_id] = w_tanki + w_shanpon
+                continue
+
+            # 数牌のベースとオフセットの計算 (0=萬子, 9=筒子, 18=索子)
+            base = (tile_id // 9) * 9
+            offset = tile_id % 9
+
+            # 数牌の単騎・双碰の重み（電脳麻将の定義に準拠）
+            w_tanki = 1.0 if visible[tile_id] < 4 else 0.0
+            w_shanpon = 2.0 if visible[tile_id] < 3 else 0.0
+
+            w_kanchan = 0.0
+            w_penchan = 0.0
+            w_ryanmen = 0.0
+
+            # --- 1・9牌の待ち (offset == 0 or 8) ---
+            if offset == 0 or offset == 8:
+                # なぜ辺張に 3.0 を与えるか：電脳麻将の待ち形別出現頻度の近似値に従うためです。
+                # 1待ちなら2,3が必要、9待ちなら7,8が必要。
+                req_tiles = (base + 1, base + 2) if offset == 0 else (base + 6, base + 7)
+                if visible[req_tiles[0]] < 4 and visible[req_tiles[1]] < 4:
+                    w_penchan = 3.0
+                    
+                # なぜ両面に 10.0 を与えるか：電脳麻将の標準両面重みに従うためです。
+                # 1待ちなら2-3持ち(1-4待ち)、相方は4。9待ちなら7-8持ち(6-9待ち)、相方は6。
+                partner = base + 3 if offset == 0 else base + 5
+                if (visible[req_tiles[0]] < 4 and 
+                    visible[req_tiles[1]] < 4 and 
+                    partner not in genbutsu):
+                    w_ryanmen = 10.0
+
+            # --- 2・8牌の待ち (offset == 1 or 7) ---
+            elif offset == 1 or offset == 7:
+                # なぜ嵌張に 3.0 を与えるか：電脳麻将の統計的重みに従うためです。
+                # 2待ちなら1,3が必要、8待ちなら7,9が必要。
+                req_tiles = (base + 0, base + 2) if offset == 1 else (base + 6, base + 8)
+                if visible[req_tiles[0]] < 4 and visible[req_tiles[1]] < 4:
+                    w_kanchan = 3.0
+                    
+                # 2待ちなら3-4持ち(2-5待ち)、相方は5。8待ちなら5-6持ち(5-8待ち)、相方は5。
+                req_ryan = (base + 2, base + 3) if offset == 1 else (base + 4, base + 5)
+                partner = base + 4
+                if (visible[req_ryan[0]] < 4 and 
+                    visible[req_ryan[1]] < 4 and 
+                    partner not in genbutsu):
+                    w_ryanmen = 10.0
+
+            # --- 3・7牌の待ち (offset == 2 or 6) ---
+            elif offset == 2 or offset == 6:
+                # 3待ちなら2,4が必要、7待ちなら6,8が必要。
+                req_kan = (base + 1, base + 3) if offset == 2 else (base + 5, base + 7)
+                if visible[req_kan[0]] < 4 and visible[req_kan[1]] < 4:
+                    w_kanchan = 3.0
+                    
+                # 3待ちなら1-2持ち(3待ち)、7待ちなら8-9持ち(7待ち)。
+                req_pen = (base + 0, base + 1) if offset == 2 else (base + 7, base + 8)
+                if visible[req_pen[0]] < 4 and visible[req_pen[1]] < 4:
+                    w_penchan = 3.0
+                    
+                # 3待ちなら4-5持ち(3-6待ち)、相方は6。7待ちなら5-6持ち(4-7待ち)、相方は4。
+                req_ryan = (base + 3, base + 4) if offset == 2 else (base + 4, base + 5)
+                partner = base + 5 if offset == 2 else base + 3
+                if (visible[req_ryan[0]] < 4 and 
+                    visible[req_ryan[1]] < 4 and 
+                    partner not in genbutsu):
+                    w_ryanmen = 10.0
+
+            # --- 4・5・6牌の待ち (offset in (3, 4, 5)) ---
+            else:
+                # 嵌張待ち: X-1, X+1が必要。
+                req_tiles = (tile_id - 1, tile_id + 1)
+                if visible[req_tiles[0]] < 4 and visible[req_tiles[1]] < 4:
+                    w_kanchan = 3.0
+                    
+                # なぜ 4,5,6 の両面は 20.0 (最大) か：上方向と下方向の2つの両面が存在し得るためです (10.0 × 2)。
+                # 両面1 (下方向): 相方は X-3
+                req_ryan1 = (tile_id - 2, tile_id - 1)
+                partner1 = tile_id - 3
+                w_ryan1 = 0.0
+                if (visible[req_ryan1[0]] < 4 and 
+                    visible[req_ryan1[1]] < 4 and 
+                    partner1 not in genbutsu):
+                    w_ryan1 = 10.0
+
+                # 両面2 (上方向): 相方は X+3
+                req_ryan2 = (tile_id + 1, tile_id + 2)
+                partner2 = tile_id + 3
+                w_ryan2 = 0.0
+                if (visible[req_ryan2[0]] < 4 and 
+                    visible[req_ryan2[1]] < 4 and 
+                    partner2 not in genbutsu):
+                    w_ryan2 = 10.0
+
+                w_ryanmen = w_ryan1 + w_ryan2
+
+            weights[tile_id] = w_tanki + w_shanpon + w_kanchan + w_penchan + w_ryanmen
+
+        return weights
+
+    def _calculate_denno_danger_for_seat(self, opponent_seat: int, tile_id: int) -> float:
+        """
+        @title リーチ者単体に対する電脳麻将危険度の算出
+        @description 待ちの形ごとの残余重みから、該当牌の相対危険度(0.0〜1.0)を算出する。
+        @param {int} opponent_seat - 立直者のseatインデックス
+        @param {int} tile_id - 評価する牌のID
+        @returns {float} 牌の相対危険度 (0.0〜1.0)
+        """
+        weights = self._tile_remaining_weights(opponent_seat)
+        total_w = sum(weights)
+        # なぜ 0.0 を返すか：すべての牌の待ち重みが0（あり得ない状況だが極限）の際にゼロ除算を防ぐためです。
+        if total_w == 0.0:
+            return 0.0
+        return weights[tile_id] / total_w
+
     def defense_score_for_tile(self, tile: str) -> int:
+        """
+        @title 牌の総合防衛スコアの評価
+        @description リーチ者がいる場合は電脳麻将危険度ベースで評価し、いない場合は既存のルールベースで安全度を評価する。
+        @param {str} tile - 評価対象の牌記号（'1m', '5z'など）
+        @returns {int} 防衛スコア（安全なほど高い点数、最大1000）
+        """
         tile_id = tile_to_id(tile)
         reach_seats = self._active_reach_seats()
         n_reach = len(reach_seats)
@@ -349,24 +541,28 @@ class DefenseEvaluator:
                 self.record_detail(tile, f"中盤手出し危険 ({impact})")
             return meld_score_adjust
 
+        # ============================================================
+        # リーチ者がいる場合（電脳麻将危険度評価モデルの適用）
+        # ============================================================
+        
+        # 1. 共通現物の早期リターン判定
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:
             score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
             self.record_detail(tile, f"他家共通現物 (+{score})")
             return score
 
-        # リーチ者が単独の場合のみ個別現物判定（複数リーチでは全員共通現物のみ安全）
+        # 2. 個別現物（単独リーチ時）の早期リターン判定
         if n_reach == 1:
             for seat in reach_seats:
-                for t in self.state.river[seat]:
-                    if tile_to_id(t) == tile_id:
-                        score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
-                        self.record_detail(tile, f"リーチ者個別現物 (S{seat}) (+{score})")
-                        return score
+                if tile_id in self._genbutsu_ids_for_seat(seat):
+                    score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+                    self.record_detail(tile, f"リーチ者個別現物 (S{seat}) (+{score})")
+                    return score
 
-        # リーチ後通過牌（河越し）: リーチ後に誰かが切った牌がロンされなかった＝安牌
+        # 3. リーチ後通過牌（他家立直時）の早期リターン判定
+        # なぜ行うか：複数リーチ時でも、立直後に誰かが切って通った牌はフリテンにより完全にロンされないためです。
         for seat in reach_seats:
-            # リーチ者の河で、リーチ以降のツモ切り枚数をカウント
             post_count = 0
             for m in reversed(self.state.river_moqie[seat]):
                 if m:
@@ -375,98 +571,54 @@ class DefenseEvaluator:
                     break
             if post_count <= 0:
                 continue
-            # 各他プレーヤーの河の末尾 post_count 枚がリーチ後通過牌
             for rseat in range(4):
                 if rseat == seat:
                     continue
                 river = self.state.river[rseat]
-                if len(river) < post_count:
-                    post_count = len(river)
-                start = len(river) - post_count
+                start = max(0, len(river) - post_count)
                 for i in range(start, len(river)):
-                    if tile_to_id(river[i]) == tile_id:
-                        score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
-                        self.record_detail(tile, f"リーチ後通過牌 (S{rseat}→S{seat}) (+{score})")
-                        return score
+                    try:
+                        if tile_to_id(river[i]) == tile_id:
+                            score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+                            self.record_detail(tile, f"リーチ後通過牌 (S{rseat}→S{seat}) (+{score})")
+                            return score
+                    except Exception:
+                        continue
 
-        # リーチ宣言牌の前後（±1）はスジより優先して危険判定
-        riichi_neighbor_ids = self._get_riichi_neighbor_ids(reach_seats)
+        # 4. 電脳麻将危険度モデルに基づく安全度の計算
+        # なぜ max から sum に変更するか：複数他家がリーチしている場合、片方に現物でも他方に無筋であれば放銃リスクがあるため、
+        # 全員への危険度を足し合わせた累積放銃リスク（放銃期待値の近似）として評価すべきだからです。
+        danger = sum(self._calculate_denno_danger_for_seat(seat, tile_id) for seat in reach_seats)
+        
+        # なぜこのようにマッピングするか：危険度を適切にスケール倍して減算することで、無筋(0付近)とスジ(700付近)のメリハリをつけるためです。
+        # 15000 は GAで調整されたデンノー危険度スケールの既定値です。
+        base_score = int(SCORE_GENBUTSU - danger * self.params.get('DENNO_DANGER_SCALE', 15000))
+        self.record_detail(tile, f"電脳麻将モデル累積危険度 D={danger:.4f} (ベース安全度: {base_score})")
 
-        suji_ids = self._reach_suji_ids(reach_seats)
-        if tile_id in suji_ids and tile_id not in riichi_neighbor_ids:
-            score = self.params.get('SCORE_SUJI', SCORE_SUJI)
-            self.record_detail(tile, f"スジ安全 (+{score})")
-            return score
-
-        if use_p1:
-            wall_suji = self._wall_suji_ids()
-            if tile_id in wall_suji:
-                score = self.params.get('SCORE_WALL_SUJI', SCORE_WALL_SUJI)
-                self.record_detail(tile, f"壁スジ安全 (+{score})")
-                return score
-            no_chance = self._no_chance_ids()
-            if tile_id in no_chance:
-                score = self.params.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
-                self.record_detail(tile, f"ノーチャンス安全 (+{score})")
-                return score
-            kabe_edge = self._kabe_edge_safe_ids()
-            if tile_id in kabe_edge:
-                score = self.params.get('SCORE_KABE_EDGE', 750)
-                self.record_detail(tile, f"壁端安全 (+{score})")
-                return score
-            one_chance = self._one_chance_ids()
-            if tile_id in one_chance:
-                score = self.params.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
-                self.record_detail(tile, f"ワンチャンス安全 (+{score})")
-                return score
-
-        for seat in reach_seats:
-            for t in self.state.river[seat]:
-                try:
-                    tid = tile_to_id(t)
-                except Exception:
-                    continue
-                if is_honor(tid) and tid == tile_id:
-                    score = self.params.get('SCORE_SUJI', SCORE_SUJI)
-                    self.record_detail(tile, f"リーチ者河字牌安全 (+{score})")
-                    return score
-        if is_honor(tile_id):
-            visible = self.state.all_visible_counts()
-            my_counts = self.state.my_hand_counts()
-            total_count = visible[tile_id]
-            public_count = total_count - my_counts[tile_id]
-            # なぜこのようにするか：
-            # 1. 全体で3枚以上見えている（自分が3枚/4枚持っている等）か、公開2枚以上の場合は他家のシャボ待ちが物理的に否定されるため安全（+300点）。
-            # 2. 公開1枚見えの字牌は、加点も減算も行わない（0点）。
-            # 3. 公開0枚見え（生牌）は、他家トイツ所持によるシャボ待ちの本命になりやすく極めて危険なため、無スジと同等の危険ペナルティ（-200点）を課します。
-            if total_count >= 3 or public_count >= 2:
-                score = self.params.get('SCORE_HONOR', SCORE_HONOR)
-                self.record_detail(tile, f"字牌安牌判定 (全体{total_count}/公開{public_count}) (+{score})")
-                return score
-            if public_count == 0:
-                score = self.params.get('SCORE_MUSUJI_PER_REACH', SCORE_MUSUJI_PER_REACH)
-                self.record_detail(tile, f"字牌公開{public_count}枚見え（生牌）危険 ({score})")
-                return score
-            if public_count == 1:
-                self.record_detail(tile, "字牌公開1枚見え加減なし (0)")
-                return 0
+        # 5. 既存の統計外の戦術的ノイズ（ペナルティ）を重ね合わせる
+        score = base_score
 
         if use_p1:
-            score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
-            score += n_reach * self.params.get('SCORE_MUSUJI_PER_REACH', SCORE_MUSUJI_PER_REACH)
-            self.record_detail(tile, f"無筋危険 ({score})")
+            # またぎスジ危険ペナルティ
             matagi = self._matagi_penalty_for_tile(tile_id)
             if matagi > 0:
                 score -= matagi
                 self.record_detail(tile, f"またぎスジ危険 (-{matagi})")
+                
+            # リーチ宣言牌の前後隣接ペナルティ
+            riichi_neighbor_ids = self._get_riichi_neighbor_ids(reach_seats)
             if tile_id in riichi_neighbor_ids:
                 penalty = self.params.get('RIICHI_NEIGHBOR_PENALTY', 200)
                 score -= penalty
                 self.record_detail(tile, f"リーチ宣言牌隣接危険 (-{penalty})")
+                
+            # 裏スジ危険ペナルティ
             ura_suji = self._ura_suji_penalty_for_tile(tile_id)
             if ura_suji > 0:
                 score -= ura_suji
                 self.record_detail(tile, f"裏スジ危険 (-{ura_suji})")
+                
+            # 序盤・中盤の手出しによる安全度補正
             impact = self._early_discard_safety_impact(tile_id)
             if impact > 0:
                 score += impact
@@ -474,10 +626,9 @@ class DefenseEvaluator:
             elif impact < 0:
                 score += impact
                 self.record_detail(tile, f"中盤手出し危険 ({impact})")
-            return score
-        score = self.params.get('SCORE_MUSUJI_BASE', SCORE_MUSUJI_BASE)
-        self.record_detail(tile, f"無筋安全基準 ({score})")
+
         return score
+
 
     def _get_riichi_neighbor_ids(self, reach_seats: List[int]) -> set:
         result = set()
@@ -702,6 +853,14 @@ class DefenseEvaluator:
         return self._matagi_suji_tiles(tile_id)
 
     def _early_discard_safety_impact(self, tile_id: int) -> int:
+        # Why: 序盤の捨牌による安全度評価（序盤の利安全・中盤手出し危険）は、他家脅威度がHighとなる3つの戦略モード
+        # （「危険度勝負」「回し打ち」「完全撤退」）のときのみ適用し、それ以外の押し・様子見モードでは手効率評価を歪めないようにします。
+        if not self.evaluator or not self.evaluator.strategy:
+            return 0
+        mode = self.evaluator.strategy.get_strategy_mode()
+        if mode not in ("危険度勝負", "回し打ち", "完全撤退"):
+            return 0
+
         params = self.params or {}
         bonus_early = params.get('EARLY_DISCARD_SAFETY_BONUS', 300)
         bonus_mid = params.get('EARLY_DISCARD_SAFETY_BONUS_MID', 150)
@@ -900,6 +1059,7 @@ class AttackEvaluator:
         return best
 
     def attack_score_for_tile(self, tile: str) -> int:
+        mode = self.evaluator.strategy.get_strategy_mode() if (self.evaluator and self.evaluator.strategy) else None
         ukeire_total, _ = self.ukeire_for_discard(tile)
         shanten = self.shanten_after_discard(tile)
         SHANTEN_BACKTRACK_PENALTY = -self.params.get('PENALTY_SHANTEN_BACKWARD', 1000)
@@ -919,6 +1079,18 @@ class AttackEvaluator:
             if shanten_penalty > 0:
                 self.record_detail(tile, f"シャンテン数ペナルティ (-{shanten_penalty})")
             score += self._hand_value_bonus(tile)
+            
+            # --- 1向聴限定DFS期待値（提案A） ---
+            # なぜこのようにするか：1向聴（テンパイの1手前）の局面においては、
+            # シャンテン維持とテンパイ取得のどちらが最終的な和了期待値を最大化するかを精密に計算し、評価を補正するためです。
+            # 8.0 は期待飜数（Han）ベースのDFS評価値を既存の攻撃評価スコアのスケールに適正化するための乗算係数です。
+            current_min_shanten = self.best_shanten_after_single_discard()
+            if current_min_shanten == 0:
+                dfs_val = self._run_1shanten_dfs(tile)
+                dfs_bonus = int(dfs_val * 8.0)
+                if dfs_bonus > 0:
+                    score += dfs_bonus
+                    self.record_detail(tile, f"1向聴限定DFS期待値ボーナス (+{dfs_bonus})")
         else:
             score = ukeire_total * 10 - shanten * 500
             self.record_detail(tile, f"手効率基本評価 (+{score})")
@@ -934,7 +1106,9 @@ class AttackEvaluator:
                 after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
                 open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
                 blocks_before = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
-                if blocks_before >= 6:
+                # Why: 「全力攻撃」「押し気味」「積極駒組み」「危険度勝負」の攻撃系4モードのときは、
+                # ブロックの受入れを広く受けるために6ブロックを維持することを許容し、ペナルティを課さないようにします。
+                if blocks_before >= 6 and mode not in ("全力攻撃", "押し気味", "積極駒組み", "危険度勝負"):
                     is_isolated = (hand_counts[discard_id] == 1 and not is_honor(discard_id))
                     if is_isolated:
                         base = (discard_id // 9) * 9
@@ -1084,6 +1258,12 @@ class AttackEvaluator:
         return score
 
     def _betaori_prep_bonus(self, tile: str, shanten: int) -> int:
+        # Why: 「全力攻撃」「押し気味」「積極駒組み」「危険度勝負」の攻撃系4モードのときは、手牌のスリム化（安牌抱え）を避けて手効率（最大受入れ）を追うため、ベタオリ準備ボーナスを適用しません。
+        if self.evaluator and self.evaluator.strategy:
+            mode = self.evaluator.strategy.get_strategy_mode()
+            if mode in ("全力攻撃", "押し気味", "積極駒組み", "危険度勝負"):
+                return 0
+
         turn = (self.state.tsumo_count - 1) // 4 + 1
         if not (5 <= turn <= 10):
             return 0
@@ -1146,62 +1326,86 @@ class AttackEvaluator:
             test = list(new_counts)
             test[tid] += 1
             if open_meld_count == 0:
-                ns = ShantenCalculator.calculate_closed_effective(test)
+                current_shanten = ShantenCalculator.calculate_closed_effective(new_counts)
             else:
-                ns = ShantenCalculator.calculate_open(test, open_meld_count)
-            if ns >= current_shanten:
-                continue
-            remaining = 4 - visible[tid]
-            if remaining <= 0:
-                continue
-            total += remaining
-            if is_honor(tid):
-                weight = self.params.get('UKEIRE_QUAL_HONOR', 0.4)
-            elif is_tenpai:
-                base = (tid // 9) * 9
-                off = tid - base
-                has_l = off > 0 and new_counts[base + off - 1] >= 1
-                has_r = off < 8 and new_counts[base + off + 1] >= 1
-                has_l2 = off >= 2 and new_counts[base + off - 2] >= 1
-                has_r2 = off <= 6 and new_counts[base + off + 2] >= 1
-                if has_l and has_r:
-                    weight = self.params.get('UKEIRE_QUAL_RYANMEN', 1.0)
-                elif has_l2 and has_l:
-                    weight = self.params.get('UKEIRE_QUAL_KANCHAN', 0.7)
-                elif has_r and has_r2:
-                    weight = self.params.get('UKEIRE_QUAL_KANCHAN', 0.7)
-                elif off == 0 and has_r and has_r2:
-                    weight = self.params.get('UKEIRE_QUAL_PENCHAN', 0.5)
-                elif off == 8 and has_l and has_l2:
-                    weight = self.params.get('UKEIRE_QUAL_PENCHAN', 0.5)
+                current_shanten = ShantenCalculator.calculate_open(new_counts, open_meld_count)
+            is_tenpai = current_shanten <= 0
+            total = 0
+            total_weighted = 0
+            visible = self.state.all_visible_counts()
+            for tid in range(34):
+                if new_counts[tid] >= 4:
+                    continue
+                test = list(new_counts)
+                test[tid] += 1
+                if open_meld_count == 0:
+                    ns = ShantenCalculator.calculate_closed_effective(test)
                 else:
+                    ns = ShantenCalculator.calculate_open(test, open_meld_count)
+                if ns >= current_shanten:
+                    continue
+                remaining = 4 - visible[tid]
+                if remaining <= 0:
+                    continue
+                total += remaining
+                
+                # なぜこのようにウエイトをつけるか：受入れ牌の良形（両面など）と愚形（カンチャン/ペンチャン/単騎）で
+                # その後のアガリやすさ・打点上昇期待度が異なるため、受入れ枚数に品質の重み付けを行います。
+                # 1.0, 0.7, 0.5, 0.4, 0.2 は受入れ牌の品質および接続度合に応じた重み係数（パラメータ）です。
+                if is_honor(tid):
                     weight = self.params.get('UKEIRE_QUAL_TANKI', 0.5)
-            else:
-                connect = 0
-                off = tid % 9
-                base = (tid // 9) * 9
-                if off > 0 and new_counts[base + off - 1] > 0:
-                    connect += 1
-                if off < 8 and new_counts[base + off + 1] > 0:
-                    connect += 1
-                if new_counts[tid] >= 2:
-                    connect += 1
-                base_w = self.params.get('UKEIRE_QUAL_CONNECT_BASE', 0.4)
-                per = self.params.get('UKEIRE_QUAL_CONNECT_PER', 0.2)
-                weight = min(1.0, base_w + connect * per)
-                # カンチャン補完後のリャンメン判定: 引いた牌が1枚隣接し、
-                # その隣接牌が端でなければ実質リャンメン相当
-                if connect == 1 and tid < 27:
-                    if (off > 0 and new_counts[base + off - 1] > 0 and off >= 2):
-                        weight = max(weight, 0.8)
-                    elif (off < 8 and new_counts[base + off + 1] > 0 and off <= 6):
-                        weight = max(weight, 0.8)
-            total_weighted += remaining * weight
-        if total == 0:
-            return 0.0
-        return total_weighted / total
+                elif is_tenpai:
+                    base = (tid // 9) * 9
+                    off = tid - base
+                    has_l = off > 0 and new_counts[base + off - 1] >= 1
+                    has_r = off < 8 and new_counts[base + off + 1] >= 1
+                    has_l2 = off >= 2 and new_counts[base + off - 2] >= 1
+                    has_r2 = off <= 6 and new_counts[base + off + 2] >= 1
+                    if has_l and has_r:
+                        weight = self.params.get('UKEIRE_QUAL_RYANMEN', 1.0)
+                    elif has_l2 and has_l:
+                        weight = self.params.get('UKEIRE_QUAL_KANCHAN', 0.7)
+                    elif has_r and has_r2:
+                        weight = self.params.get('UKEIRE_QUAL_KANCHAN', 0.7)
+                    elif off == 0 and has_r and has_r2:
+                        weight = self.params.get('UKEIRE_QUAL_PENCHAN', 0.5)
+                    elif off == 8 and has_l and has_l2:
+                        weight = self.params.get('UKEIRE_QUAL_PENCHAN', 0.5)
+                    else:
+                        weight = self.params.get('UKEIRE_QUAL_TANKI', 0.5)
+                else:
+                    connect = 0
+                    off = tid % 9
+                    base = (tid // 9) * 9
+                    if off > 0 and new_counts[base + off - 1] > 0:
+                        connect += 1
+                    if off < 8 and new_counts[base + off + 1] > 0:
+                        connect += 1
+                    if new_counts[tid] >= 2:
+                        connect += 1
+                    base_w = self.params.get('UKEIRE_QUAL_CONNECT_BASE', 0.4)
+                    per = self.params.get('UKEIRE_QUAL_CONNECT_PER', 0.2)
+                    weight = min(1.0, base_w + connect * per)
+                    if connect == 1 and tid < 27:
+                        if (off > 0 and new_counts[base + off - 1] > 0 and off >= 2):
+                            weight = max(weight, 0.8)
+                        elif (off < 8 and new_counts[base + off + 1] > 0 and off <= 6):
+                            weight = max(weight, 0.8)
+                total_weighted += remaining * weight
+            if total == 0:
+                return 0.0
+            return total_weighted / total
 
     def _ukeire_quality_breakdown(self, tile: str) -> dict:
+        """
+        @title 受入れ牌品質内訳計算
+        @description 指定された牌を切った後の受入れ牌を「良形」と「愚形」に分類して合計枚数を返します。
+        @param {str} tile - 捨てる牌の文字列
+        @returns {dict} 良形・愚形・総受入れ枚数の辞書
+        """
+        # なぜこのようにするか：打牌後の受入れの絶対枚数だけでなく、良形テンパイにつながる受入れ（両面など）と
+        # 愚形テンパイにつながる受入れ（カンチャンなど）の内訳を算出し、手作りの質を詳細に評価するためです。
+        # 34 は麻雀の全牌種類数、4 は山に残る各牌の最大枚数です。
         hand_counts = self.state.my_hand_counts()
         discard_id = tile_to_id(tile)
         new_counts = list(hand_counts)
@@ -1254,11 +1458,28 @@ class AttackEvaluator:
         return {'total': total, 'good': n_good, 'bad': n_bad}
 
     def _count_pairs(self, counts=None) -> int:
+        """
+        @title 対子数カウント
+        @description 手牌（または指定された牌数リスト）における対子（同じ牌が2枚以上）の数をカウントします。
+        @param {list} counts - 牌数リスト（None の場合は現在の手牌）
+        @returns {int} 対子数
+        """
+        # なぜこのようにするか：七対子や対々和（トイトイ）の移行判断に必要な対子数を正確に把握するためです。
+        # 2 は対子とみなす最小の重複枚数です。
         if counts is None:
             counts = self.state.my_hand_counts()
         return sum(1 for c in counts if c >= 2)
 
     def _is_chiitoi_toitoi_mode(self, counts=None) -> str:
+        """
+        @title 七対子/対々和移行モード判定
+        @description 現在の手牌が七対子（チートイ）または対々和（トイトイ）の進行に適しているか判定します。
+        @param {list} counts - 牌数リスト（None の場合は現在の手牌）
+        @returns {str} 'chiitoi'、'toitoi'、または 'none'
+        """
+        # なぜこのようにするか：対子が多く（閾値以上）、通常の順子手（標準シャンテン）の進行が遅い場合に、
+        # 特殊な対子手（七対子）や鳴き対子手（対々和）へシフトするべきかを判断するためです。
+        # 4 は対子手移行を考慮する最小対子数の閾値、3 は移行を許容する標準手の最低シャンテン数です。
         if counts is None:
             counts = self.state.my_hand_counts()
         n_pairs = sum(1 for c in counts if c >= 2)
@@ -1287,18 +1508,176 @@ class AttackEvaluator:
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
         std_shanten = ShantenCalculator.calculate_standard(counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(counts, open_meld_count)
         if std_shanten >= self.params.get('CHIITOI_MODE_SHANTEN_LIMIT', 3):
-            # リャンメン搭子が存在する場合は面子手の可能性が高いため、七対子モードに入らない
             if open_meld_count == 0 and self._has_ryanmen_taatsu(counts):
                 return 'none'
             return 'chiitoi'
         return 'none'
 
     def _has_ryanmen_taatsu(self, counts) -> bool:
+        """
+        @title 両面塔子存在判定
+        @description 手牌の中に両面待ちとなる塔子（隣り合う2枚の数牌。ただし端牌を除く）が存在するか判定します。
+        @param {list} counts - 牌数リスト
+        @returns {bool} 存在する場合は True
+        """
+        # なぜこのようにするか：七対子への移行判断時、両面塔子（将来 of 良形待ち）が手牌にある場合は、
+        # 通常のメンツ手（順子手）を優先した方がアガリやすいため、七対子移行を抑制するために使用します。
+        # 0, 9, 18 は萬子・筒子・索子の開始ID、7 は1〜7の範囲で隣り合う牌を調べるためのループ上限です。
         for base in [0, 9, 18]:
             for i in range(7):
                 if counts[base + i] >= 1 and counts[base + i + 1] >= 1:
                     return True
         return False
+
+    def _run_1shanten_dfs(self, discard_tile: str) -> float:
+        """
+        @title 1向聴限定DFS期待値計算
+        @description 1向聴の局面において、指定された牌を切った後の「テンパイ時の待ちの広さ・期待飜数」をシミュレーションします。
+        @param {str} discard_tile - 切る牌の文字列
+        @returns {float} 期待値スコア（期待飜数ベースの擬似スコア）
+        """
+        # なぜこのようにするか：1向聴の局面はアガリへの最終段階であり、即時テンパイ（両面/愚形）をとるべきか、
+        # あるいは1向聴を維持して手役や良形テンパイへの変化を待つべきかの判断ミスを完全に防ぐため、
+        # 次のツモによる期待値（和了期待値・テンパイ期待値）を全探索で算出するからです。
+        # また、得点ではなく「期待飜数（Han）」を用いることで、評価値の異常なインフレを防ぎ、
+        # 手効率と安全度・形状維持ペナルティのバランスを最適に保ちます。
+        # 34 は麻雀の全牌種類数、4 は山に残る各牌の最大枚数です。
+        
+        hand_counts = self.state.my_hand_counts()
+        discard_id = tile_to_id(discard_tile)
+        new_counts = list(hand_counts)
+        new_counts[discard_id] = max(0, new_counts[discard_id] - 1)
+        
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        is_closed = (open_meld_count == 0)
+        visible = self.state.all_visible_counts()
+        
+        # 切った後のシャンテン数
+        shanten_after = ShantenCalculator.calculate_closed_effective(new_counts) if is_closed else ShantenCalculator.calculate_open(new_counts, open_meld_count)
+        
+        from hand_value import estimate_han_advanced
+        wind_idx = (self.state.my_seat - self.state.ju) % 4
+
+        # テンパイ時の期待値計算（切った時点でテンパイになる場合）
+        if shanten_after == 0:
+            total_ev = 0.0
+            # 待ち牌（和了牌）を探索
+            for tile_id in range(34):
+                if new_counts[tile_id] >= 4:
+                    continue
+                temp_counts = list(new_counts)
+                temp_counts[tile_id] += 1
+                
+                # アガれるか判定
+                ns = ShantenCalculator.calculate_closed_effective(temp_counts) if is_closed else ShantenCalculator.calculate_open(temp_counts, open_meld_count)
+                if ns < 0:
+                    remaining = 4 - visible[tile_id]
+                    if remaining <= 0:
+                        continue
+                    
+                    # この和了牌を引いたときの手牌を構築
+                    temp_hand = []
+                    for i in range(34):
+                        temp_hand.extend([id_to_tile(i)] * temp_counts[i])
+                    
+                    # 和了時の期待飜数（ツモアガリかつリーチ想定）
+                    han = estimate_han_advanced(
+                        temp_hand, self.state.my_melds, self.state.doras,
+                        is_open=not is_closed, has_reach=is_closed, is_ippatsu=False,
+                        is_tsumo=True, seat=wind_idx, chang=self.state.chang, ju=self.state.ju
+                    )
+                    
+                    # 副露時は役がないと和了できないため、0飜ならスキップ
+                    if not is_closed and han == 0:
+                        continue
+                    
+                    # 和了確率（残り枚数）× 飜数期待値（最低1飜を保証）
+                    # 両面待ちの場合は、アガりやすさが劇的に上がるため、和了率にボーナス（1.5倍）を掛ける
+                    # 1.5 は両面待ちのアガりやすさ補正係数です。
+                    is_ryanmen = False
+                    if tile_id < 27:
+                        base = (tile_id // 9) * 9
+                        off = tile_id - base
+                        has_l = off > 0 and new_counts[base + off - 1] >= 1
+                        has_r = off < 8 and new_counts[base + off + 1] >= 1
+                        is_ryanmen = has_l and has_r
+                    
+                    mult = 1.5 if is_ryanmen else 1.0
+                    total_ev += remaining * max(1, han) * mult
+            return total_ev
+
+        # 1向聴維持時の期待値計算（切った後も1向聴のままの場合）
+        elif shanten_after == 1:
+            total_ev = 0.0
+            # 次にツモる牌をループ（テンパイする牌を探す）
+            for draw_id in range(34):
+                if new_counts[draw_id] >= 4:
+                    continue
+                temp_counts = list(new_counts)
+                temp_counts[draw_id] += 1
+                
+                ns = ShantenCalculator.calculate_closed_effective(temp_counts) if is_closed else ShantenCalculator.calculate_open(temp_counts, open_meld_count)
+                if ns == 0:
+                    # テンパイになるツモ牌
+                    remaining = 4 - visible[draw_id]
+                    if remaining <= 0:
+                        continue
+                    
+                    # テンパイした手牌から、次に何を切れば最も強いテンパイになるかの最大値を計算
+                    best_temp_ev = 0.0
+                    for disc_id2 in range(34):
+                        if temp_counts[disc_id2] <= 0:
+                            continue
+                        # テンパイ後の手牌
+                        counts_tenpai = list(temp_counts)
+                        counts_tenpai[disc_id2] -= 1
+                        
+                        # そのテンパイの待ちの広さと打点を評価
+                        temp_ev = 0.0
+                        for wait_id in range(34):
+                            if counts_tenpai[wait_id] >= 4:
+                                continue
+                            counts_agari = list(counts_tenpai)
+                            counts_agari[wait_id] += 1
+                            ns2 = ShantenCalculator.calculate_closed_effective(counts_agari) if is_closed else ShantenCalculator.calculate_open(counts_agari, open_meld_count)
+                            if ns2 < 0:
+                                rem_wait = 4 - visible[wait_id]
+                                if rem_wait <= 0:
+                                    continue
+                                
+                                # 和了手牌構築
+                                hand_agari = []
+                                for i in range(34):
+                                    hand_agari.extend([id_to_tile(i)] * counts_agari[i])
+                                    
+                                han = estimate_han_advanced(
+                                    hand_agari, self.state.my_melds, self.state.doras,
+                                    is_open=not is_closed, has_reach=is_closed, is_ippatsu=False,
+                                    is_tsumo=True, seat=wind_idx, chang=self.state.chang, ju=self.state.ju
+                                )
+                                if not is_closed and han == 0:
+                                    continue
+                                    
+                                is_ryanmen = False
+                                if wait_id < 27:
+                                    base = (wait_id // 9) * 9
+                                    off = wait_id - base
+                                    has_l = off > 0 and counts_tenpai[base + off - 1] >= 1
+                                    has_r = off < 8 and counts_tenpai[base + off + 1] >= 1
+                                    is_ryanmen = has_l and has_r
+                                
+                                mult = 1.5 if is_ryanmen else 1.0
+                                temp_ev += rem_wait * max(1, han) * mult
+                        if temp_ev > best_temp_ev:
+                            best_temp_ev = temp_ev
+                            
+                    # ツモ確率（残り枚数）× そのテンパイの最大期待値
+                    # 0.02 は「1巡先（ツモが1回遅れる）」ことによる速度遅延および他家リーチリスクの減衰率です（山全体の総数による除算の近似値）。
+                    # 期待飜数のスケールに合わせるための値です。
+                    total_ev += remaining * best_temp_ev * 0.02
+            return total_ev
+            
+        return 0.0
 
     def _hand_value_bonus(self, tile: str) -> int:
         """
@@ -1336,59 +1715,96 @@ class AttackEvaluator:
         turn = (self.state.tsumo_count - 1) // 4 + 1
 
         # ホンイツ・清一色への移行判断
-        # 萬子、筒子、索子の枚数を数える（字牌を除く）
+        # Why: 染めバイアス（および染め手移行推進ボーナス）は、他家を気にせず攻める全力攻撃中の3種（「全力攻撃」「押し気味」「危険度勝負」）では適用しません。
+        # 攻撃局面では純粋な手効率を優先し、元々染まっている場合は手役価値評価（estimate_hand_value）によって自然に選択されるためです。
+        mode = self.evaluator.strategy.get_strategy_mode() if (self.evaluator and self.evaluator.strategy) else None
+        if mode not in ("全力攻撃", "押し気味", "危険度勝負"):
+            # 萬子、筒子、索子の枚数を数える（字牌を除く）
+            all_ids = [tile_to_id(t) for t in hand]
+            for m in melds:
+                all_ids.extend(tile_to_id(t) for t in getattr(m, 'tiles', []))
+            
+            suit_counts = {'m': 0, 'p': 0, 's': 0}
+            z_count = 0
+            for tid in all_ids:
+                if tid < 9: suit_counts['m'] += 1
+                elif tid < 18: suit_counts['p'] += 1
+                elif tid < 27: suit_counts['s'] += 1
+                else: z_count += 1
+            
+            dominant_suit = max(suit_counts, key=suit_counts.get)
+            dominant_count = suit_counts[dominant_suit]
+
+            # 色バイアス: 主色の孤立中張牌を残す動機付け（控えめに）
+            honitsu_cfg = self.params.get('yaku_strategy', {}).get('honitsu', {})
+            if honitsu_cfg.get('enabled', True) and dominant_count >= honitsu_cfg.get('suit_threshold', 6):
+                bonus_per = 20
+                max_bonus = 200
+                concentration_bonus = min((dominant_count - 5) * bonus_per, max_bonus)
+                if concentration_bonus > 0:
+                    bonus += concentration_bonus
+                    self.record_detail(tile, f"染めバイアス (+{concentration_bonus})")
+            
+            # 染め手（主力色が7枚以上かつ、通常進行がまだ遅い2向聴以上の状況）
+            is_dyeing = (dominant_count >= 7) and (shanten >= 2)
+            if is_dyeing and not is_honor(discard_id):
+                tile_suit = None
+                if discard_id < 9: tile_suit = 'm'
+                elif discard_id < 18: tile_suit = 'p'
+                elif discard_id < 27: tile_suit = 's'
+                
+                # 染める色以外に既に完成面子(3連続)がある場合は染め手移行を抑制
+                has_other_meld = False
+                if tile_suit != dominant_suit:
+                    for sb in [0, 9, 18]:
+                        sn = ['m', 'p', 's'][sb // 9]
+                        if sn == dominant_suit:
+                            continue
+                        for i in range(7):
+                            if all(counts[sb + i + j] >= 1 for j in range(3)):
+                                has_other_meld = True
+                                break
+                        if has_other_meld:
+                            break
+                
+                # 染める色以外を捨てる際にボーナスを加算して移行を推進（赤5は除く）
+                if tile_suit != dominant_suit and not has_other_meld and not is_red_five(tile):
+                    dye_bonus = self.params.get('BETAORI_HONITSU_BONUS', 40)
+                    bonus += dye_bonus
+                    self.record_detail(tile, f"染め手移行推進ボーナス (+{dye_bonus})")
+
+        # --- タンヤオ適合度（提案B） ---
+        # なぜこのようにするか：手牌の大部分（11枚以上など）が中張牌（2〜8）で構成されている場合、
+        # わずかに残ったヤオ九牌（1/9牌、オタ風等）を速やかに処理してタンヤオへ向かわせるためです。
+        # 11 はタンヤオ適合とみなす中張牌の最小枚数、40 はタンヤオへ移行するための不要牌整理ボーナスです。
         all_ids = [tile_to_id(t) for t in hand]
         for m in melds:
             all_ids.extend(tile_to_id(t) for t in getattr(m, 'tiles', []))
         
-        suit_counts = {'m': 0, 'p': 0, 's': 0}
-        z_count = 0
-        for tid in all_ids:
-            if tid < 9: suit_counts['m'] += 1
-            elif tid < 18: suit_counts['p'] += 1
-            elif tid < 27: suit_counts['s'] += 1
-            else: z_count += 1
-        
-        dominant_suit = max(suit_counts, key=suit_counts.get)
-        dominant_count = suit_counts[dominant_suit]
+        middle_count = sum(1 for tid in all_ids if tid < 27 and 1 <= (tid % 9) <= 7)
+        is_tanyao_fit = (middle_count >= 11)
+        if is_tanyao_fit and (shanten >= 2 or open_meld_count > 0):
+            # 捨てる牌がヤオ九牌（1/9牌、またはオタ風や重なっていない字牌）の場合、整理ボーナス
+            is_yq = is_terminal(discard_id) or is_honor(discard_id)
+            if is_yq and not is_red_five(tile):
+                # 役牌対子などの価値ある牌は保護するため、手牌に1枚（孤立）の場合のみ加点
+                if counts[discard_id] == 1:
+                    tanyao_bonus = self.params.get('TANYAO_FIT_DISCARD_BONUS', 40)
+                    bonus += tanyao_bonus
+                    self.record_detail(tile, f"タンヤオ適合ヤオ九牌整理ボーナス (+{tanyao_bonus})")
 
-        # 色バイアス: 主色の孤立中張牌を残す動機付け（控えめに）
-        honitsu_cfg = self.params.get('yaku_strategy', {}).get('honitsu', {})
-        if honitsu_cfg.get('enabled', True) and dominant_count >= honitsu_cfg.get('suit_threshold', 6):
-            bonus_per = 20
-            max_bonus = 200
-            concentration_bonus = min((dominant_count - 5) * bonus_per, max_bonus)
-            if concentration_bonus > 0:
-                bonus += concentration_bonus
-                self.record_detail(tile, f"染めバイアス (+{concentration_bonus})")
-        
-        # 染め手（主力色が7枚以上かつ、通常進行がまだ遅い2向聴以上の状況）
-        is_dyeing = (dominant_count >= 7) and (shanten >= 2)
-        if is_dyeing and not is_honor(discard_id):
-            tile_suit = None
-            if discard_id < 9: tile_suit = 'm'
-            elif discard_id < 18: tile_suit = 'p'
-            elif discard_id < 27: tile_suit = 's'
-            
-            # 染める色以外に既に完成面子(3連続)がある場合は染め手移行を抑制
-            has_other_meld = False
-            if tile_suit != dominant_suit:
-                for sb in [0, 9, 18]:
-                    sn = ['m', 'p', 's'][sb // 9]
-                    if sn == dominant_suit:
-                        continue
-                    for i in range(7):
-                        if all(counts[sb + i + j] >= 1 for j in range(3)):
-                            has_other_meld = True
-                            break
-                    if has_other_meld:
-                        break
-            
-            # 染める色以外を捨てる際にボーナスを加算して移行を推進（赤5は除く）
-            if tile_suit != dominant_suit and not has_other_meld and not is_red_five(tile):
-                dye_bonus = self.params.get('BETAORI_HONITSU_BONUS', 40)
-                bonus += dye_bonus
-                self.record_detail(tile, f"染め手移行推進ボーナス (+{dye_bonus})")
+        # --- 平回適合度（提案B） ---
+        # なぜこのようにするか：門前かつ対子が少なく（2対子以下）、リャンメンのタネが多い場合は平和の適合度が高いため、
+        # 役牌や孤立字牌を早めに整理し、好形維持を優先させるためです。
+        # 2 は平和適合とみなす最大対子数、30 は不要な役牌・客風を先に処理するための整理ボーナスです。
+        n_pairs = sum(1 for c in counts if c >= 2)
+        is_pinfu_fit = (open_meld_count == 0) and (n_pairs <= 2)
+        if is_pinfu_fit and shanten >= 2:
+            # 平和狙い時の孤立字牌整理の優先
+            if is_honor(discard_id) and counts[discard_id] == 1:
+                pinfu_honor_bonus = self.params.get('PINFU_FIT_HONOR_BONUS', 30)
+                bonus += pinfu_honor_bonus
+                self.record_detail(tile, f"平和適合孤立字牌整理ボーナス (+{pinfu_honor_bonus})")
 
         # 刻子・対子・順子構築に関する評価
         if counts[discard_id] == 2:
@@ -1428,6 +1844,10 @@ class AttackEvaluator:
                 penalty = self.params.get('DORA_DISCARD_PENALTY', 40)
                 bonus -= penalty
                 self.record_detail(tile, f"ドラ字牌放出ペナルティ (-{penalty})")
+            
+            # Why: 攻撃的な3モード（「全力攻撃」「積極駒組み」「押し気味」）のときは、手効率優先で孤立した不要字牌を速やかに切り飛ばすため、整理ペナルティを課さないようにします。
+            is_aggressive_mode = mode in ("全力攻撃", "積極駒組み", "押し気味")
+
             visible_all = self.state.all_visible_counts()
             remaining = 4 - visible_all[discard_id]
             
@@ -1443,11 +1863,14 @@ class AttackEvaluator:
                 if is_pair and remaining >= 2:
                     bonus -= base_penalty
                     self.record_detail(tile, f"三元牌対子保持ペナルティ (-{base_penalty})")
-                elif not is_pair:
-                    sangen_mult = self.params.get('SANGEN_PENALTY_MULTIPLIER', 0.75)
-                    val_penalty = int(base_penalty * sangen_mult * vis_factor)
-                    bonus -= val_penalty
-                    self.record_detail(tile, f"三元牌整理ペナルティ (-{val_penalty})")
+                elif not is_pair and not is_aggressive_mode:
+                    # なぜこのようにするか：3シャンテン以上（手が遠い）または5ブロック以上（十分なブロック数）のときは、
+                    # 孤立役牌を重ねてブロックを作る価値よりも手効率を最優先すべきなため、整理ペナルティを除外します。
+                    if shanten < 3 and blocks < 5:
+                        sangen_mult = self.params.get('SANGEN_PENALTY_MULTIPLIER', 0.75)
+                        val_penalty = int(base_penalty * sangen_mult * vis_factor)
+                        bonus -= val_penalty
+                        self.record_detail(tile, f"三元牌整理ペナルティ (-{val_penalty})")
             bakaze = 27 + (self.state.chang % 4)
             wind_idx = (self.state.my_seat - self.state.ju) % 4
             jikaze = 27 + wind_idx
@@ -1457,20 +1880,26 @@ class AttackEvaluator:
                     bonus -= base_penalty
                     self.record_detail(tile, f"場風対子保持ペナルティ (-{base_penalty})")
                 elif is_double_wind:
-                    if not is_pair:
-                        val_penalty = int(base_penalty * 1.5 * vis_factor)
-                        bonus -= val_penalty
-                        self.record_detail(tile, f"ダブ風切りペナルティ (-{val_penalty})")
+                    if not is_pair and not is_aggressive_mode:
+                        # 3シャンテン以上、または5ブロック以上の場合は不要なのでペナルティを除外します
+                        if shanten < 3 and blocks < 5:
+                            val_penalty = int(base_penalty * 1.5 * vis_factor)
+                            bonus -= val_penalty
+                            self.record_detail(tile, f"ダブ風切りペナルティ (-{val_penalty})")
                 else:
-                    if not is_pair:
-                        val_penalty = int(base_penalty * 0.5 * vis_factor)
-                        bonus -= val_penalty
-                        self.record_detail(tile, f"不要場風切りペナルティ (-{val_penalty})")
+                    if not is_pair and not is_aggressive_mode:
+                        # 3シャンテン以上、または5ブロック以上の場合は不要なのでペナルティを除外します
+                        if shanten < 3 and blocks < 5:
+                            val_penalty = int(base_penalty * 0.5 * vis_factor)
+                            bonus -= val_penalty
+                            self.record_detail(tile, f"不要場風切りペナルティ (-{val_penalty})")
             if discard_id == jikaze:
-                if not is_pair and not is_double_wind:
-                    val_penalty = int(base_penalty * 1.0 * vis_factor)
-                    bonus -= val_penalty
-                    self.record_detail(tile, f"不要自風切りペナルティ (-{val_penalty})")
+                if not is_pair and not is_double_wind and not is_aggressive_mode:
+                    # 3シャンテン以上、または5ブロック以上の場合は不要なのでペナルティを除外します
+                    if shanten < 3 and blocks < 5:
+                        val_penalty = int(base_penalty * 1.0 * vis_factor)
+                        bonus -= val_penalty
+                        self.record_detail(tile, f"不要自風切りペナルティ (-{val_penalty})")
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
                 val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
                 bonus += val_bonus
@@ -1614,7 +2043,9 @@ class AttackEvaluator:
                     self.record_detail(tile, f"孤立字牌({len(isolated_honor_ids)}枚)残存で搭子破壊ペナルティ (-{penalty})")
 
         # 5ブロックスリム化ボーナス（6ブロック以上で弱いブロック破壊時）
-        if blocks >= 6 and not is_honor(discard_id):
+        # Why: 「全力攻撃」「押し気味」「積極駒組み」「危険度勝負」の攻撃系4モードのときは、
+        # 広く受け入れるために6ブロック維持を許容するため、5ブロックスリム化ボーナスを適用しません。
+        if blocks >= 6 and not is_honor(discard_id) and mode not in ("全力攻撃", "押し気味", "積極駒組み", "危険度勝負"):
             base = (discard_id // 9) * 9
             off = discard_id - base
             has_l = off > 0 and counts[base + off - 1] > 0
@@ -2466,7 +2897,9 @@ class Evaluator:
             return None, float('inf')
         unique_tiles = list(dict.fromkeys(hand))
         mode = self.strategy.get_strategy_mode()
-        if mode in ("完全撤退", "撤退準備"):
+        # Why: 安牌を切るためのロジック（安全牌の強制選択）は「完全撤退」モードのときのみ適用します。
+        # 「撤退準備」の段階では、安牌を手元に残す（抱える）ことを優先するため、ここでは強制フィルタリングを行いません。
+        if mode == "完全撤退":
             threshold = self.params.get('SCORE_SUJI', 500)
             safe = [(self.evaluate_tile(t), t) for t in unique_tiles
                     if self.defense.defense_score_for_tile(t) >= threshold]
@@ -2535,6 +2968,10 @@ class Evaluator:
         return diff >= threshold
 
     def should_ankan(self) -> bool:
+        mode = self.strategy.get_strategy_mode()
+        # Why: 「完全撤退」「撤退準備」「スリム化」の守備的/様子見フェーズでは、手牌枚数の減少による防衛力低下および新ドラによる他家の打点上昇を防ぐため、暗カンを禁止します。
+        if mode in ("完全撤退", "撤退準備", "スリム化"):
+            return False
         kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
         ankan_min_push_tenpai = kan_cfg.get('ankan_min_push_tenpai', 0.6)
         ankan_max_turn_non_tenpai = kan_cfg.get('ankan_max_turn_non_tenpai', 9)
@@ -2571,6 +3008,10 @@ class Evaluator:
         return False
 
     def should_kakan(self, tile: str) -> bool:
+        mode = self.strategy.get_strategy_mode()
+        # Why: 「完全撤退」「撤退準備」「スリム化」の守備的/様子見フェーズでは、新ドラ追加による他家打点上昇のリスクを避けるため、加カンを禁止します。
+        if mode in ("完全撤退", "撤退準備", "スリム化"):
+            return False
         kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
         kakan_max_threat = kan_cfg.get('kakan_max_threat', 0.3)
 
@@ -2603,6 +3044,10 @@ class Evaluator:
         return False
 
     def should_daiminkan(self, tiles: List[str], from_seat: int) -> bool:
+        mode = self.strategy.get_strategy_mode()
+        # Why: 「完全撤退」「撤退準備」「スリム化」の守備的/様子見フェーズでは、手牌数減少による防衛力低下および他家打点上昇のリスクを避けるため、大明カンを禁止します。
+        if mode in ("完全撤退", "撤退準備", "スリム化"):
+            return False
         kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
         daiminkan_min_turn = kan_cfg.get('daiminkan_min_turn', 15)
         daiminkan_max_threat = kan_cfg.get('daiminkan_max_threat', 0.2)
@@ -2776,6 +3221,10 @@ class Evaluator:
 
     def should_riichi(self) -> bool:
         if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
+            return False
+        mode = self.strategy.get_strategy_mode()
+        # Why: 「完全撤退」「撤退準備」の守備重視局面では、手牌が固定されてベタオリの選択肢を失う立直（リーチ）を禁止します。
+        if mode in ("完全撤退", "撤退準備"):
             return False
         hand_counts = self.state.my_hand_counts()
         if sum(hand_counts) != 14:
@@ -3095,29 +3544,47 @@ class Evaluator:
             if def_penalty >= cond_th and push < cond_push:
                 return False
 
-        # 副露後の安全な捨て牌の有無をチェック
-        hand_ids = [tile_to_id(t) for t in self.state.my_hand]
-        opp_discards = [set(tile_to_id(t) for t in self.state.river[opp])
-                        for opp in range(4) if opp != self.state.my_seat]
-        all_discards = set().union(*opp_discards) if opp_discards else set()
-
         # 副露に使う牌を手牌から除いた残り
-        consumed_ids = set()
+        hand_ids = [tile_to_id(t) for t in self.state.my_hand]
+        consumed_ids = []
         if type_ == 0:
-            consumed_ids = {tile_to_id(t) for t in tiles[1:]}
+            consumed_ids = [tile_to_id(t) for t in tiles[1:]]
         elif type_ == 1:
-            consumed_ids = {tile_to_id(tiles[0])}
-        remaining = [tid for tid in hand_ids if tid not in consumed_ids]
-        safe_after = any(tid in all_discards for tid in remaining)
+            consumed_ids = [tile_to_id(tiles[0]), tile_to_id(tiles[0])]
+        elif type_ == 2:
+            consumed_ids = [tile_to_id(tiles[0]), tile_to_id(tiles[0]), tile_to_id(tiles[0])]
 
-        if not safe_after and push < 0.5 and expected_han < 2:
-            return False
+        # なぜこのように手牌残りIDリストを作成するか：鳴きに使用した枚数だけ正確に手牌から除外するためです。
+        remaining_ids = list(hand_ids)
+        for cid in consumed_ids:
+            if cid in remaining_ids:
+                remaining_ids.remove(cid)
 
-        # 周囲の警戒度: 他家リーチ・副露が多いほど慎重に
-        opp_reach = sum(1 for i in range(4) if i != self.state.my_seat
-                         and self.state.reach_states[i].is_reach)
-        if opp_reach >= 1 and expected_han < 2 and not is_yakuhai_meld:
-            if not safe_after:
+        # 残り手牌の安全牌カウント（安全度スコアが 500 以上のものを安牌とみなす）
+        # 500 はスジ牌以上の安全度を持つスコアの閾値です。
+        safe_threshold = self.params.get('SCORE_SUJI', 500)
+        safe_count = 0
+        for tid in remaining_ids:
+            tile_str = id_to_tile(tid)
+            if self.defense.defense_score_for_tile(tile_str) >= safe_threshold:
+                safe_count += 1
+
+        # なぜこのようにするか：2向聴以上（テンパイから遠い）の状態で安易に鳴くと、アガリが遠い上に守備力が激減するため、
+        # 満貫以上の大物手や、役牌ポンによる最低限の速度が担保されており、かつ安牌が十分（2枚以上）ある場合のみ鳴くように制限します。
+        # 2 は2向聴の閾値、4 は満貫期待飜数の閾値、2 は安全牌が2枚以上必要という閾値です。
+        if before_shanten >= 2:
+            is_high_value = expected_han >= 4
+            if not is_yakuhai_meld and not is_high_value:
+                return False
+            if safe_count < 2:
+                return False
+
+        # なぜこのようにするか：他家リーチがいる、または他家脅威に対して押し引きスコアが低く（push < 0.5）、
+        # かつアガリ打点が低い（2飜未満）場合、安牌が手牌に1枚もない（safe_count == 0）状態で鳴くのは極めて危険なため拒否します。
+        # 0.5 は押し引き判断の閾値、2 は期待飜数の閾値です。
+        opp_reach = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
+        if (opp_reach >= 1 or push < 0.5) and expected_han < 2 and not is_yakuhai_meld:
+            if safe_count == 0:
                 return False
 
         turn = (self.state.tsumo_count - 1) // 4 + 1

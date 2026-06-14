@@ -1040,6 +1040,11 @@ class StrategyManager:
         return self.state.my_score_rank() == 3
 
     def is_meld_open_allowed(self) -> bool:
+        # Why: 「完全撤退」「撤退準備」「スリム化」の守備的/様子見フェーズでは、安牌を保持するスペースの確保（手牌枚数の維持）のため、副露（鳴き）を完全に禁止します。
+        mode = self.get_strategy_mode()
+        if mode in ("完全撤退", "撤退準備", "スリム化"):
+            return False
+
         # 門前限定役満（国士無双・四暗刻・九蓮宝燈）を狙っている場合は副露封印
         from yakuman_evaluator import YakumanEvaluator
         evaluator = YakumanEvaluator(self.state)
