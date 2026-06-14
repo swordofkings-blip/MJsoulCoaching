@@ -1113,14 +1113,8 @@ class PacketHandler(BaseHTTPRequestHandler):
                 
             if t == 'start_kyoku':
                 tehais = ev.get('tehais', [])
-                has_question = False
-                for hand in tehais:
-                    if '?' in hand:
-                        has_question = True
-                        break
-                if has_question:
-                    continue
-                    
+                
+                # 重複チェック
                 is_dup = False
                 for old_ev in reversed(clean_events):
                     if old_ev['type'] == 'start_kyoku':
@@ -1129,7 +1123,19 @@ class PacketHandler(BaseHTTPRequestHandler):
                         break
                 if is_dup:
                     continue
-                clean_events.append(ev)
+                
+                # 他のプレイヤーの手牌は'?'だが、最初のプレイヤーの手牌は既知
+                # '?'を空配列に変換して保存
+                cleaned_tehais = []
+                for hand in tehais:
+                    if '?' in hand:
+                        cleaned_tehais.append([])
+                    else:
+                        cleaned_tehais.append([to_majsoul_tile(tile) for tile in hand])
+                
+                ev_copy = ev.copy()
+                ev_copy['tehais'] = cleaned_tehais
+                clean_events.append(ev_copy)
                 
             elif t == 'tsumo':
                 if ev.get('pai') == '?':
@@ -1186,7 +1192,8 @@ class PacketHandler(BaseHTTPRequestHandler):
                 doras = [dora_marker] if dora_marker else []
                 
                 tehais = ev.get('tehais', [])
-                tiles = [[to_majsoul_tile(tile) for tile in hand] for hand in tehais]
+                # tehaisは既に cleaned されている（'?'は空配列に変換済み）
+                tiles = tehais if tehais and isinstance(tehais[0], list) else [[to_majsoul_tile(tile) for tile in hand] for hand in tehais]
                 oya = ev.get('oya', 0)
                 
                 action = {
@@ -1194,7 +1201,7 @@ class PacketHandler(BaseHTTPRequestHandler):
                         "class_name": "RecordNewRound",
                         "data": {
                             "chang": {"E": 0, "S": 1, "W": 2, "N": 3}.get(ev.get('bakaze'), 0),
-                            "ju": ev.get('kyoku', 1) - 1,
+                            "ju": ev.get('kyoku', 0),
                             "ben": ev.get('honba', 0),
                             "liqibang": ev.get('kyotaku', 0),
                             "leftTileCount": left_tile_count,
