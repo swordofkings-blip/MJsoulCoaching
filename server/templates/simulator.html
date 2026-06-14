@@ -516,6 +516,115 @@
             opacity: 0.25;
         }
 
+        /* ツモ切り牌の表示 */
+        .tile-moqie::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 5px;
+            height: 5px;
+            background: rgba(59, 130, 246, 0.7);
+            border-radius: 50%;
+        }
+
+        /* 凡例ボタン */
+        .legend-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s ease;
+        }
+
+        .legend-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-green);
+            color: var(--text-main);
+        }
+
+        /* 凡例モーダル */
+        .legend-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .legend-modal-overlay.is-visible {
+            display: flex;
+        }
+
+        .legend-modal {
+            background: #161821;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 1.2rem;
+            min-width: 340px;
+            max-width: 420px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+
+        .legend-modal-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+            color: var(--text-main);
+        }
+
+        .legend-modal-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 0.6rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .legend-tile-demo {
+            width: 32px;
+            height: 44px;
+            background: var(--tile-bg);
+            border: 1px solid var(--tile-border);
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.95rem;
+            color: #111827;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .legend-tile-demo.demo-moqie::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 5px;
+            height: 5px;
+            background: rgba(59, 130, 246, 0.7);
+            border-radius: 50%;
+        }
+
+        .legend-tile-demo.demo-claimed {
+            opacity: 0.25;
+        }
+
+        .legend-tile-demo.demo-riichi {
+            transform: rotate(-90deg);
+        }
+
         /* 推奨打牌：緑色のパルス発光（Rich Aesthetics） */
         @keyframes recommended-pulse {
             0% {
@@ -795,6 +904,7 @@
             display: flex;
             flex-direction: column;
         }
+
         .bot-coach-strategy-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -802,6 +912,7 @@
             width: 100%;
             height: 100%;
         }
+
         .bot-coach-strategy-cell {
             display: flex;
             align-items: center;
@@ -814,15 +925,26 @@
             font-weight: bold;
             transition: all 0.3s ease;
         }
-        .cell-attack { background: rgba(239, 68, 68, 0.07); }
-        .cell-normal { background: rgba(245, 158, 11, 0.07); }
-        .cell-defend { background: rgba(59, 130, 246, 0.07); }
+
+        .cell-attack {
+            background: rgba(239, 68, 68, 0.07);
+        }
+
+        .cell-normal {
+            background: rgba(245, 158, 11, 0.07);
+        }
+
+        .cell-defend {
+            background: rgba(59, 130, 246, 0.07);
+        }
+
         .cell-active-match {
             color: #fff !important;
             background: rgba(139, 92, 246, 0.45) !important;
             box-shadow: inset 0 0 8px rgba(139, 92, 246, 0.6);
             text-shadow: 0 0 4px #fff;
         }
+
         .bot-coach-strategy-plot-dot {
             position: absolute;
             width: 10px;
@@ -1469,6 +1591,9 @@
                         <label class="radio-label" for="pers3">席 3</label>
                     </div>
                 </div>
+                <div class="control-section">
+                    <button class="legend-btn" onclick="toggleLegend()">凡例</button>
+                </div>
             </div>
         </div>
 
@@ -1531,6 +1656,28 @@
                             <div id="botCoachKanReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
                             </div>
                         </div>
+                        <div class="bot-coach-kyushu-panel" id="botCoachKyushuPanel"
+                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(139, 92, 246, 0.15); border: 1px solid #8b5cf6; flex-direction: column; gap: 4px; border-left: 4px solid #8b5cf6;">
+                            <div
+                                style="font-weight: bold; color: #8b5cf6; display: flex; align-items: center; gap: 6px;">
+                                <span
+                                    style="background:#8b5cf6; color:white; padding:2px 6px; border-radius:4px; font-size:0.75rem;">九種九牌判断</span>
+                                <span id="botCoachKyushuDecision">--</span>
+                            </div>
+                            <div id="botCoachKyushuReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
+                            </div>
+                        </div>
+                        <div class="bot-coach-sufutsu-panel" id="botCoachSufutsuPanel"
+                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(251, 191, 36, 0.15); border: 1px solid #fbbf24; flex-direction: column; gap: 4px; border-left: 4px solid #fbbf24;">
+                            <div
+                                style="font-weight: bold; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
+                                <span
+                                    style="background:#fbbf24; color:#0b0c10; padding:2px 6px; border-radius:4px; font-size:0.75rem;">四風子連打判断</span>
+                                <span id="botCoachSufutsuDecision">--</span>
+                            </div>
+                            <div id="botCoachSufutsuReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
+                            </div>
+                        </div>
                         <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
                             <div class="bot-coach-strategy-title">戦略モードの内訳</div>
                             <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
@@ -1546,7 +1693,8 @@
                                     <div class="bot-coach-strategy-cell cell-defend" id="cell_撤退準備">撤退準備</div>
                                     <div class="bot-coach-strategy-cell cell-defend" id="cell_完全撤退">完全撤退</div>
                                 </div>
-                                <div class="bot-coach-strategy-plot-dot" id="botCoachStrategyPlotDot" style="left: 0%; top: 100%;"></div>
+                                <div class="bot-coach-strategy-plot-dot" id="botCoachStrategyPlotDot"
+                                    style="left: 0%; top: 100%;"></div>
                             </div>
                             <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
                             <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
@@ -1584,6 +1732,101 @@
     <!-- トースト通知 -->
     <div class="toast" id="copyToast">
         <span>📋 コピペ用のプロンプトをクリップボードにコピーしました！</span>
+    </div>
+
+    <!-- 凡例モーダル -->
+    <div class="legend-modal-overlay" id="legendOverlay" onclick="if(event.target===this)toggleLegend()">
+        <div class="legend-modal">
+            <div class="legend-modal-title">河の牌アイコン凡例</div>
+            <div class="legend-modal-item">
+                <div class="legend-tile-demo demo-moqie">萬</div>
+                <span>右上に● → ツモ切り（引いて即切り）</span>
+            </div>
+            <div class="legend-modal-item">
+                <div class="legend-tile-demo demo-claimed">筒</div>
+                <span>半透明 → 他家に鳴かれた牌</span>
+            </div>
+            <div class="legend-modal-item">
+                <div class="legend-tile-demo demo-riichi">索</div>
+                <span>横向き → リーチ宣言牌</span>
+            </div>
+            <div class="legend-modal-item">
+                <div class="legend-tile-demo">字</div>
+                <span>通常 → 手出し</span>
+            </div>
+
+            <div style="border-top:1px solid var(--card-border); margin:0.8rem 0;"></div>
+
+            <div class="legend-modal-title">ファジィ戦略マトリクス</div>
+            <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.5; margin-bottom:0.6rem;">
+                縦軸「手牌価値」と横軸「場の脅威」の2軸から9つの戦略モードを決定します。
+            </div>
+            <div style="font-size:0.75rem; margin-bottom:0.4rem;">
+                <strong style="color:var(--accent-green);">Y軸: 手牌価値 (base_attack)</strong><br>
+                <span style="color:var(--text-muted);">向聴数・面子数・予想翻から自家のアガリ力を算出。テンpai=0.7〜1.0、1向聴=0.4〜、2向聴以上は減衰。</span>
+            </div>
+            <div style="font-size:0.75rem; margin-bottom:0.6rem;">
+                <strong style="color:var(--accent-red);">X軸: 場の脅威 (max_threat)</strong><br>
+                <span style="color:var(--text-muted);">他家の期待打点×有効枚数÷(向聴数+1) で算出。安全牌の残り枚数で減衰。リーチ中は加算。</span>
+            </div>
+            <div
+                style="display:grid; grid-template-columns:auto 1fr 1fr 1fr; gap:2px; font-size:0.65rem; margin-bottom:0.6rem;">
+                <div style="background:rgba(255,255,255,0.03); padding:3px 6px;"></div>
+                <div
+                    style="background:rgba(59,130,246,0.15); padding:3px 6px; text-align:center; border-radius:3px 3px 0 0;">
+                    低脅威</div>
+                <div
+                    style="background:rgba(245,158,11,0.15); padding:3px 6px; text-align:center; border-radius:3px 3px 0 0;">
+                    中脅威</div>
+                <div
+                    style="background:rgba(239,68,68,0.15); padding:3px 6px; text-align:center; border-radius:3px 3px 0 0;">
+                    高脅威</div>
+                <div style="background:rgba(239,68,68,0.1); padding:3px 6px; font-weight:bold; color:#ef4444;">高攻撃</div>
+                <div style="background:rgba(16,185,129,0.12); padding:3px 6px; text-align:center;">全力攻撃</div>
+                <div style="background:rgba(251,191,36,0.12); padding:3px 6px; text-align:center;">押し気味</div>
+                <div style="background:rgba(239,68,68,0.12); padding:3px 6px; text-align:center;">危険度勝負</div>
+                <div style="background:rgba(245,158,11,0.1); padding:3px 6px; font-weight:bold; color:#fbbf24;">中攻撃
+                </div>
+                <div style="background:rgba(16,185,129,0.08); padding:3px 6px; text-align:center;">積極駒組み</div>
+                <div style="background:rgba(156,163,175,0.1); padding:3px 6px; text-align:center;">様子見</div>
+                <div style="background:rgba(239,68,68,0.08); padding:3px 6px; text-align:center;">回し打ち</div>
+                <div style="background:rgba(59,130,246,0.1); padding:3px 6px; font-weight:bold; color:#3b82f6;">低攻撃
+                </div>
+                <div style="background:rgba(156,163,175,0.08); padding:3px 6px; text-align:center;">スリム化</div>
+                <div style="background:rgba(148,163,184,0.08); padding:3px 6px; text-align:center;">撤退準備</div>
+                <div
+                    style="background:rgba(59,130,246,0.15); padding:3px 6px; text-align:center; border-radius:0 0 3px 3px;">
+                    完全撤退</div>
+            </div>
+
+            <div style="border-top:1px solid var(--card-border); margin:0.6rem 0;"></div>
+
+            <div class="legend-modal-title">押し引き度 (push_score)</div>
+            <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.5;">
+                <code style="color:var(--text-main);">push_score = base_attack × (1 - max_threat)</code><br>
+                手牌の攻撃力が高いほど押し、場の脅威が高いほど引きます。<br>
+                さらに順位・残り局数・人読みで補正されます。<br>
+                <span style="color:var(--accent-green);">0.0=ベタオリ</span> 〜 <span
+                    style="color:var(--accent-red);">1.0=全押し</span>
+            </div>
+
+            <div style="border-top:1px solid var(--card-border); margin:0.6rem 0;"></div>
+
+            <div class="legend-modal-title">9モードの解説</div>
+            <div style="font-size:0.7rem; color:var(--text-muted); line-height:1.6;">
+                <div style="margin-bottom:0.5rem;">
+                    <strong style="color:#ef4444;">全力攻撃</strong> — 攻撃ベースそのまま。脅威を無視してアガリに向かう。<br>
+                    <strong style="color:#f97316;">押し気味</strong> — 攻撃70%:守備30%。脅威が多少あるが攻めを優先。<br>
+                    <strong style="color:#fbbf24;">危険度勝負</strong> — 攻撃85%:守備15%。高打点なら危険牌も勝負する。<br>
+                    <strong style="color:#22c55e;">積極駒組み</strong> — 攻撃ベース。脅威は低いが手牌は中程度。進行度重視。<br>
+                    <strong style="color:#9ca3af;">様子見</strong> — 押し引き度の比率で攻守を動的切替。バランス型。<br>
+                    <strong style="color:#3b82f6;">回し打ち</strong> — 攻撃40%:守備60%。危険牌を避けつつアガリを狙う。<br>
+                    <strong style="color:#6366f1;">スリム化</strong> — 攻撃ベース+安全牌を少し保持。手牌が悪く脅威も低い状態。<br>
+                    <strong style="color:#8b5cf6;">撤退準備</strong> — 攻撃10%:守備ベース。安全牌を抱えながら撤退路を模索。<br>
+                    <strong style="color:#3b82f6;">完全撤退</strong> — 安牌のみ打出。現物・筋牌を優先しアガリを放棄。<br>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -2421,6 +2664,7 @@
                     const tileEl = document.createElement('div');
                     tileEl.className = `tile ${getTileClass(d.tile)}`;
                     if (d.claimed) tileEl.classList.add('tile-claimed');
+                    if (d.moqie) tileEl.classList.add('tile-moqie');
 
                     // 麻雀の河は6枚で1行（列）折り返す。行インデックス（0~2）と列インデックス（0~5）を算出。
                     // 6枚の制限は麻雀の一般的な河の規則に基づく数値。
@@ -2614,6 +2858,7 @@
                 const discText = discards.map(d => {
                     let t = getTileText(d.tile);
                     if (d.isLiqi) t += '(立直)';
+                    if (d.moqie) t += '(ツモ切り)';
                     if (d.claimed) t += '(鳴かれ)';
                     return t;
                 }).join(' -> ');
@@ -2684,6 +2929,11 @@ ${riversStr}
             }).catch(err => {
                 alert('コピーに失敗しました: ' + err);
             });
+        }
+
+        function toggleLegend() {
+            const overlay = document.getElementById('legendOverlay');
+            overlay.classList.toggle('is-visible');
         }
 
         window.addEventListener('DOMContentLoaded', loadGame);
@@ -2785,6 +3035,8 @@ ${riversStr}
             document.getElementById('botCoachRecommend').style.display = 'none';
             document.getElementById('botCoachRiichiPanel').style.display = 'none';
             document.getElementById('botCoachKanPanel').style.display = 'none';
+            document.getElementById('botCoachKyushuPanel').style.display = 'none';
+            document.getElementById('botCoachSufutsuPanel').style.display = 'none';
             document.getElementById('botCoachStrategy').style.display = 'none';
             document.getElementById('botCoachReason').style.display = 'none';
             document.getElementById('botCoachEvalList').innerHTML = '';
@@ -3035,7 +3287,53 @@ ${riversStr}
                 kanPanel.style.display = 'none';
             }
 
-            // 4. 評価候補リスト（リーチ中でない場合のみ描画）
+            // 4a. 九種九牌判断パネルの描画
+            const kyushuPanel = document.getElementById('botCoachKyushuPanel');
+            if (data.kyushu_kyuhai && data.kyushu_kyuhai.can_declare) {
+                kyushuPanel.style.display = 'flex';
+                const decisionEl = document.getElementById('botCoachKyushuDecision');
+                const reasonEl = document.getElementById('botCoachKyushuReason');
+                if (data.kyushu_kyuhai.recommend_declare) {
+                    decisionEl.innerText = '流局推奨';
+                    decisionEl.style.color = '#8b5cf6';
+                    kyushuPanel.style.background = 'rgba(139, 92, 246, 0.15)';
+                    kyushuPanel.style.borderColor = '#8b5cf6';
+                } else {
+                    decisionEl.innerText = '国士無双推奨（流局しない）';
+                    decisionEl.style.color = '#2ecc71';
+                    kyushuPanel.style.background = 'rgba(46, 204, 113, 0.15)';
+                    kyushuPanel.style.borderColor = '#2ecc71';
+                    kyushuPanel.style.borderLeftColor = '#2ecc71';
+                }
+                reasonEl.innerText = data.kyushu_kyuhai.reason || '';
+            } else {
+                kyushuPanel.style.display = 'none';
+            }
+
+            // 4b. 四風子連打判断パネルの描画
+            const sufutsuPanel = document.getElementById('botCoachSufutsuPanel');
+            if (data.sufutsusenru && data.sufutsusenru.is_possible) {
+                sufutsuPanel.style.display = 'flex';
+                const decisionEl = document.getElementById('botCoachSufutsuDecision');
+                const reasonEl = document.getElementById('botCoachSufutsuReason');
+                if (data.sufutsusenru.recommend_discard) {
+                    decisionEl.innerText = '四風子連打で流局推奨';
+                    decisionEl.style.color = '#fbbf24';
+                    sufutsuPanel.style.background = 'rgba(251, 191, 36, 0.15)';
+                    sufutsuPanel.style.borderColor = '#fbbf24';
+                } else {
+                    decisionEl.innerText = '四風子連打回避推奨';
+                    decisionEl.style.color = '#2ecc71';
+                    sufutsuPanel.style.background = 'rgba(46, 204, 113, 0.15)';
+                    sufutsuPanel.style.borderColor = '#2ecc71';
+                    sufutsuPanel.style.borderLeftColor = '#2ecc71';
+                }
+                reasonEl.innerText = data.sufutsusenru.reason || '';
+            } else {
+                sufutsuPanel.style.display = 'none';
+            }
+
+            // 5. 評価候補リスト（リーチ中でない場合のみ描画）
             const list = document.getElementById('botCoachEvalList');
             if (!isRiichi) {
                 _activeTile = null;

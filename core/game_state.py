@@ -10,6 +10,7 @@ from str_converter import (
     is_honor,
     is_red_five,
     tile_to_id,
+    id_to_tile,
 )
 
 
@@ -235,6 +236,32 @@ class GameState:
             if i == self.my_seat:
                 return rank
         return -1
+
+    def is_first_turn_wind_limit_possible(self) -> Tuple[bool, Optional[str]]:
+        for seat_melds in self.melds:
+            if seat_melds:
+                return False, None
+        active_seats = []
+        for seat in range(4):
+            if len(self.river[seat]) == 1:
+                active_seats.append(seat)
+            elif len(self.river[seat]) != 0:
+                return False, None
+        if len(active_seats) != 3:
+            return False, None
+        wind_tile = None
+        for seat in active_seats:
+            river_tile = self.river[seat][0]
+            tid = tile_to_id(river_tile)
+            if not (27 <= tid <= 30):
+                return False, None
+            if wind_tile is None:
+                wind_tile = river_tile
+            elif river_tile != wind_tile:
+                return False, None
+        if wind_tile not in self.my_hand:
+            return False, None
+        return True, wind_tile
 
     def is_last_round(self) -> bool:
         return self.ju == 3 or (self.ju == 2 and self.is_oya())

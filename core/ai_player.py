@@ -54,6 +54,24 @@ class AIPlayer:
             return False
         return True
 
+    def should_kyushu_kyuhai(self, state: GameState) -> bool:
+        from str_converter import hand_to_counts
+        hand_counts = hand_to_counts(state.my_hand)
+        yaochu_ids = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        yaochu_types = sum(1 for i in yaochu_ids if hand_counts[i] >= 1)
+        yaochu_total = sum(hand_counts[i] for i in yaochu_ids)
+        if yaochu_types == 9 and yaochu_total == 9:
+            return True
+        if yaochu_types == 10:
+            if yaochu_total == 10:
+                if state.my_score_rank() == 3:
+                    return False
+                return True
+            return False
+        if yaochu_types >= 11:
+            return False
+        return False
+
     def should_ron(self, state: GameState) -> bool:
         return True
 

@@ -23,7 +23,7 @@ from core.sapk_api import fetch_player_stats
 from majsoul_wrapper.liqi import LiqiProto
 from core.game_state import GameState, Meld, ReachState
 from core.evaluator import Evaluator
-from core.str_converter import validate_tiles
+from core.str_converter import validate_tiles, hand_to_counts
 from majsoul_wrapper.proto import liqi_pb2 as pb
 
 # 雀魂のWebSocketデータを解析するためのパーサークラスを初期化
@@ -308,6 +308,9 @@ def evaluate_state(payload: dict) -> dict:
                     continue
                 near_tiles.append(ev["tile"])
 
+    kyushu_kyuhai_data = _build_kyushu_kyuhai_data(state)
+    sufutsusenru_data = _build_sufutsusenru_data(state, evaluator)
+
     return {
         "status": "ok",
         "recommended": recommended,
@@ -318,6 +321,8 @@ def evaluate_state(payload: dict) -> dict:
         "is_riichi_active": is_riichi_active,
         "should_riichi": should_riichi,
         "riichi_reason": riichi_reason,
+        "kyushu_kyuhai": kyushu_kyuhai_data,
+        "sufutsusenru": sufutsusenru_data,
         "summary": {
             "hand_size": len(hand),
             "tsumo_count": state.tsumo_count,
@@ -812,6 +817,65 @@ def _build_decision_reason(entry: dict, strategy_details: dict,
     lines.append(f"【最終評価値: {entry['score']:.0f}  攻撃:{attack:.0f}  防御:{defense:.0f}】")
 
     return "\n".join(lines)
+
+
+_YAOCHU_IDS = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+
+
+def _build_kyushu_kyuhai_data(state: GameState) -> dict:
+    result = {
+        "can_declare": False,
+        "recommend_declare": False,
+        "reason": ""
+    }
+    if not state.my_hand:
+        return result
+    counts = hand_to_counts(state.my_hand)
+    yaochu_types = sum(1 for i in _YAOCHU_IDS if counts[i] >= 1)
+    yaochu_total = sum(counts[i] for i in _YAOCHU_IDS)
+    if yaochu_types == 9 and yaochu_total == 9:
+        result["can_declare"] = True
+        result["recommend_declare"] = True
+        result["reason"] = "9種9牌のため流局を推奨します。"
+    elif yaochu_types == 10 and yaochu_total == 10:
+        result["can_declare"] = True
+        if state.my_score_rank() == 3:
+            result["recommend_declare"] = False
+            result["reason"] = "10種10牌ですが、現在ラスのため国士無双を狙うことを推奨します。"
+        else:
+            result["recommend_declare"] = True
+            result["reason"] = "10種10牌のため流局を推奨します。"
+    elif yaochu_types == 10 and yaochu_total >= 11:
+        result["can_declare"] = True
+        result["recommend_declare"] = False
+        result["reason"] = "10種11牌以上（対子あり）のため国士無双を狙うことを推奨します。"
+    elif yaochu_types >= 11:
+        result["can_declare"] = True
+        result["recommend_declare"] = False
+        result["reason"] = "11種以上の么九牌のため国士無双を狙うことを推奨します。"
+    return result
+
+
+def _build_sufutsusenru_data(state: GameState, evaluator: 'Evaluator') -> dict:
+    result = {
+        "is_possible": False,
+        "recommend_discard": False,
+        "wind_tile": None,
+        "reason": ""
+    }
+    wind_possible, wind_tile = state.is_first_turn_wind_limit_possible()
+    if not wind_possible or wind_tile is None:
+        return result
+    result["is_possible"] = True
+    result["wind_tile"] = wind_tile
+    if evaluator.strategy.is_high_hand_value_first_turn():
+        result["recommend_discard"] = False
+        mode = evaluator.strategy.get_strategy_mode()
+        result["reason"] = f"手牌価値が高いため、四風子連打を回避しアガリを目指すことを推奨します（手牌評価: {mode}）。"
+    else:
+        result["recommend_discard"] = True
+        result["reason"] = "手牌価値が低いため、四風子連打による流局を狙うことを推奨します。"
+    return result
 
 
 def _restore_game_state(payload: dict) -> GameState:

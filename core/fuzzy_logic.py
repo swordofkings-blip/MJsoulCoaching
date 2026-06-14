@@ -19,20 +19,23 @@ class FuzzyLogicEngine:
             return 1.0 if val >= 1.0 else 0.0
         return max(0.0, (val - bound) / (1.0 - bound))
 
-    def evaluate_strategy(self, base_attack: float, max_threat: float) -> tuple[str, dict]:
+    def get_y_membership(self, base_attack: float) -> tuple[float, float, float]:
         y_low_bound = self.params.get('FUZZY_Y_LOW_BOUND', 0.25)
         y_med_peak = self.params.get('FUZZY_Y_MED_PEAK', 0.50)
         y_med_width = self.params.get('FUZZY_Y_MED_WIDTH', 0.25)
         y_high_bound = self.params.get('FUZZY_Y_HIGH_BOUND', 0.60)
+        y_low = self._membership_low(base_attack, y_low_bound)
+        y_med = self._membership_medium(base_attack, y_med_peak, y_med_width)
+        y_high = self._membership_high(base_attack, y_high_bound)
+        return y_low, y_med, y_high
+
+    def evaluate_strategy(self, base_attack: float, max_threat: float) -> tuple[str, dict]:
+        y_low, y_med, y_high = self.get_y_membership(base_attack)
 
         x_low_bound = self.params.get('FUZZY_X_LOW_BOUND', 0.15)
         x_med_peak = self.params.get('FUZZY_X_MED_PEAK', 0.40)
         x_med_width = self.params.get('FUZZY_X_MED_WIDTH', 0.25)
         x_high_bound = self.params.get('FUZZY_X_HIGH_BOUND', 0.65)
-
-        y_low = self._membership_low(base_attack, y_low_bound)
-        y_med = self._membership_medium(base_attack, y_med_peak, y_med_width)
-        y_high = self._membership_high(base_attack, y_high_bound)
 
         x_low = self._membership_low(max_threat, x_low_bound)
         x_med = self._membership_medium(max_threat, x_med_peak, x_med_width)

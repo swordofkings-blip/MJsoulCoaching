@@ -1031,6 +1031,11 @@ class StrategyManager:
                 return push_score
         return push_score
 
+    def is_high_hand_value_first_turn(self) -> bool:
+        base_attack = self.compute_base_attack()
+        y_low, y_med, y_high = self.fuzzy_engine.get_y_membership(base_attack)
+        return y_med > y_low or y_high > y_low
+
     def is_orya_ori_mode(self) -> bool:
         return self.compute_push_score() <= 0.05
 

@@ -427,16 +427,15 @@ class OurMjaiClient:
 
 
                 
-                # 1. ツモアガリの判定
-                has_hora = False
+                # 0. 九種九牌による流局宣言の判定
                 for act in msg.get("possible_actions", []):
-                    if act.get("type") == "hora":
-                        has_hora = True
-                if has_hora and self.ai.should_tsumo(self.state):
-                    self._send({"type": "hora", "target": actor, "pai": pai_mjai})
-                    return
+                    if act.get("type") == "ryukyoku":
+                        if self.ai.should_kyushu_kyuhai(self.state):
+                            self._send({"type": "ryukyoku"})
+                            return
+                        break
 
-                # 2. カン (暗カン・加カン) の判定
+                # 1. ツモアガリの判定
                 can_kan = False
                 kan_action = None
                 for act in msg.get("possible_actions", []):

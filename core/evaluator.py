@@ -2657,7 +2657,30 @@ class Evaluator:
                 self.record_detail(tile, f"順位状況価値 (PositionalEV) (+{pos_ev:.1f})")
             assist_sq = self._assist_squeeze_bonus(tile)
             v += assist_sq
+
+        if self._is_kokushi_protect_mode():
+            tile_id = tile_to_id(tile)
+            if tile_id in Evaluator._YAOCHU_INDICES:
+                kokushi_penalty = self.params.get('KOKUSHI_DISCARD_PENALTY', 2000)
+                v -= kokushi_penalty
+                self.record_detail(tile, f"国士無双狙い: 么九牌温存 (-{kokushi_penalty})")
         return v
+
+    def _is_kokushi_protect_mode(self) -> bool:
+        hand_counts = self.state.my_hand_counts()
+        yaochu_types = sum(1 for i in Evaluator._YAOCHU_INDICES if hand_counts[i] >= 1)
+        if yaochu_types < 10:
+            return False
+        visible = self.state.all_visible_counts()
+        for i in Evaluator._YAOCHU_INDICES:
+            if visible[i] >= 4:
+                return False
+        if self.state.is_any_opponent_reach():
+            return False
+        threat = self.strategy.compute_opponent_threat()
+        if threat >= 0.5:
+            return False
+        return True
 
     def _assist_squeeze_bonus(self, tile: str) -> float:
         bonus = 0.0
@@ -2906,6 +2929,18 @@ class Evaluator:
             if safe:
                 unique_tiles = [t for _, t in safe]
         scored = [(self.evaluate_tile(t), t) for t in unique_tiles]
+
+        wind_possible, wind_tile = self.state.is_first_turn_wind_limit_possible()
+        if wind_possible and wind_tile is not None and wind_tile in unique_tiles:
+            if self.strategy.is_high_hand_value_first_turn():
+                wind_penalty = self.params.get('WIND_LIMIT_AVOID_PENALTY', 10000)
+                scored = [(s - wind_penalty if t == wind_tile else s, t) for s, t in scored]
+                self.record_detail(wind_tile, f"四風子連打回避: 手牌価値高のため風牌回避 (-{wind_penalty})")
+            else:
+                wind_bonus = self.params.get('WIND_LIMIT_FLOW_BONUS', 10000)
+                scored = [(s + wind_bonus if t == wind_tile else s, t) for s, t in scored]
+                self.record_detail(wind_tile, f"四風子連打流し: 手牌価値低のため流局狙い (+{wind_bonus})")
+
         scored.sort(key=lambda x: (-x[0], x[1]))
         return scored[0][1], scored[0][0]
 
