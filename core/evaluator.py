@@ -150,6 +150,63 @@ class DefenseEvaluator:
     def is_atamakake(self, tile_id: int) -> bool:
         return False
 
+    def _consecutive_tsumogiri_count(self, seat: int) -> int:
+        moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        count = 0
+        for m in reversed(moqie):
+            if m:
+                count += 1
+            else:
+                break
+        return count
+
+    def _tsumogiri_rate_for_seat(self, seat: int, lookback: int = 5) -> float:
+        moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        if not moqie:
+            return 0.5
+        recent = moqie[-lookback:]
+        if not recent:
+            return 0.5
+        return sum(recent) / len(recent)
+
+    def _broke_tsumogiri_streak(self, seat: int) -> bool:
+        moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        if len(moqie) < 3:
+            return False
+        last = moqie[-1]
+        if last:
+            return False
+        streak = 0
+        for m in reversed(moqie[:-1]):
+            if m:
+                streak += 1
+            else:
+                break
+        return streak >= 2
+
+    def _damaten_tenpai_score(self, seat: int) -> float:
+        score = 0.0
+        consec = self._consecutive_tsumogiri_count(seat)
+        if consec >= 3:
+            score += 0.4
+        elif consec >= 2:
+            score += 0.2
+        if self._broke_tsumogiri_streak(seat):
+            score += 0.3
+        moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        if moqie and not moqie[-1]:
+            from str_converter import is_honor, tile_to_id
+            river = self.state.river[seat]
+            if len(river) > 0:
+                last_tile = river[-1]
+                try:
+                    tid = tile_to_id(last_tile)
+                    if is_honor(tid):
+                        score += 0.2
+                except:
+                    pass
+        return min(1.0, score)
+
     def _active_reach_seats(self) -> List[int]:
         """
         @title 立直者の seat リスト
@@ -483,17 +540,19 @@ class DefenseEvaluator:
                         self.record_detail(tile, f"現物安全 (+{score})")
                         return score
 
-            # 非リーチ他家脅威による危険ペナルティ（終盤・他家テンパイ気配濃厚時）
+            # 非リーチ他家脅威による危険ペナルティ（巡目ではなく脅威度で判定）
             if self.evaluator and self.evaluator.strategy:
                 max_threat = self.evaluator.strategy.compute_opponent_threat()
-                local_turn = (self.state.tsumo_count - 1) // 4 + 1
-                if max_threat >= 0.15 and local_turn >= 11:
-                    penalty = int(-400 * max_threat)
-                    self.record_detail(tile, f"非リーチ他家脅威による危険ペナルティ ({penalty})")
-                    return penalty
+                if max_threat >= 0.10:
+                    threat_penalty = int(-400 * max_threat)
+                    meld_score_adjust = threat_penalty
+                    self.record_detail(tile, f"非リーチ他家脅威による危険ペナルティ ({threat_penalty})")
+                else:
+                    meld_score_adjust = 0
+            else:
+                meld_score_adjust = 0
 
             # --- 人読み: 他家鳴き時の打点/危険度見積もり補正 ---
-            meld_score_adjust = 0
             for s in range(4):
                 if s == self.state.my_seat:
                     continue
@@ -501,33 +560,32 @@ class DefenseEvaluator:
                 if not open_melds:
                     continue
                 pstats = self._player_stats_for_seat(s)
-                call_rate = pstats.get("call_rate", 0.33)
-                win_rate = pstats.get("win_rate", 0.22)
+                call_rate = pstats.get("call_rate", self.params.get('OPPONENT_DEFAULT_CALL_RATE', 0.33))
+                win_rate = pstats.get("win_rate", self.params.get('OPPONENT_DEFAULT_WIN_RATE', 0.22))
                 if call_rate > 0.40 and win_rate > 0.22:
                     # 高副露+高和了 = 安手早仕掛け 危険度0.75倍（守備点を上げる）
-                    meld_score_adjust = max(meld_score_adjust, 5)
+                    meld_score_adjust += 5
                     self.record_detail(tile, f"人読み: S{s}安手早仕掛け傾向のためリスク軽減 (+5)")
                 elif call_rate <= 0.25:
                     # 低副露 = 勝負手 危険度1.5倍（守備点を下げる）
-                    meld_score_adjust = min(meld_score_adjust, -30)
+                    meld_score_adjust -= 30
                     self.record_detail(tile, f"人読み: S{s}低副露勝負手のためリスク増大 (-30)")
 
-            # --- 人読み: ダマテン警戒補正（高ダマテン率プレイヤーが手出し中盤以降） ---
-            local_turn = (self.state.tsumo_count - 1) // 4 + 1
-            if local_turn >= 10:
-                for s in range(4):
-                    if s == self.state.my_seat:
-                        continue
-                    if self.state.reach_states[s].is_reach:
-                        continue
-                    pstats = self._player_stats_for_seat(s)
-                    damaten_rate = pstats.get("damaten_rate", 0.15)
-                    if damaten_rate > 0.15:
-                        # 高ダマテン率プレイヤーの中盤以降の手出しに無筋は危険
-                        if self.state.last_discard_seat == s:
-                            meld_score_adjust -= 100
-                            self.record_detail(tile, f"人読み: S{s}高ダマテン率({damaten_rate:.1%})の手出し警戒 (-100)")
-                            break
+            # --- 人読み: ダマテン警戒補正（ダマテン率＋ツモ切り率で脅威を推定） ---
+            for s in range(4):
+                if s == self.state.my_seat:
+                    continue
+                if self.state.reach_states[s].is_reach:
+                    continue
+                pstats = self._player_stats_for_seat(s)
+                damaten_rate = pstats.get("damaten_rate", self.params.get('OPPONENT_DEFAULT_DAMATEN_RATE', 0.15))
+                if damaten_rate <= 0.15:
+                    continue
+                tenpai_score = self._damaten_tenpai_score(s)
+                base_penalty = self.params.get('DAMATEN_BASE_PENALTY', 200)
+                penalty = int(base_penalty * damaten_rate * (0.3 + tenpai_score * 0.7))
+                meld_score_adjust -= penalty
+                self.record_detail(tile, f"ダマテン{s}警戒(dr:{damaten_rate:.2f},ts:{tenpai_score:.2f}) penalty={penalty}")
             matagi = self._matagi_penalty_for_tile(tile_id)
             if matagi > 0:
                 meld_score_adjust -= matagi
@@ -1080,17 +1138,14 @@ class AttackEvaluator:
                 self.record_detail(tile, f"シャンテン数ペナルティ (-{shanten_penalty})")
             score += self._hand_value_bonus(tile)
             
-            # --- 1向聴限定DFS期待値（提案A） ---
-            # なぜこのようにするか：1向聴（テンパイの1手前）の局面においては、
-            # シャンテン維持とテンパイ取得のどちらが最終的な和了期待値を最大化するかを精密に計算し、評価を補正するためです。
-            # 8.0 は期待飜数（Han）ベースのDFS評価値を既存の攻撃評価スコアのスケールに適正化するための乗算係数です。
+            # --- 1〜2向聴DFS期待値 ---
             current_min_shanten = self.best_shanten_after_single_discard()
-            if current_min_shanten == 0:
+            if current_min_shanten <= 1:
                 dfs_val = self._run_1shanten_dfs(tile)
                 dfs_bonus = int(dfs_val * 8.0)
                 if dfs_bonus > 0:
                     score += dfs_bonus
-                    self.record_detail(tile, f"1向聴限定DFS期待値ボーナス (+{dfs_bonus})")
+                    self.record_detail(tile, f"DFS期待値(向聴{current_min_shanten})ボーナス (+{dfs_bonus})")
         else:
             score = ukeire_total * 10 - shanten * 500
             self.record_detail(tile, f"手効率基本評価 (+{score})")
@@ -1531,8 +1586,9 @@ class AttackEvaluator:
 
     def _run_1shanten_dfs(self, discard_tile: str) -> float:
         """
-        @title 1向聴限定DFS期待値計算
-        @description 1向聴の局面において、指定された牌を切った後の「テンパイ時の待ちの広さ・期待飜数」をシミュレーションします。
+        @title 1〜2向聴DFS期待値計算
+        @description 指定された牌を切った後の「テンパイ時の待ちの広さ・期待飜数」をシミュレーションします。
+                    1向聴局面（切ってテンパイ）と2向聴維持（切って1向聴）の両方に対応。
         @param {str} discard_tile - 切る牌の文字列
         @returns {float} 期待値スコア（期待飜数ベースの擬似スコア）
         """

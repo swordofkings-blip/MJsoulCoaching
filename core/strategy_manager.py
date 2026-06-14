@@ -592,10 +592,15 @@ class StrategyManager:
         V_max = self.params.get('THREAT_V_MAX', 48000.0)
         value = min(1.0, V / V_max)
 
-        # 門前ダマテンの場合は、警戒されにくいためダマテン警戒係数（0.15）を掛けて減衰させる
-        # Why: 0.15は門前ダマの警戒度が低いためにかける減衰係数です。
+        # 門前ダマテンの場合は、警戒されにくいためダマテン警戒係数を掛けて減衰させる
+        # ただし高ダマテン率プレイヤーはダマテンでも積極的にアガりに来るため、減衰率を緩和する
         if not is_reach and n_open == 0:
-            dama_scale = self.params.get('THREAT_DAMA_SCALE', 0.15)
+            base_dama = self.params.get('THREAT_DAMA_SCALE', 0.15)
+            pstats = self.state.player_stats.get(str(seat), {})
+            p_damaten = pstats.get("damaten_rate", self.params.get('OPPONENT_DEFAULT_DAMATEN_RATE', 0.15))
+            default_damaten = self.params.get('OPPONENT_DEFAULT_DAMATEN_RATE', 0.15)
+            # デフォルト値と同じなら従来通りの減衰、高いほど減衰緩和（最大1.0）
+            dama_scale = min(1.0, base_dama * (p_damaten / max(default_damaten, 0.01)))
             value = value * dama_scale
 
         reason = f"{seat_name}: {reason_detail} (打点:{A}, 向聴:{S}, 有効枚:{U:.1f}) = {value:.2f}"
@@ -942,8 +947,8 @@ class StrategyManager:
             if not self.state.reach_states[s].is_reach:
                 continue
             pstats = player_stats.get(str(s), {})
-            deal_in_rate = pstats.get("deal_in_rate", 0.12)
-            riichi_rate = pstats.get("riichi_rate", 0.20)
+            deal_in_rate = pstats.get("deal_in_rate", self.params.get('OPPONENT_DEFAULT_DEAL_IN_RATE', 0.12))
+            riichi_rate = pstats.get("riichi_rate", self.params.get('OPPONENT_DEFAULT_RIICHI_RATE', 0.20))
             if deal_in_rate < 0.11:
                 adjust -= 0.10
             if riichi_rate > 0.24:

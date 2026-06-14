@@ -75,6 +75,17 @@ GENE_DEFS = {
     'meld_defense_absolute_threshold': (150, 600, int),
     'meld_defense_conditional_threshold': (50, 400, int),
     'meld_defense_conditional_push_min': (0.4, 0.90, float),
+
+    # 人読み: 対戦相手の統計デフォルト値
+    'OPPONENT_DEFAULT_CALL_RATE': (0.15, 0.55, float),
+    'OPPONENT_DEFAULT_WIN_RATE': (0.10, 0.35, float),
+    'OPPONENT_DEFAULT_DAMATEN_RATE': (0.05, 0.80, float),
+    'OPPONENT_DEFAULT_DEAL_IN_RATE': (0.05, 0.25, float),
+    'OPPONENT_DEFAULT_RIICHI_RATE': (0.10, 0.35, float),
+
+    # ダマテン警戒
+    'THREAT_DAMA_SCALE': (0.05, 0.50, float),
+    'DAMATEN_BASE_PENALTY': (50, 500, int),
 }
 
 STATE_FILE = 'ga_state.json'
