@@ -3703,7 +3703,7 @@ class Evaluator:
         # 満貫以上の大物手や、役牌ポンによる最低限の速度が担保されており、かつ安牌が十分（2枚以上）ある場合のみ鳴くように制限します。
         # 2 は2向聴の閾値、4 は満貫期待飜数の閾値、2 は安全牌が2枚以上必要という閾値です。
         if before_shanten >= 2:
-            is_high_value = expected_han >= 2
+            is_high_value = expected_han >= self.params.get('MELD_HIGH_VALUE_THRESH', 2)
             if not is_yakuhai_meld and not is_high_value:
                 return False
             if safe_count < 2:
@@ -3766,7 +3766,7 @@ class Evaluator:
                 return True
             return False
 
-        # --- 価値比較 ---
+        # --- 鳴きEV統合（門前維持 vs 副露の比較） ---
         from hand_value import estimate_han_advanced, estimate_win_score
         is_dealer = self.state.my_seat == 0
 
@@ -3785,16 +3785,18 @@ class Evaluator:
         except Exception:
             pass
         if before_shanten <= 1:
-            closed_han += 2
+            closed_han += 1
 
         closed_score = estimate_win_score(closed_han, 30, is_dealer)
         open_score = estimate_win_score(expected_han, 30, is_dealer)
-        speed_bonus = (before_shanten - after_shanten) * 1000
 
-        gap = closed_score - open_score
-        if gap <= 500:
+        speed_bonus = (before_shanten - after_shanten) * 2000
+        open_win_rate_bonus = int(open_score * 0.15)
+
+        gap = closed_score - (open_score + open_win_rate_bonus)
+        if gap <= 300:
             return True
-        elif gap >= 3000:
+        elif gap >= 2000:
             return False
         else:
             return speed_bonus > gap
