@@ -3248,6 +3248,18 @@ class Evaluator:
             is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
             seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
         base_han = max(base_han, 1)
+        base_score = estimate_win_score(base_han, 30, is_dealer)
+
+        riichi_han = base_han + 1
+        riichi_score = int(estimate_win_score(riichi_han, 30, is_dealer)
+                          * self.params.get('RIICHI_URA_MULT', 1.15))
+        tsumo_riichi_score = int(estimate_win_score(riichi_han + 1, 30, is_dealer)
+                                * self.params.get('RIICHI_URA_MULT', 1.15))
+        tsumo_base_score = estimate_win_score(base_han + 1, 30, is_dealer)
+
+        value_ratio = riichi_score / max(base_score, 1)
+        tsumo_rate = self.params.get('RIICHI_TSUMO_RATE', 0.4)
+
         wait_q = self._wait_quality_score()
         remaining = self.state.remaining_counts()
         total_remaining = sum(max(0, remaining[tid]) for tid in wait_tiles)
@@ -3255,46 +3267,35 @@ class Evaluator:
         r_norm = min(1.0, total_remaining / 12.0)
         win_prob = max(0.01, q_norm * r_norm)
         turn = (self.state.tsumo_count - 1) // 4 + 1
-        opp_fold = self.params.get('RIICHI_FOLD_RATE', 0.3)
-        tsumo_rate = self.params.get('RIICHI_TSUMO_RATE', 0.4)
-        riichi_tsumo_boost = self.params.get('RIICHI_TSUMO_BOOST', 1.2)
-        riichi_win = win_prob * (tsumo_rate * riichi_tsumo_boost + (1 - tsumo_rate) * (1.0 - opp_fold))
-        riichi_ron_han = base_han + 1
-        riichi_tsumo_han = riichi_ron_han + 1
-        riichi_ron_score = estimate_win_score(riichi_ron_han, 30, is_dealer)
-        riichi_tsumo_score = estimate_win_score(riichi_tsumo_han, 30, is_dealer)
-        riichi_score = int((tsumo_rate * riichi_tsumo_score + (1 - tsumo_rate) * riichi_ron_score)
-                          * self.params.get('RIICHI_URA_MULT', 1.15))
+
+        opp_fold = self.params.get('RIICHI_FOLD_RATE', 0.45)
+        riichi_win = win_prob * (tsumo_rate * 1.15 + (1 - tsumo_rate) * (1 - opp_fold))
+        riichi_exp_score = int(tsumo_rate * tsumo_riichi_score + (1 - tsumo_rate) * riichi_score)
         riichi_stick = self.params.get('RIICHI_STICK_COST', 0.3)
-        riichi_ev = riichi_win * riichi_score / 1000.0 - riichi_stick
-        riichi_opp_reach_pen = self.params.get('RIICHI_OPP_REACH_PENALTY', 0.8)
+        riichi_ev = riichi_win * riichi_exp_score / 1000.0 - riichi_stick
         if self.state.is_any_opponent_reach():
-            riichi_ev *= riichi_opp_reach_pen
-        riichi_late_pen = self.params.get('RIICHI_LATE_PENALTY', 0.7)
-        if turn >= 14:
-            riichi_ev *= riichi_late_pen
-        defense_threat = self.params.get('RIICHI_DEFENSE_THREAT', 0.3)
-        defense_cost_rate = self.params.get('RIICHI_DEFENSE_COST', 0.2)
+            riichi_ev *= self.params.get('RIICHI_OPP_REACH_PENALTY', 0.8)
+        if turn >= 14 or turn >= self.params.get('RIICHI_LATE_TURN', 14):
+            riichi_ev *= self.params.get('RIICHI_LATE_PENALTY', 0.7)
         opp_threat = self.strategy.compute_opponent_threat()
-        if opp_threat > defense_threat:
-            defense_cost = opp_threat * riichi_score / 1000.0 * defense_cost_rate
-            riichi_ev -= defense_cost
-        dbonus = self.params.get('DAMATEN_WIN_BONUS', 1.0)
-        damaten_win = win_prob * dbonus
-        damaten_tsumo_han = base_han + 1
-        damaten_ron_score = estimate_win_score(base_han, 30, is_dealer)
-        damaten_tsumo_score = estimate_win_score(damaten_tsumo_han, 30, is_dealer)
+        riichi_ev -= opp_threat * riichi_exp_score / 1000.0 * self.params.get('RIICHI_DEFENSE_COST', 0.2)
+
+        # Damaten: tsumo rate lower, no fold penalty, value ratio determines attractiveness
         damaten_tsumo_rate = self.params.get('DAMATEN_TSUMO_RATE', 0.2)
-        damaten_score = int(damaten_tsumo_rate * damaten_tsumo_score + (1 - damaten_tsumo_rate) * damaten_ron_score)
-        damaten_ev = damaten_win * damaten_score / 1000.0
-        damaten_ev += self.params.get('DAMATEN_FLEX_BONUS', 100) / 1000.0
-        damaten_dora_boost = self.params.get('DAMATEN_DORA_BOOST', 1.15)
-        damaten_dora_thresh = self.params.get('DAMATEN_DORA_THRESH', 2)
-        dora_count = sum(1 for t in self.state.my_hand
-                         for d in self.state.doras if tile_to_id(t) == tile_to_id(d))
-        dora_count += sum(1 for t in self.state.my_hand if is_red_five(t))
-        if dora_count >= damaten_dora_thresh:
-            damaten_ev *= 1.15
+        damaten_win = win_prob * (damaten_tsumo_rate * 1.0 + (1 - damaten_tsumo_rate) * 1.0)
+        damaten_exp_score = int(damaten_tsumo_rate * tsumo_base_score + (1 - damaten_tsumo_rate) * base_score)
+        damaten_ev = damaten_win * damaten_exp_score / 1000.0
+        damaten_ev += self.params.get('DAMATEN_FLEX_BONUS', 30) / 1000.0
+
+        # If riichi barely adds value, bias toward damaten
+        # (e.g. base=mangan(8000) + riichi=max(8000) -> value_ratio=1.0 -> damaten)
+        mode = self.strategy.get_strategy_mode()
+        riichi_mode_bias = self.params.get('RIICHI_MODE_AGGRO', 0.15)
+        if mode in ('全力攻撃', '押し気味', '危険度勝負', '積極駒組み'):
+            riichi_ev += riichi_mode_bias
+        elif mode in ('撤退準備', '完全撤退'):
+            riichi_ev -= riichi_mode_bias * 2
+
         return (riichi_ev, damaten_ev)
 
     def get_riichi_decision_details(self) -> dict:
