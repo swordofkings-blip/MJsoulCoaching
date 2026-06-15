@@ -84,7 +84,7 @@ GENE_DEFS = {
     'FUZZY_VAL_ALPHA': (0.70, 0.99, float),
     'FUZZY_VAL_BETA': (0.70, 0.99, float),
     'FUZZY_VAL_GAMMA': (0.40, 0.80, float),
-    'FUZZY_SLIM_DEFENSE_WEIGHT': (0.005, 0.08, float),
+    'FUZZY_SLIM_DEFENSE_WEIGHT': (0.1, 0.6, float),
 
     # 副露防衛判定パラメータ (expand_params で yaku_strategy.meld_defense に展開)
     'meld_defense_riichi_penalty_per_tile': (100, 600, int),

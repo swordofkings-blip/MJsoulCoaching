@@ -571,7 +571,7 @@ class DefenseEvaluator:
                     meld_score_adjust -= 30
                     self.record_detail(tile, f"人読み: S{s}低副露勝負手のためリスク増大 (-30)")
 
-            # --- 人読み: ダマテン警戒補正（ダマテン率＋ツモ切り率で脅威を推定） ---
+            # --- ダマテン警戒: 牌単体の危険度をデンノー軽量版で評価 ---
             for s in range(4):
                 if s == self.state.my_seat:
                     continue
@@ -579,13 +579,39 @@ class DefenseEvaluator:
                     continue
                 pstats = self._player_stats_for_seat(s)
                 damaten_rate = pstats.get("damaten_rate", self.params.get('OPPONENT_DEFAULT_DAMATEN_RATE', 0.15))
-                if damaten_rate <= 0.15:
-                    continue
                 tenpai_score = self._damaten_tenpai_score(s)
+                combined = damaten_rate * tenpai_score
+                if combined < 0.05:
+                    continue
+                # この対局者にとっての現物なら安全
+                if tile_id in self._genbutsu_ids_for_seat(s):
+                    continue
+                # カベ・ノーチャンスで安全
+                if tile_id in self._no_chance_ids() and not is_honor(tile_id):
+                    continue
+                # スジ安全
+                is_musuji = True
+                river = self.state.river[s]
+                for rt in river:
+                    try:
+                        rtid = tile_to_id(rt)
+                    except:
+                        continue
+                    if is_honor(rtid):
+                        continue
+                    for st in suji_safe_tiles(rtid):
+                        if st == tile_id:
+                            is_musuji = False
+                            break
+                    if not is_musuji:
+                        break
+                danger_mult = 1.0
+                if is_musuji:
+                    danger_mult = 1.3
                 base_penalty = self.params.get('DAMATEN_BASE_PENALTY', 200)
-                penalty = int(base_penalty * damaten_rate * (0.3 + tenpai_score * 0.7))
+                penalty = int(base_penalty * combined * danger_mult)
                 meld_score_adjust -= penalty
-                self.record_detail(tile, f"ダマテン{s}警戒(dr:{damaten_rate:.2f},ts:{tenpai_score:.2f}) penalty={penalty}")
+                self.record_detail(tile, f"ダマ{s}危険度(dr:{damaten_rate:.2f}*ts:{tenpai_score:.2f}={combined:.2f}) penalty={penalty}")
             matagi = self._matagi_penalty_for_tile(tile_id)
             if matagi > 0:
                 meld_score_adjust -= matagi
@@ -2639,10 +2665,9 @@ class Evaluator:
             self.record_detail(tile, f"戦略モード「回し打ち」(攻撃比率: {gamma:.2f})を適用")
 
         elif mode == "スリム化":
-            # スリム化時は他家が静かであるが手が悪いため、安全牌を少しだけ抱える（過剰抱え込み防止のためパラメータ化）
-            slim_weight = self.params.get('FUZZY_SLIM_DEFENSE_WEIGHT', 0.05)
-            v = float(v_attack + v_defense * slim_weight)
-            self.record_detail(tile, f"戦略モード「スリム化」(安全比率: {slim_weight:.2f})を適用")
+            slim_weight = self.params.get('FUZZY_SLIM_DEFENSE_WEIGHT', 0.3)
+            v = float(v_defense * (1 - slim_weight) + v_attack * slim_weight)
+            self.record_detail(tile, f"戦略モード「スリム化」(攻撃比率: {slim_weight:.2f})を適用")
 
         elif mode == "撤退準備":
             v = float(0.1 * v_attack + v_defense)
