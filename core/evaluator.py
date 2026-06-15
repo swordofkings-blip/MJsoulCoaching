@@ -3683,6 +3683,8 @@ class Evaluator:
 
         # 副露に使う牌を手牌から除いた残り
         hand_ids = [tile_to_id(t) for t in self.state.my_hand]
+        rank = self.state.my_score_rank()
+        current_turn = (self.state.tsumo_count - 1) // 4 + 1
         consumed_ids = []
         if type_ == 0:
             consumed_ids = [tile_to_id(t) for t in tiles[1:]]
@@ -3706,13 +3708,14 @@ class Evaluator:
             if self.defense.defense_score_for_tile(tile_str) >= safe_threshold:
                 safe_count += 1
 
+        rank = self.state.my_score_rank()
+        current_turn = (self.state.tsumo_count - 1) // 4 + 1
+
         # なぜこのようにするか：2向聴以上（テンパイから遠い）の状態で安易に鳴くと、アガリが遠い上に守備力が激減するため、
         # 満貫以上の大物手や、役牌ポンによる最低限の速度が担保されており、かつ安牌が十分（2枚以上）ある場合のみ鳴くように制限します。
         # 2 は2向聴の閾値、4 は満貫期待飜数の閾値、2 は安全牌が2枚以上必要という閾値です。
         if before_shanten >= 2:
             is_high_value = expected_han >= self.params.get('MELD_HIGH_VALUE_THRESH', 2)
-            rank = self.state.my_score_rank()
-            current_turn = (self.state.tsumo_count - 1) // 4 + 1
             opp_riichi_count = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
             speed_priority = (current_turn >= self.params.get('MELD_SPEED_TURN', 7)) or \
                               (rank == 0) or (rank == 3) or \
