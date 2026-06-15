@@ -132,6 +132,7 @@ GENE_DEFS = {
     'MELD_GAP_MAX': (500, 5000, int),
     'MELD_SPEED_BONUS': (500, 5000, int),
     'MELD_WIN_RATE_BONUS': (0.0, 0.5, float),
+    'MELD_SPEED_TURN': (3, 12, int),
 }
 
 STATE_FILE = 'ga_state.json'

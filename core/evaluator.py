@@ -3706,10 +3706,15 @@ class Evaluator:
             is_high_value = expected_han >= self.params.get('MELD_HIGH_VALUE_THRESH', 2)
             rank = self.state.my_score_rank()
             current_turn = (self.state.tsumo_count - 1) // 4 + 1
-            speed_priority = (rank == 0 and current_turn >= 8) or (rank == 3 and self.state.left_tile_count <= 40)
+            opp_riichi_count = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
+            speed_priority = (current_turn >= self.params.get('MELD_SPEED_TURN', 7)) or \
+                              (rank == 0) or (rank == 3) or \
+                              (opp_riichi_count == 0 and push > 0.6)
             if not is_yakuhai_meld and not is_high_value and not speed_priority:
                 return False
-            if safe_count < 2:
+            if safe_count < 1 and opp_riichi_count == 0:
+                pass
+            elif safe_count < 2:
                 return False
 
         # なぜこのようにするか：他家リーチがいる、または他家脅威に対して押し引きスコアが低く（push < 0.5）、
@@ -3741,8 +3746,8 @@ class Evaluator:
             if target_id in (31,32,33,seat_wind,round_wind) and expected_han >= 1:
                 return True
 
-        # 0飜開局 = 和了れない → 絶対に鳴かない
-        if expected_han < 1:
+        # 0飜開局でも速度優先なら許容
+        if expected_han < 1 and not (rank == 0 or rank == 3 or current_turn >= 10):
             return False
 
         # 役バイアスで鳴きが肯定されており、最低限の役とシャンテン進行、安全性が確認できたなら鳴く
