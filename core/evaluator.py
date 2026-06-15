@@ -3790,13 +3790,17 @@ class Evaluator:
         closed_score = estimate_win_score(closed_han, 30, is_dealer)
         open_score = estimate_win_score(expected_han, 30, is_dealer)
 
-        speed_bonus = (before_shanten - after_shanten) * 2000
-        open_win_rate_bonus = int(open_score * 0.15)
+        speed_bonus_mult = self.params.get('MELD_SPEED_BONUS', 2000)
+        speed_bonus = (before_shanten - after_shanten) * speed_bonus_mult
+        open_win_rate_bonus_rate = self.params.get('MELD_WIN_RATE_BONUS', 0.15)
+        open_win_rate_bonus = int(open_score * open_win_rate_bonus_rate)
 
         gap = closed_score - (open_score + open_win_rate_bonus)
-        if gap <= 300:
+        meld_gap_min = self.params.get('MELD_GAP_MIN', 300)
+        meld_gap_max = self.params.get('MELD_GAP_MAX', 2000)
+        if gap <= meld_gap_min:
             return True
-        elif gap >= 2000:
+        elif gap >= meld_gap_max:
             return False
         else:
             return speed_bonus > gap

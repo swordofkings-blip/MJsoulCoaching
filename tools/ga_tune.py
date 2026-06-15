@@ -125,6 +125,13 @@ GENE_DEFS = {
     'RIICHI_WAIT_KANCHAN': (0.0, 0.3, float),
     'RIICHI_WAIT_PENCHAN': (0.0, 0.4, float),
     'RIICHI_WAIT_TANKI': (0.0, 0.2, float),
+
+    # 鳴きEV比較
+    'MELD_HIGH_VALUE_THRESH': (1, 5, int),
+    'MELD_GAP_MIN': (0, 1000, int),
+    'MELD_GAP_MAX': (500, 5000, int),
+    'MELD_SPEED_BONUS': (500, 5000, int),
+    'MELD_WIN_RATE_BONUS': (0.0, 0.5, float),
 }
 
 STATE_FILE = 'ga_state.json'
