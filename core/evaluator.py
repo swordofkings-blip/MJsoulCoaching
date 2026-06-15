@@ -3280,15 +3280,55 @@ class Evaluator:
         opp_threat = self.strategy.compute_opponent_threat()
         riichi_ev -= opp_threat * riichi_exp_score / 1000.0 * self.params.get('RIICHI_DEFENSE_COST', 0.2)
 
-        # Damaten: tsumo rate lower, no fold penalty, value ratio determines attractiveness
         damaten_tsumo_rate = self.params.get('DAMATEN_TSUMO_RATE', 0.2)
         damaten_win = win_prob * (damaten_tsumo_rate * 1.0 + (1 - damaten_tsumo_rate) * 1.0)
         damaten_exp_score = int(damaten_tsumo_rate * tsumo_base_score + (1 - damaten_tsumo_rate) * base_score)
         damaten_ev = damaten_win * damaten_exp_score / 1000.0
         damaten_ev += self.params.get('DAMATEN_FLEX_BONUS', 30) / 1000.0
 
-        # If riichi barely adds value, bias toward damaten
-        # (e.g. base=mangan(8000) + riichi=max(8000) -> value_ratio=1.0 -> damaten)
+        # 手変わり評価: 高打点役の完成期待や待ち改善の可能性 → ダマテン有利
+        try:
+            from yaku_detector import analyze_all
+            yis = analyze_all(self.state.my_hand, self.state.my_melds,
+                              seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
+            imp = 0.0
+            has_sanshoku_ittsuu = False
+            for yi in yis.values():
+                if yi.progress > 0.4 and not yi.is_complete:
+                    if yi.name in ('sanshoku', 'ittsuu'):
+                        imp += yi.progress * 0.3
+                        has_sanshoku_ittsuu = True
+            if has_sanshoku_ittsuu and wait_q < 0.2 and turn < 12:
+                damaten_ev += self.params.get('DAMATEN_YAKU_IMP_BONUS', 0.15)
+        except Exception:
+            pass
+
+        # 待ち改善可能性: 悪形を引ける牌がある → ダマテン有利
+        if wait_q < 0.1:
+            hand_counts = self.state.my_hand_counts()
+            mejoras = 0
+            for draw_id in range(34):
+                if hand_counts[draw_id] >= 4:
+                    continue
+                test = list(hand_counts)
+                test[draw_id] += 1
+                for discard_id in range(34):
+                    if test[discard_id] <= 0:
+                        continue
+                    test2 = list(test)
+                    test2[discard_id] -= 1
+                    omc = sum(1 for m in self.state.my_melds if m.is_open)
+                    if omc == 0:
+                        ns = ShantenCalculator.calculate_closed_effective(test2)
+                    else:
+                        ns = ShantenCalculator.calculate_open(test2, omc)
+                    if ns < 0:
+                        mejoras += 1
+                        break
+            mejora_ratio = min(1.0, mejoras / 12.0)
+            if mejora_ratio > 0.2:
+                damaten_ev += mejora_ratio * self.params.get('DAMATEN_WAIT_IMP_BONUS', 0.1)
+
         mode = self.strategy.get_strategy_mode()
         riichi_mode_bias = self.params.get('RIICHI_MODE_AGGRO', 0.15)
         if mode in ('全力攻撃', '押し気味', '危険度勝負', '積極駒組み'):

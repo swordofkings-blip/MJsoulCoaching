@@ -116,6 +116,8 @@ GENE_DEFS = {
     'RIICHI_MODE_AGGRO': (0.0, 0.5, float),
     'DAMATEN_TSUMO_RATE': (0.1, 0.5, float),
     'DAMATEN_FLEX_BONUS': (0, 300, int),
+    'DAMATEN_YAKU_IMP_BONUS': (0.0, 0.5, float),
+    'DAMATEN_WAIT_IMP_BONUS': (0.0, 0.5, float),
 
     # リーチ判断用待ち品質 weights
     'RIICHI_WAIT_RYANMEN': (0.1, 0.6, float),
