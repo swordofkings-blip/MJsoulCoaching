@@ -3656,6 +3656,9 @@ class Evaluator:
         is_closed = open_meld_count == 0
 
         expected_han = self._estimate_open_han(hand_after, melds_after)
+        dora_count = sum(1 for t in hand_after for d in self.state.doras if tile_to_id(t) == tile_to_id(d))
+        dora_count += sum(1 for t in hand_after if is_red_five(t))
+        expected_han += dora_count
 
         # 役牌ポン or 高価値手は防御ペナルティを無視
         is_yakuhai_meld = False
