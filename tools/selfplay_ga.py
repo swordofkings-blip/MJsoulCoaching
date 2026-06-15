@@ -200,10 +200,15 @@ def main():
                         results.append(fut.result())
 
             all_stats = []
+            dealin_penalty = base_params.get('GA_DEALIN_PENALTY', 8)
             for gi, avg_pts, stats_list in results:
                 group = groups[gi]
                 for i, idx in enumerate(group):
-                    pop[idx] = (avg_pts[i], pop[idx][1])
+                    st = stats_list[i]
+                    ky = max(st.get('kyoku', 1), 1)
+                    di_rate = st.get('deal_in', 0) / ky * 2  # 放銃率×2（放銃1回で2回分のpt損失相当）
+                    fitness = avg_pts[i] - dealin_penalty * di_rate
+                    pop[idx] = (fitness, pop[idx][1])
                 all_stats.extend(stats_list)
 
             pop.sort(key=lambda x: -x[0])
@@ -219,10 +224,36 @@ def main():
                     damaten_hall_of_fame = dict(max(pop, key=lambda x: _damaten_rate_of(x[1]))[1])
                 _ensure_damaten_specialist(pop, damaten_hall_of_fame, keep, pop_size)
 
+            # 放銃拒否バイアス: 最低放銃率の個体を保存
+            dealin_rates = {}
+            for gi, avg_pts, stats_list in results:
+                group = groups[gi]
+                for i, idx in enumerate(group):
+                    st = stats_list[i]
+                    ky = max(st.get('kyoku', 1), 1)
+                    dealin_rates[idx] = st.get('deal_in', 0) / max(ky, 1)
+            if dealin_rates:
+                best_def_idx = min(dealin_rates, key=dealin_rates.get)
+                best_def_rate = dealin_rates[best_def_idx]
+                stored_hof = getattr(main, '_deal_in_hof', None)
+                stored_rate = getattr(main, '_deal_in_hof_rate', None)
+                if stored_hof is None or stored_rate is None or best_def_rate < stored_rate:
+                    main._deal_in_hof = dict(pop[best_def_idx][1])
+                    main._deal_in_hof_rate = best_def_rate
+                hof_ind = getattr(main, '_deal_in_hof', None)
+                hof_rate = getattr(main, '_deal_in_hof_rate', None)
+                if hof_ind is not None and hof_rate is not None:
+                    cur_best = min(dealin_rates.values())
+                    if hof_rate < cur_best:
+                        worst = min(range(pop_size), key=lambda i: pop[i][0])
+                        if pop[worst][0] > -999:
+                            pop[-1] = (-20.0, dict(hof_ind))
+
             msg = (f'G{gen}: best={pop[0][0]:+.1f}pt  avg={sum(p[0] for p in pop)/pop_size:+.1f}pt  '
                    f'K={n_kyoku} W={merged["wins"]}/{n_kyoku*4}({merged["wins"]/n_kyoku*100:.1f}%) '
                    f'Deal={merged["deal_in"]}/{n_kyoku}({merged["deal_in"]/n_kyoku*100:.1f}%) '
                    f'R={merged["reach_wins"]} D={merged["damaten_wins"]} C={call_wins} '
+                   f'H-def={dealin_rates.get(best_def_idx, 0)*100:.0f}% '
                    f'({elapsed:.0f}s)')
             log.write(msg + '\n')
             log.flush()
