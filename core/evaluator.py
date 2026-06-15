@@ -3237,6 +3237,55 @@ class Evaluator:
                 - n_penchan * wr('RIICHI_WAIT_PENCHAN', 0.2)
                 - n_tanki * wr('RIICHI_WAIT_TANKI', 0.05)) / total
 
+    def _compare_riichi_vs_damaten(self) -> Tuple[float, float]:
+        wait_tiles = self._wait_tiles_for_tenpai()
+        if not wait_tiles:
+            return (-999.0, -999.0)
+        from hand_value import estimate_han_advanced, estimate_win_score
+        is_dealer = (self.state.my_seat == getattr(self.state, 'dealer_seat', 0))
+        base_han = estimate_han_advanced(
+            self.state.my_hand, self.state.my_melds, self.state.doras,
+            is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
+            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju)
+        base_han = max(base_han, 1)
+        wait_q = self._wait_quality_score()
+        remaining = self.state.remaining_counts()
+        total_remaining = sum(max(0, remaining[tid]) for tid in wait_tiles)
+        q_norm = (wait_q + 1.0) / 2.0
+        r_norm = min(1.0, total_remaining / 12.0)
+        win_prob = max(0.01, q_norm * r_norm)
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        opp_fold = self.params.get('RIICHI_FOLD_RATE', 0.3)
+        tsumo_rate = self.params.get('RIICHI_TSUMO_RATE', 0.4)
+        riichi_win = win_prob * (tsumo_rate * 1.2 + (1 - tsumo_rate) * (1.0 - opp_fold))
+        riichi_ron_han = base_han + 1
+        riichi_tsumo_han = riichi_ron_han + 1
+        riichi_ron_score = estimate_win_score(riichi_ron_han, 30, is_dealer)
+        riichi_tsumo_score = estimate_win_score(riichi_tsumo_han, 30, is_dealer)
+        riichi_score = int((tsumo_rate * riichi_tsumo_score + (1 - tsumo_rate) * riichi_ron_score)
+                          * self.params.get('RIICHI_URA_MULT', 1.15))
+        riichi_stick = self.params.get('RIICHI_STICK_COST', 0.3)
+        riichi_ev = riichi_win * riichi_score / 1000.0 - riichi_stick
+        if self.state.is_any_opponent_reach():
+            riichi_ev *= 0.8
+        if turn >= 14:
+            riichi_ev *= 0.7
+        dbonus = self.params.get('DAMATEN_WIN_BONUS', 1.0)
+        damaten_win = win_prob * dbonus
+        damaten_tsumo_han = base_han + 1
+        damaten_ron_score = estimate_win_score(base_han, 30, is_dealer)
+        damaten_tsumo_score = estimate_win_score(damaten_tsumo_han, 30, is_dealer)
+        damaten_tsumo_rate = self.params.get('DAMATEN_TSUMO_RATE', 0.2)
+        damaten_score = int(damaten_tsumo_rate * damaten_tsumo_score + (1 - damaten_tsumo_rate) * damaten_ron_score)
+        damaten_ev = damaten_win * damaten_score / 1000.0
+        damaten_ev += self.params.get('DAMATEN_FLEX_BONUS', 100) / 1000.0
+        dora_count = sum(1 for t in self.state.my_hand
+                         for d in self.state.doras if tile_to_id(t) == tile_to_id(d))
+        dora_count += sum(1 for t in self.state.my_hand if is_red_five(t))
+        if dora_count >= 2:
+            damaten_ev *= 1.15
+        return (riichi_ev, damaten_ev)
+
     def get_riichi_decision_details(self) -> dict:
         """
         @title 立直判断の根拠詳細化
@@ -3254,64 +3303,19 @@ class Evaluator:
         if self.state.scores[self.state.my_seat] < 1000:
             return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "持ち点が1000点未満のため立直できません。"}
 
-        riichi_base = self.params.get('RIICHI_BASE', 0.6)
-        wait_q = self._wait_quality_score()
-        wait_weight = self.params.get('RIICHI_WAIT_WEIGHT', 1.0)
-        wait_score = wait_q * wait_weight
-        
-        opp_reach_score = 0.0
-        if self.state.is_any_opponent_reach():
-            opp_reach_score = self.params.get('RIICHI_OPP_REACH_PENALTY', -0.4)
+        riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
+        should_riichi = riichi_ev > damaten_ev
 
-        dora_count = 0
-        for t in self.state.my_hand:
-            for d in self.state.doras:
-                if tile_to_id(t) == tile_to_id(d):
-                    dora_count += 1
-            if is_red_five(t):
-                dora_count += 1
-        dora_penalty_param = self.params.get('RIICHI_DORA_PENALTY', -0.1)
-        dora_score = dora_count * dora_penalty_param
-
-        late_score = 0.0
-        late_threshold = self.params.get('RIICHI_LATE_TURN', 14)
-        if (self.state.tsumo_count - 1) // 4 + 1 >= late_threshold:
-            late_score = self.params.get('RIICHI_LATE_PENALTY', -0.2)
-
-        rank_bonus = 0.0
-        rank = self.state.my_score_rank()
-        if rank == 3:
-            rank_bonus = self.params.get('RIICHI_LAST_RANK_BONUS', 0.2)
-
-        total_score = riichi_base + wait_score + opp_reach_score + dora_score + late_score + rank_bonus
-        threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
-        should_riichi = total_score > threshold
-
-        # 理由のテキスト構成
-        reasons = []
-        reasons.append(f"基礎価値 ({riichi_base:+.2f})")
-        reasons.append(f"待ち品質 ({wait_score:+.2f})")
-        if opp_reach_score != 0:
-            reasons.append(f"他家リーチ有 ({opp_reach_score:+.2f})")
-        if dora_score != 0:
-            reasons.append(f"ドラ・赤ドラ枚数 ({dora_score:+.2f})")
-        if late_score != 0:
-            reasons.append(f"終盤ペナルティ ({late_score:+.2f})")
-        if rank_bonus != 0:
-            reasons.append(f"ラス回避価値 ({rank_bonus:+.2f})")
-
-        reason_text = "立直判定値: {:.2f} (閾値: {:.2f})。内訳: {}".format(
-            total_score, threshold, ", ".join(reasons)
-        )
+        reason_text = f"リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}"
         if should_riichi:
-            reason_text += " -> 【立直推奨】ダマテンよりリーチを推奨します。"
+            reason_text += " -> 【立直推奨】"
         else:
-            reason_text += " -> 【ダマテン推奨】ダマテンを推奨します。"
+            reason_text += " -> 【ダマテン推奨】"
 
         return {
             "should_riichi": should_riichi,
-            "score": round(total_score, 3),
-            "threshold": threshold,
+            "score": round(riichi_ev, 3),
+            "threshold": round(damaten_ev, 3),
             "reason": reason_text
         }
 
@@ -3334,57 +3338,8 @@ class Evaluator:
         if self.state.scores[self.state.my_seat] < 1000:
             return False
 
-        riichi_score = self.params.get('RIICHI_BASE', 0.6)
-
-        wait_q = self._wait_quality_score()
-        riichi_score += wait_q * self.params.get('RIICHI_WAIT_WEIGHT', 1.0)
-
-        if self.state.is_any_opponent_reach():
-            riichi_score += self.params.get('RIICHI_OPP_REACH_PENALTY', -0.4)
-
-        dora_count = 0
-        for t in self.state.my_hand:
-            for d in self.state.doras:
-                if tile_to_id(t) == tile_to_id(d):
-                    dora_count += 1
-            if is_red_five(t):
-                dora_count += 1
-        riichi_score += dora_count * self.params.get('RIICHI_DORA_PENALTY', -0.1)
-
-        late_threshold = self.params.get('RIICHI_LATE_TURN', 14)
-        if (self.state.tsumo_count - 1) // 4 + 1 >= late_threshold:
-            riichi_score += self.params.get('RIICHI_LATE_PENALTY', -0.2)
-
-        rank = self.state.my_score_rank()
-        if rank == 3:
-            riichi_score += self.params.get('RIICHI_LAST_RANK_BONUS', 0.2)
-
-        riichi_cfg = self.params.get('yaku_strategy', {}).get('riichi', {})
-        try:
-            from yaku_detector import analyze_all
-            yaku_infos = analyze_all(self.state.my_hand, self.state.my_melds,
-                                      seat=self.state.my_seat, chang=self.state.chang,
-                                      ju=self.state.ju)
-            expected_han = 0
-            pursuing_damaten = False
-            for yi in yaku_infos.values():
-                if yi.is_complete:
-                    expected_han += yi.closed_han
-                if not yi.is_complete and yi.progress > 0.6:
-                    if yi.name in ('sanshoku', 'ittsuu'):
-                        pursuing_damaten = True
-            if expected_han <= 0:
-                riichi_score += riichi_cfg.get('low_value_penalty', -0.2)
-            elif expected_han >= 2:
-                riichi_score += riichi_cfg.get('expected_han_bonus_per_han', 0.1) * expected_han
-            if pursuing_damaten:
-                penalty = riichi_cfg.get('damaten_sanshoku_penalty', -0.3)
-                riichi_score += penalty
-        except Exception:
-            pass
-
-        threshold = self.params.get('RIICHI_THRESHOLD', 0.0)
-        return riichi_score > threshold
+        riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
+        return riichi_ev > damaten_ev
 
     def should_kan(self) -> bool:
         hand_counts = self.state.my_hand_counts()
