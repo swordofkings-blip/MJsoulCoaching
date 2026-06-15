@@ -104,6 +104,13 @@ GENE_DEFS = {
     # ダマテン警戒
     'THREAT_DAMA_SCALE': (0.05, 0.50, float),
     'DAMATEN_BASE_PENALTY': (50, 500, int),
+
+    # リーチ判断用待ち品質 weights
+    'RIICHI_WAIT_RYANMEN': (0.1, 0.6, float),
+    'RIICHI_WAIT_SHANPON': (0.0, 0.3, float),
+    'RIICHI_WAIT_KANCHAN': (0.0, 0.3, float),
+    'RIICHI_WAIT_PENCHAN': (0.0, 0.4, float),
+    'RIICHI_WAIT_TANKI': (0.0, 0.2, float),
 }
 
 STATE_FILE = 'ga_state.json'

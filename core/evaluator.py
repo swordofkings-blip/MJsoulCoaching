@@ -3230,7 +3230,12 @@ class Evaluator:
         total = n_ryanmen + n_kanchan + n_penchan + n_tanki + n_shanpon
         if total == 0:
             return 0.0
-        return (n_ryanmen * 0.3 + n_shanpon * 0.1 - n_kanchan * 0.1 - n_penchan * 0.2 - n_tanki * 0.05) / total
+        wr = lambda k, d: self.params.get(k, d)
+        return (n_ryanmen * wr('RIICHI_WAIT_RYANMEN', 0.3)
+                + n_shanpon * wr('RIICHI_WAIT_SHANPON', 0.1)
+                - n_kanchan * wr('RIICHI_WAIT_KANCHAN', 0.1)
+                - n_penchan * wr('RIICHI_WAIT_PENCHAN', 0.2)
+                - n_tanki * wr('RIICHI_WAIT_TANKI', 0.05)) / total
 
     def get_riichi_decision_details(self) -> dict:
         """
