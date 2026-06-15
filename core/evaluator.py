@@ -3257,7 +3257,8 @@ class Evaluator:
         turn = (self.state.tsumo_count - 1) // 4 + 1
         opp_fold = self.params.get('RIICHI_FOLD_RATE', 0.3)
         tsumo_rate = self.params.get('RIICHI_TSUMO_RATE', 0.4)
-        riichi_win = win_prob * (tsumo_rate * 1.2 + (1 - tsumo_rate) * (1.0 - opp_fold))
+        riichi_tsumo_boost = self.params.get('RIICHI_TSUMO_BOOST', 1.2)
+        riichi_win = win_prob * (tsumo_rate * riichi_tsumo_boost + (1 - tsumo_rate) * (1.0 - opp_fold))
         riichi_ron_han = base_han + 1
         riichi_tsumo_han = riichi_ron_han + 1
         riichi_ron_score = estimate_win_score(riichi_ron_han, 30, is_dealer)
@@ -3266,13 +3267,17 @@ class Evaluator:
                           * self.params.get('RIICHI_URA_MULT', 1.15))
         riichi_stick = self.params.get('RIICHI_STICK_COST', 0.3)
         riichi_ev = riichi_win * riichi_score / 1000.0 - riichi_stick
+        riichi_opp_reach_pen = self.params.get('RIICHI_OPP_REACH_PENALTY', 0.8)
         if self.state.is_any_opponent_reach():
-            riichi_ev *= 0.8
+            riichi_ev *= riichi_opp_reach_pen
+        riichi_late_pen = self.params.get('RIICHI_LATE_PENALTY', 0.7)
         if turn >= 14:
-            riichi_ev *= 0.7
+            riichi_ev *= riichi_late_pen
+        defense_threat = self.params.get('RIICHI_DEFENSE_THREAT', 0.3)
+        defense_cost_rate = self.params.get('RIICHI_DEFENSE_COST', 0.2)
         opp_threat = self.strategy.compute_opponent_threat()
-        if opp_threat > 0.3:
-            defense_cost = opp_threat * riichi_score / 1000.0 * 0.2
+        if opp_threat > defense_threat:
+            defense_cost = opp_threat * riichi_score / 1000.0 * defense_cost_rate
             riichi_ev -= defense_cost
         dbonus = self.params.get('DAMATEN_WIN_BONUS', 1.0)
         damaten_win = win_prob * dbonus
@@ -3283,10 +3288,12 @@ class Evaluator:
         damaten_score = int(damaten_tsumo_rate * damaten_tsumo_score + (1 - damaten_tsumo_rate) * damaten_ron_score)
         damaten_ev = damaten_win * damaten_score / 1000.0
         damaten_ev += self.params.get('DAMATEN_FLEX_BONUS', 100) / 1000.0
+        damaten_dora_boost = self.params.get('DAMATEN_DORA_BOOST', 1.15)
+        damaten_dora_thresh = self.params.get('DAMATEN_DORA_THRESH', 2)
         dora_count = sum(1 for t in self.state.my_hand
                          for d in self.state.doras if tile_to_id(t) == tile_to_id(d))
         dora_count += sum(1 for t in self.state.my_hand if is_red_five(t))
-        if dora_count >= 2:
+        if dora_count >= damaten_dora_thresh:
             damaten_ev *= 1.15
         return (riichi_ev, damaten_ev)
 

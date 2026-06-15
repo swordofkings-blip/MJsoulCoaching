@@ -108,11 +108,18 @@ GENE_DEFS = {
     # リーチ vs ダマテン EV比較パラメータ
     'RIICHI_FOLD_RATE': (0.2, 0.8, float),
     'RIICHI_TSUMO_RATE': (0.2, 0.6, float),
+    'RIICHI_TSUMO_BOOST': (1.0, 1.5, float),
     'RIICHI_URA_MULT': (1.0, 1.5, float),
     'RIICHI_STICK_COST': (0.1, 0.8, float),
+    'RIICHI_OPP_REACH_PENALTY': (0.5, 1.0, float),
+    'RIICHI_LATE_PENALTY': (0.3, 1.0, float),
+    'RIICHI_DEFENSE_THREAT': (0.1, 0.6, float),
+    'RIICHI_DEFENSE_COST': (0.0, 0.5, float),
     'DAMATEN_WIN_BONUS': (0.8, 1.3, float),
     'DAMATEN_TSUMO_RATE': (0.1, 0.5, float),
     'DAMATEN_FLEX_BONUS': (0, 300, int),
+    'DAMATEN_DORA_BOOST': (1.0, 1.5, float),
+    'DAMATEN_DORA_THRESH': (0, 5, int),
 
     # リーチ判断用待ち品質 weights
     'RIICHI_WAIT_RYANMEN': (0.1, 0.6, float),
