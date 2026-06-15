@@ -3271,8 +3271,8 @@ class Evaluator:
         if turn >= 14:
             riichi_ev *= 0.7
         opp_threat = self.strategy.compute_opponent_threat()
-        if opp_threat > 0.1:
-            defense_cost = opp_threat * riichi_score / 1000.0 * 0.5
+        if opp_threat > 0.3:
+            defense_cost = opp_threat * riichi_score / 1000.0 * 0.2
             riichi_ev -= defense_cost
         dbonus = self.params.get('DAMATEN_WIN_BONUS', 1.0)
         damaten_win = win_prob * dbonus
