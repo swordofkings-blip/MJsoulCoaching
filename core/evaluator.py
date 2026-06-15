@@ -185,27 +185,29 @@ class DefenseEvaluator:
         return streak >= 2
 
     def _damaten_tenpai_score(self, seat: int) -> float:
-        score = 0.0
-        consec = self._consecutive_tsumogiri_count(seat)
-        if consec >= 3:
-            score += 0.4
-        elif consec >= 2:
-            score += 0.2
-        if self._broke_tsumogiri_streak(seat):
-            score += 0.3
         moqie = self.state.river_moqie[seat] if seat < len(self.state.river_moqie) else []
+        pstats = self.state.player_stats.get(str(seat), {})
+        damaten_rate = pstats.get("damaten_rate", self.params.get('OPPONENT_DEFAULT_DAMATEN_RATE', 0.15))
+        from core.bayesian_tenpai import estimate_tenpai_prob
+        bayesian_base = estimate_tenpai_prob(moqie, damaten_rate)
+        consec = self._consecutive_tsumogiri_count(seat)
+        boost = 0.0
+        if consec >= 3:
+            boost += 0.25
+        elif consec >= 2:
+            boost += 0.1
+        if self._broke_tsumogiri_streak(seat):
+            boost += 0.2
         if moqie and not moqie[-1]:
             from str_converter import is_honor, tile_to_id
             river = self.state.river[seat]
             if len(river) > 0:
-                last_tile = river[-1]
                 try:
-                    tid = tile_to_id(last_tile)
-                    if is_honor(tid):
-                        score += 0.2
+                    if is_honor(tile_to_id(river[-1])):
+                        boost += 0.15
                 except:
                     pass
-        return min(1.0, score)
+        return min(1.0, bayesian_base + boost)
 
     def _active_reach_seats(self) -> List[int]:
         """
