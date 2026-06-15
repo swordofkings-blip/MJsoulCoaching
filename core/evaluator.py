@@ -3704,7 +3704,10 @@ class Evaluator:
         # 2 は2向聴の閾値、4 は満貫期待飜数の閾値、2 は安全牌が2枚以上必要という閾値です。
         if before_shanten >= 2:
             is_high_value = expected_han >= self.params.get('MELD_HIGH_VALUE_THRESH', 2)
-            if not is_yakuhai_meld and not is_high_value:
+            rank = self.state.my_score_rank()
+            current_turn = (self.state.tsumo_count - 1) // 4 + 1
+            speed_priority = (rank == 0 and current_turn >= 8) or (rank == 3 and self.state.left_tile_count <= 40)
+            if not is_yakuhai_meld and not is_high_value and not speed_priority:
                 return False
             if safe_count < 2:
                 return False
