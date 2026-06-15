@@ -1,0 +1,12 @@
+# DirectML (AMD Radeon on Windows) 版:
+#   pip install torch-directml
+#   これで torch 2.4.1 + torch-directml が自動インストールされる
+#
+# ROCm (Linux) 版:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.2
+#
+# CPU 版 (開発・テスト用):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+numpy>=1.24
+tqdm
