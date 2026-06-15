@@ -133,6 +133,7 @@ GENE_DEFS = {
     'MELD_SPEED_BONUS': (500, 5000, int),
     'MELD_WIN_RATE_BONUS': (0.0, 0.5, float),
     'MELD_SPEED_TURN': (3, 12, int),
+    'MELD_SEAL_THRESH': (0.5, 3.0, float),
 }
 
 STATE_FILE = 'ga_state.json'

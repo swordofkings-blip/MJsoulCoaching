@@ -40,15 +40,15 @@ KEITEN_BONUS_18 = 3000
 class MeldSealTracker:
     """配牌時点の役進行度と初期向聴数から「副露封印モード」を判定"""
 
-    _CLOSED_YAKU = {'pinfu', 'chiitoitsu', 'ryanpeikou', 'sanshoku', 'ittsuu'}
-    _OPEN_YAKU = {'yakuhai', 'toitoi', 'honitsu', 'chinitsu', 'tanyao'}
+    _CLOSED_YAKU = {'pinfu', 'chiitoitsu', 'ryanpeikou'}
+    _OPEN_YAKU = {'yakuhai', 'toitoi', 'honchantaiyaochuu', 'tanyao'}
+    _MELD_BENEFIT_YAKU = {'honitsu', 'chinitsu', 'sanshoku', 'ittsuu'}
 
     def __init__(self):
         self._sealed: bool | None = None
 
-    def evaluate(self, hand, melds, seat, chang, ju) -> bool:
+    def evaluate(self, hand, melds, seat, chang, ju, params: dict = None) -> bool:
         # トイトイ移行条件（対子4以上 + 役牌/ドラ対子）を最優先で動的チェック
-        # キャッシュより先に判定し、条件成立時は常に封印解除
         counts = hand_to_counts(hand)
         n_pairs = sum(1 for c in counts if c >= 2)
         if n_pairs >= 4:
@@ -74,7 +74,6 @@ class MeldSealTracker:
                 return False
         if self._sealed is not None:
             return self._sealed
-        # 初期向聴が4以上 = 手が極端に悪い → 門前維持（来るべき手を待つ）
         from strategy_manager import ShantenCalculator
         initial_shanten = ShantenCalculator.calculate_closed(counts)
         if initial_shanten >= 4:
@@ -85,6 +84,11 @@ class MeldSealTracker:
             yi = analyze_all(hand, melds, seat=seat, chang=chang, ju=ju)
             closed_w = sum(y.progress * y.closed_han for n, y in yi.items() if n in self._CLOSED_YAKU)
             open_w = sum(y.progress * y.closed_han for n, y in yi.items() if n in self._OPEN_YAKU)
+            meld_benefit_w = sum(y.progress * y.closed_han for n, y in yi.items() if n in self._MELD_BENEFIT_YAKU)
+            threshold = (params or {}).get('MELD_SEAL_THRESH', 1.0)
+            if meld_benefit_w >= threshold:
+                self._sealed = False
+                return False
             self._sealed = closed_w >= open_w and closed_w > 0
         except Exception:
             self._sealed = False
@@ -3731,7 +3735,7 @@ class Evaluator:
         # 副露封印モード
         sealed = self.meld_seal.evaluate(self.state.my_hand, self.state.my_melds,
                                           self.state.my_seat, self.state.chang,
-                                          self.state.ju)
+                                          self.state.ju, self.params)
         if sealed and is_closed:
             # 封印中: テンパイのみ許可（役牌すらポンしない）
             if after_shanten <= 0 and expected_han >= 1:
