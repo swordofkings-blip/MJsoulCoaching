@@ -809,8 +809,6 @@ class StrategyManager:
             score_factor = min(1.0, max(0.0, (han - 1) / 4.0))
             speed_score = block_factor / (shanten + 1.0)
             quality_boost = score_factor * speed_score * 0.15
-            if han >= 2:
-                quality_boost += 0.08 * (han - 1)
             res = max(0.01, min(base_val + quality_boost, base_val * 1.3))
             self._base_attack_cache = res
             return res
@@ -831,8 +829,6 @@ class StrategyManager:
             score_factor = min(1.0, max(0.0, (han - 1) / 4.0))
             speed_score = block_factor / (shanten + 1.0)
             quality_boost = score_factor * speed_score * 0.3
-            if han >= 2:
-                quality_boost += 0.1 * (han - 1)
 
             res = max(0.01, min(base_val * block_factor + quality_boost, base_val * 2))
             self._base_attack_cache = res
