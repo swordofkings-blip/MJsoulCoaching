@@ -38,22 +38,40 @@ GENE_DEFS = {
     'SHANTEN_MULTIPLIER': (50, 300, int),
     'SCORE_WALL_SUJI': (400, 1000, int),
     'SCORE_MUSUJI_PER_REACH': (-400, 0, int),
-    'RIICHI_BASE': (0.3, 0.9, float),
-    'RIICHI_WAIT_WEIGHT': (0.5, 2.0, float),
-    'RIICHI_OPP_REACH_PENALTY': (-0.8, 0.0, float),
-    'WAIT_KANCHAN': (0.3, 0.9, float),
+    'SCORE_GENBUTSU': (800, 1200, int),
+    'DENNO_DANGER_SCALE': (10000, 20000, int),
+    'SCORE_HONOR': (100, 500, int),
+    'FURITEN_PENALTY': (100, 500, int),
     'MATAGI_PENALTY': (0, 300, int),
     'PENALTY_6BLOCK_MAINTAIN': (30, 150, int),
+    'PENALTY_SHANTEN_BACKWARD': (500, 2000, int),
+    'PENALTY_STANDARD_SHANTEN_BACKWARD': (0, 500, int),
     'AKA_KEEP_BONUS': (-100, 0, int),
     'ISOLATED_MIDDLE_BONUS': (5, 40, int),
     'HONOR_DISCARD_BONUS': (5, 50, int),
-    
+    'SLIM_WEAK_BLOCK_BONUS': (10, 100, int),
+    'GOOD_SHAPE_CHANGE_BONUS': (0, 30, int),
+    'BLOCK_COMPETITION_PENALTY': (0, 10, int),
+    'SAFE_TILE_TURN_START': (3, 12, int),
+    'SAFE_TILE_RAMP_DURATION': (5, 20, int),
+
     # 進行度（シャンテン数）に応じた基礎攻撃力
     'BASE_ATTACK_MAX_SHANTEN': (4, 6, int),
+    'BASE_ATTACK_TENPAI_HIGH': (0.8, 1.0, float),
+    'BASE_ATTACK_TENPAI_LOW': (0.5, 0.9, float),
+    'BASE_ATTACK_1SHANTEN': (0.2, 0.6, float),
     'BASE_ATTACK_2SHANTEN': (0.05, 0.40, float),
     'BASE_ATTACK_3SHANTEN': (0.01, 0.20, float),
     'BASE_ATTACK_4SHANTEN': (0.005, 0.10, float),
-    
+
+    # リーチ判断パラメータ
+    'RIICHI_BASE': (0.3, 0.9, float),
+    'RIICHI_WAIT_WEIGHT': (0.5, 2.0, float),
+    'RIICHI_OPP_REACH_PENALTY': (-0.8, 0.0, float),
+    'RIICHI_DORA_PENALTY': (-0.3, 0.0, float),
+    'RIICHI_LATE_PENALTY': (-0.5, 0.0, float),
+    'RIICHI_LAST_RANK_BONUS': (0.0, 0.5, float),
+
     # 新ファジィ推論パラメータ（手牌価値Yと場の脅威度Xのメンバーシップ境界）
     'FUZZY_Y_LOW_BOUND': (0.05, 0.25, float),
     'FUZZY_Y_MED_PEAK': (0.15, 0.35, float),
@@ -67,7 +85,7 @@ GENE_DEFS = {
     'FUZZY_VAL_BETA': (0.70, 0.99, float),
     'FUZZY_VAL_GAMMA': (0.40, 0.80, float),
     'FUZZY_SLIM_DEFENSE_WEIGHT': (0.005, 0.08, float),
-    
+
     # 副露防衛判定パラメータ (expand_params で yaku_strategy.meld_defense に展開)
     'meld_defense_riichi_penalty_per_tile': (100, 600, int),
     'meld_defense_threat_penalty_per_tile': (50, 400, int),
