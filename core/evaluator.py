@@ -3703,7 +3703,7 @@ class Evaluator:
         # 満貫以上の大物手や、役牌ポンによる最低限の速度が担保されており、かつ安牌が十分（2枚以上）ある場合のみ鳴くように制限します。
         # 2 は2向聴の閾値、4 は満貫期待飜数の閾値、2 は安全牌が2枚以上必要という閾値です。
         if before_shanten >= 2:
-            is_high_value = expected_han >= 4
+            is_high_value = expected_han >= 2
             if not is_yakuhai_meld and not is_high_value:
                 return False
             if safe_count < 2:
