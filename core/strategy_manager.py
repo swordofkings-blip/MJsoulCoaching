@@ -268,6 +268,34 @@ class ShantenCalculator:
         return m_blocks + p_blocks + s_blocks + z_blocks + open_meld_count
 
     @staticmethod
+    def calculate_effective_blocks(hand_counts: List[int], open_meld_count: int = 0,
+                                   honor_weight: float = 0.3, yaochu_weight: float = 0.5) -> float:
+        """
+        @title 有効ブロック数の算出（孤立牌を割引）
+        @description 孤立字牌・孤立端牌のブロック価値を下げた実効ブロック数を返す。
+        孤立字牌(1枚) = honor_weight ブロック、孤立端牌(1/9,隣接なし)=yaochu_weight ブロック。
+        @param {List[int]} hand_counts - 34種牌カウント
+        @param {int} open_meld_count - 副露数
+        @param {float} honor_weight - 孤立字牌1枚あたりのブロック重み (0.0〜1.0)
+        @param {float} yaochu_weight - 孤立端牌1枚あたりのブロック重み (0.0〜1.0)
+        @returns {float} 実効ブロック数
+        """
+        raw = float(ShantenCalculator.calculate_blocks(hand_counts, open_meld_count))
+        # 孤立字牌の割引: count==1 の字牌は honor_weight 分だけ価値が低い
+        for c in hand_counts[27:34]:
+            if c == 1:
+                raw -= (1.0 - honor_weight)
+        # 孤立端牌の割引: 1/9 で隣接牌がなく孤立している場合
+        for i in range(0, 27, 9):
+            # 1 (i+0)
+            if hand_counts[i] == 1 and hand_counts[i+1] == 0:
+                raw -= (1.0 - yaochu_weight)
+            # 9 (i+8)
+            if hand_counts[i+8] == 1 and hand_counts[i+7] == 0:
+                raw -= (1.0 - yaochu_weight)
+        return raw
+
+    @staticmethod
     @lru_cache(maxsize=None)
     def _solve_blocks_mps(counts9: Tuple[int, ...]) -> int:
         c = list(counts9)
@@ -830,9 +858,26 @@ class StrategyManager:
             speed_score = block_factor / (shanten + 1.0)
             quality_boost = score_factor * speed_score * 0.3
 
-            res = max(0.01, min(base_val * block_factor + quality_boost, base_val * 2))
-            self._base_attack_cache = res
-            return res
+            base_res = max(0.01, min(base_val * block_factor + quality_boost, base_val * 2))
+
+            # 染め手/四喜和ブースト: 字牌が大量に手牌にあれば染め手/四喜和狙い。
+            # 序盤は字牌を揃えて手役成立に寄せるため、攻撃度を一時的に上げる。
+            # HONITSU_BOOST_THRESH (字牌枚数), SHUSUUSHI_BOOST_THRESH (東南西北枚数) で
+            # ベース攻撃度に上乗せ。
+            honor_count = sum(hand_counts[i] for i in range(27, 34))
+            honitsu_th = self.params.get('HONITSU_BOOST_THRESH', 7)
+            shusuushi_th = self.params.get('SHUSUUSHI_BOOST_THRESH', 8)
+            yaku_boost = 0.0
+            if honor_count >= honitsu_th:
+                # 字牌数に応じて攻撃度に最大 0.25 上乗せ (7 枚で +0.05, 10 枚で +0.25)
+                yaku_boost = min(0.25, 0.05 * (honor_count - honitsu_th + 1))
+            wind_count = sum(hand_counts[i] for i in range(27, 31))
+            if wind_count >= shusuushi_th:
+                # 風牌集中 (四喜和狙い): 攻撃度に追加ブースト
+                yaku_boost = min(0.4, yaku_boost + 0.05 * (wind_count - shusuushi_th + 1))
+            base_res = min(1.0, base_res + yaku_boost)
+            self._base_attack_cache = base_res
+            return base_res
 
         # 役満攻撃ブースト
         yakuman_boost = self._yakuman_attack_boost()

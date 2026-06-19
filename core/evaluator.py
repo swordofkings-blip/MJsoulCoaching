@@ -1162,6 +1162,10 @@ class AttackEvaluator:
         if USE_P2:
             quality = self._ukeire_quality_mult(tile)
             effective_ukeire = int(ukeire_total * quality)
+            amplify_div = self.params.get('UKEIRE_AMPLIFY_DIV', 0)
+            if amplify_div > 0:
+                amplified = int(effective_ukeire ** 2 / amplify_div)
+                effective_ukeire += amplified
             score = effective_ukeire * self.params.get('UKEIRE_MULTIPLIER', 10)
             self.record_detail(tile, f"有効牌枚数・質評価 (+{score})")
             shanten_penalty = max(0, shanten) * self.params.get('SHANTEN_MULTIPLIER', 500)
@@ -1193,8 +1197,6 @@ class AttackEvaluator:
                 after_counts[discard_id] = max(0, after_counts[discard_id] - 1)
                 open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
                 blocks_before = ShantenCalculator.calculate_blocks(hand_counts, open_meld_count)
-                # Why: 「全力攻撃」「押し気味」「積極駒組み」「危険度勝負」の攻撃系4モードのときは、
-                # ブロックの受入れを広く受けるために6ブロックを維持することを許容し、ペナルティを課さないようにします。
                 if blocks_before >= 6 and mode not in ("全力攻撃", "押し気味", "積極駒組み", "危険度勝負"):
                     is_isolated = (hand_counts[discard_id] == 1 and not is_honor(discard_id))
                     if is_isolated:
@@ -1209,8 +1211,42 @@ class AttackEvaluator:
                             penalty = self.params.get('PENALTY_6BLOCK_MAINTAIN', 80)
                             score -= penalty
                             self.record_detail(tile, f"6ブロック維持ペナルティ (-{penalty})")
-            # テンパイかつ副露時の役なしチェック
-            if open_meld_count > 0:
+
+        # 三向聴以上の手組み補正: 高シャンテン域では牌の接続性・孤立度に
+        # 基づいた評価を強化。孤立した数牌は積極切り、周囲 2 牌 (両面)
+        # は温存。
+        if shanten >= 3:
+            hc_hs = self.state.my_hand_counts()
+            did_hs = tile_to_id(tile)
+            is_isolated_discard = (hc_hs[did_hs] == 1)
+            if is_isolated_discard and not is_honor(did_hs) and did_hs < 27:
+                base_s = (did_hs // 9) * 9
+                off_s = did_hs - base_s
+                has_l = off_s > 0 and hc_hs[base_s + off_s - 1] > 0
+                has_r = off_s < 8 and hc_hs[base_s + off_s + 1] > 0
+                is_isolated_discard = not has_l and not has_r
+            if is_isolated_discard:
+                isolate_bonus = self.params.get('HIGH_SHANTEN_ISOLATED_CUT_BONUS', 50)
+                if isolate_bonus != 0:
+                    score += isolate_bonus
+                    self.record_detail(tile, f"高シャンテン孤立牌切りボーナス (+{isolate_bonus})")
+            ryanmen_bonus = self.params.get('HIGH_SHANTEN_RYANMEN_KEEP_BONUS', 100)
+            if ryanmen_bonus != 0 and did_hs < 27:
+                base_s = (did_hs // 9) * 9
+                off_s = did_hs - base_s
+                has_l = off_s > 0 and hc_hs[base_s + off_s - 1] > 0
+                has_r = off_s < 8 and hc_hs[base_s + off_s + 1] > 0
+                has_l2 = off_s >= 2 and hc_hs[base_s + off_s - 2] > 0
+                has_r2 = off_s <= 6 and hc_hs[base_s + off_s + 2] > 0
+                if has_l and has_r:
+                    score += ryanmen_bonus
+                    self.record_detail(tile, f"高シャンテン両面温存 (+{ryanmen_bonus})")
+                elif (has_l2 and has_l) or (has_r and has_r2):
+                    score += ryanmen_bonus // 2
+                    self.record_detail(tile, f"高シャンテン嵌張温存 (+{ryanmen_bonus // 2})")
+
+        # テンパイかつ副露時の役なしチェック (shanten <= 0 のときのみ)
+        if shanten <= 0 and self.state.my_melds and any(m.is_open for m in self.state.my_melds):
                 has_yaku = False
                 counts_after = list(hand_counts)
                 counts_after[discard_id] = max(0, counts_after[discard_id] - 1)
@@ -1800,6 +1836,8 @@ class AttackEvaluator:
                 bonus = int(bonus * damp)
             self.record_detail(tile, f"手役・打点評価ボーナス (+{bonus})")
         blocks = ShantenCalculator.calculate_blocks(counts, open_meld_count)
+        blocks_eff = ShantenCalculator.calculate_effective_blocks(counts, open_meld_count)
+        weak_block_gap = blocks - blocks_eff
         turn = (self.state.tsumo_count - 1) // 4 + 1
 
         # ホンイツ・清一色への移行判断
@@ -1893,6 +1931,13 @@ class AttackEvaluator:
                 pinfu_honor_bonus = self.params.get('PINFU_FIT_HONOR_BONUS', 30)
                 bonus += pinfu_honor_bonus
                 self.record_detail(tile, f"平和適合孤立字牌整理ボーナス (+{pinfu_honor_bonus})")
+
+        # 余剰対子整理: 対子が2-3個ある場合、不要な対子を崩す
+        n_hand_pairs = sum(1 for c in counts if c >= 2)
+        if n_hand_pairs >= 2 and counts[discard_id] == 2:
+            excess_pair_bonus = self.params.get('EXCESS_PAIR_BREAK_BONUS', 60)
+            bonus += excess_pair_bonus
+            self.record_detail(tile, f"余剰対子({n_hand_pairs}個)整理ボーナス (+{excess_pair_bonus})")
 
         # 刻子・対子・順子構築に関する評価
         if counts[discard_id] == 2:
@@ -2033,6 +2078,33 @@ class AttackEvaluator:
                 early_honor_bonus = self.params.get('EARLY_HONOR_DISCARD_BONUS', 50)
                 bonus += early_honor_bonus
                 self.record_detail(tile, f"序盤字牌整理促進ボーナス (+{early_honor_bonus})")
+            # 孤立字牌の確率的評価: 完成確率 vs 安全価値
+            # 人間の思考: 「この字牌が役になる確率より、今切って安全牌になる価値の方が高い」
+            if is_honor(discard_id) and not is_pair and not is_dora and counts[discard_id] == 1:
+                visible_all = self.state.all_visible_counts()
+                remaining_in_wall = 4 - visible_all[discard_id]
+                if remaining_in_wall == 0:
+                    # 全て見えている → 永久に完成しない。強く切る動機付け
+                    zero_vis_bonus = self.params.get('ZERO_VISIBLE_HONOR_BONUS', 150)
+                    bonus += zero_vis_bonus
+                    self.record_detail(tile, f"全見え字牌即切り ({zero_vis_bonus})")
+                else:
+                    # 完成確率: 残り山から同じ牌を引く確率（簡易計算）
+                    p_draw = remaining_in_wall / max(1, 34)  # 1/34〜3/34
+                    # 役価値: 役牌(三元/自風/場風)なら1翻分、客風は0
+                    is_yakuhai = (discard_id in SANGEN or discard_id == jikaze or discard_id == bakaze)
+                    honor_value = self.params.get('YAKUHAI_KEEP_VALUE', 200) if is_yakuhai else 0
+                    keep_ev = p_draw * honor_value  # 期待値
+                    # 安全価値: 残り巡目 × 脅威度 × 安全係数
+                    remaining_turns = max(0, 18 - turn)
+                    n_reach_local = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
+                    has_open_meld = any(m.is_open for s in range(4) if s != self.state.my_seat for m in self.state.melds[s])
+                    threat = n_reach_local * 2 + (1 if has_open_meld else 0)
+                    safety_value = remaining_turns * threat * self.params.get('GENBUTSU_VALUE_PER_TURN', 5)
+                    if safety_value > keep_ev:
+                        diff = int(safety_value - keep_ev)
+                        bonus += diff
+                        self.record_detail(tile, f"孤立字牌確率評価(安全{int(safety_value)}>保有{int(keep_ev)}) (+{diff})")
         else:
             is_dora = any(tile_to_id(d) == discard_id for d in self.state.actual_doras)
             if is_dora:
@@ -2104,6 +2176,7 @@ class AttackEvaluator:
                             disc_bonus = self.params.get('ISOLATED_MIDDLE_DISCARD_BONUS_5BLOCK', 30)
                             bonus += disc_bonus
                             self.record_detail(tile, f"5ブロック不要中張牌整理ボーナス (+{disc_bonus})")
+
                     elif off == 0 or off == 8:
                         # 孤立1/9（端牌）: 最も効率が低いため率先して捨てる（巡目減衰）
                         edge_bonus = self.params.get('ISOLATED_EDGE_BONUS', 25)
@@ -2117,36 +2190,83 @@ class AttackEvaluator:
                         bonus += decayed_28
                         self.record_detail(tile, f"孤立2/8牌整理ボーナス (+{decayed_28})")
 
-        # 孤立字牌が手牌に残っている状態で搭子を崩すのを抑制
-        if not is_honor(discard_id) and turn <= 10 and shanten >= 2:
-            isolated_honor_ids = [t for t in range(27, 34) if counts[t] == 1]
-            if isolated_honor_ids and discard_id < 27:
+        # 統一スート維持価値評価: 各スートの「保持する価値」を比較し、
+        # 価値の低いスートから優先的に切る。
+        # 価値 = 接続可能な待ち牌数(残り枚数反映) + 多面張ボーナス + ブロック貢献度
+        if not is_honor(discard_id) and discard_id < 27 and shanten >= 1:
+            visible = self.state.all_visible_counts()
+            disc_suit_start = (discard_id // 9) * 9
+            disc_suit = [counts[disc_suit_start + i] for i in range(9)]
+            disc_vis = [visible[disc_suit_start + i] for i in range(9)]
+            disc_val = Evaluator._suit_keep_value(disc_suit, disc_vis, blocks)
+            other_vals = []
+            for s_start in [0, 9, 18]:
+                if s_start == disc_suit_start:
+                    continue
+                sc = [counts[s_start + i] for i in range(9)]
+                sv = [visible[s_start + i] for i in range(9)]
+                other_vals.append(Evaluator._suit_keep_value(sc, sv, blocks))
+            max_other = max(other_vals) if other_vals else 0
+            min_other = min(other_vals) if other_vals else 0
+            sk_base = self.params.get('SUIT_KEEP_VALUE_SCALE', 50)
+            if disc_val > max_other and disc_val > 0 and blocks < 6:
+                # 最高維持価値スート → 保存
+                adj = int(sk_base * (disc_val - max_other) / max(1, disc_val))
+                bonus -= adj
+                self.record_detail(tile, f"高維持価値スート(V{disc_val:.0f}>他{max_other:.0f})保存 (-{adj})")
+            elif disc_val < min_other or blocks >= 6:
+                # 最低維持価値スート、または過剰ブロック時 → 積極切り
+                adj = int(sk_base * (min_other - disc_val) / max(1, min_other)) if min_other > 0 else sk_base
+                bonus += adj
+                self.record_detail(tile, f"低維持価値スート(V{disc_val:.0f}<他{min_other:.0f})優先切り (+{adj})")
+
+        # 有効牌を減らす切り方を抑制（孤立牌が手牌に残っている場合に強化）
+        # 原理: 手牌に weak_block_gap 分の「弱いブロック」がある場合、有効牌が多い実ブロックを
+        # 切るペナルティを weak_block_gap に比例させる
+        if weak_block_gap > 0 and not is_honor(discard_id) and shanten >= 2:
+            # 孤立端牌(1/9)を切る場合
+            is_isolated_terminal = (discard_id % 9 == 0 or discard_id % 9 == 8) and counts[discard_id] == 1
+            if is_isolated_terminal:
+                adj_left = discard_id % 9 > 0 and counts[discard_id - 1] > 0
+                adj_right = discard_id % 9 < 8 and counts[discard_id + 1] > 0
+                is_isolated_terminal = not adj_left and not adj_right
+            if is_isolated_terminal:
+                gap_term_penalty = int(self.params.get('WEAK_BLOCK_TERMINAL_PENALTY', 80) * weak_block_gap)
+                bonus -= gap_term_penalty
+                self.record_detail(tile, f"弱ブロック({weak_block_gap:.1f})残存で孤立端牌切りペナルティ (-{gap_term_penalty})")
+            elif discard_id < 27:
                 base = (discard_id // 9) * 9
                 off = discard_id - base
                 has_shape = (off > 0 and counts[base + off - 1] > 0) or \
                             (off < 8 and counts[base + off + 1] > 0)
                 if has_shape:
-                    penalty = self.params.get('SHAPE_BREAK_WHILE_HONOR_PENALTY', 100)
-                    bonus -= penalty
-                    self.record_detail(tile, f"孤立字牌({len(isolated_honor_ids)}枚)残存で搭子破壊ペナルティ (-{penalty})")
+                    gap_shape_penalty = int(self.params.get('WEAK_BLOCK_SHAPE_PENALTY', 100) * weak_block_gap)
+                    bonus -= gap_shape_penalty
+                    self.record_detail(tile, f"弱ブロック({weak_block_gap:.1f})残存で搭子破壊ペナルティ (-{gap_shape_penalty})")
 
         # 5ブロックスリム化ボーナス（6ブロック以上で弱いブロック破壊時）
         # Why: 「全力攻撃」「押し気味」「積極駒組み」「危険度勝負」の攻撃系4モードのときは、
         # 広く受け入れるために6ブロック維持を許容するため、5ブロックスリム化ボーナスを適用しません。
-        if blocks >= 6 and not is_honor(discard_id) and mode not in ("全力攻撃", "押し気味", "積極駒組み", "危険度勝負"):
-            base = (discard_id // 9) * 9
-            off = discard_id - base
-            has_l = off > 0 and counts[base + off - 1] > 0
-            has_r = off < 8 and counts[base + off + 1] > 0
-            is_isolated = not has_l and not has_r and counts[discard_id] == 1
-            is_penchan = (off == 0 and counts[base + 1] > 0) or (off == 8 and counts[base + 7] > 0)
-            is_kanchan = (off >= 2 and counts[base + off - 2] > 0 and not has_l) or \
-                         (off <= 6 and counts[base + off + 2] > 0 and not has_r)
-            is_ryanmen = has_l and has_r and counts[discard_id] == 1
-            if (is_isolated or is_penchan or is_kanchan) and not is_ryanmen:
-                slim_bonus = self.params.get('SLIM_WEAK_BLOCK_BONUS', 40)
-                bonus += slim_bonus
-                self.record_detail(tile, f"5ブロックスリム化ボーナス (+{slim_bonus})")
+        if blocks >= 6 and mode not in ("全力攻撃", "押し気味", "積極駒組み", "危険度勝負"):
+            if is_honor(discard_id) and weak_block_gap > 0:
+                # 孤立字牌を切って弱ブロックスリム化
+                gap_slim = int(self.params.get('WEAK_BLOCK_SLIM_BONUS', 30) * weak_block_gap)
+                bonus += gap_slim
+                self.record_detail(tile, f"弱ブロックスリム化({weak_block_gap:.1f}) (+{gap_slim})")
+            elif not is_honor(discard_id):
+                base = (discard_id // 9) * 9
+                off = discard_id - base
+                has_l = off > 0 and counts[base + off - 1] > 0
+                has_r = off < 8 and counts[base + off + 1] > 0
+                is_isolated = not has_l and not has_r and counts[discard_id] == 1
+                is_penchan = (off == 0 and counts[base + 1] > 0) or (off == 8 and counts[base + 7] > 0)
+                is_kanchan = (off >= 2 and counts[base + off - 2] > 0 and not has_l) or \
+                             (off <= 6 and counts[base + off + 2] > 0 and not has_r)
+                is_ryanmen = has_l and has_r and counts[discard_id] == 1
+                if (is_isolated or is_penchan or is_kanchan) and not is_ryanmen:
+                    slim_bonus = self.params.get('SLIM_WEAK_BLOCK_BONUS', 40)
+                    bonus += slim_bonus
+                    self.record_detail(tile, f"5ブロックスリム化ボーナス (+{slim_bonus})")
 
         # 動的良形変化シミュレータ（1-2向聴、12巡目まで）
         turn = (self.state.tsumo_count - 1) // 4 + 1
@@ -2186,6 +2306,17 @@ class AttackEvaluator:
                 if shape_bonus > 0:
                     bonus += shape_bonus
                     self.record_detail(tile, f"良形変化ボーナス (+{shape_bonus})")
+
+        # ブロック数充足時の複合形崩し: ブロック数が十分(>=5)で、このスートに
+        # 過剰な牌がある場合、複合形を崩して手をシンプルにする。
+        # 例: 3445(中膨れ)は4枚で2ブロック。5ブロック以上なら不要な複合形を崩す。
+        if blocks >= 5 and not is_honor(discard_id) and discard_id < 27 and shanten >= 1:
+            suit_start = (discard_id // 9) * 9
+            suit_tile_count = sum(counts[suit_start + i] for i in range(9))
+            if suit_tile_count >= 4:
+                excess_complex_bonus = self.params.get('EXCESS_COMPLEX_CUT_BONUS', 40)
+                bonus += excess_complex_bonus
+                self.record_detail(tile, f"過剰複合形({suit_tile_count}枚)整理 ({excess_complex_bonus})")
 
         # スジ引っ掛け（罠待ち）ボーナス（1向聴、8巡目まで）
         if shanten <= 1 and turn <= self.params.get('TRAP_WAIT_TURN_LIMIT', 8):
@@ -2613,6 +2744,118 @@ class Evaluator:
         return 0
 
     @staticmethod
+    def _classify_suit_patterns(suit9: list, visible9: list = None, blocks_total: int = 5) -> list:
+        """スートの牌構成から認識されたパターンのリストを返す。
+        各パターン: (pattern_name, score_delta, wait_tiles, description)
+        score_delta > 0 = 保持価値が高い, < 0 = 切る価値が高い"""
+        patterns = []
+        vals = [i for i in range(9) if suit9[i] > 0]
+        if not vals:
+            return patterns
+        
+        # === 良形パターン（残す）===
+        
+        # 三面張 34567
+        for i in range(len(vals)-4):
+            if vals[i+4] - vals[i] == 4:
+                patterns.append(('sanmenchan', 8, vals[i:i+5], '三面張'))
+                break
+        
+        # エントツ 3334 / 4445
+        for i in range(9):
+            if suit9[i] >= 3:
+                if i-1 in vals and suit9[i-1] >= 1:
+                    patterns.append(('entotsu', 5, [i-1, i], 'エントツ'))
+                elif i+1 in vals and suit9[i+1] >= 1:
+                    patterns.append(('entotsu', 5, [i, i+1], 'エントツ'))
+        
+        # リャンメン 45
+        for i in range(8):
+            if suit9[i] >= 1 and suit9[i+1] >= 1:
+                patterns.append(('ryanmen', 3, [i, i+1], 'リャンメン'))
+        
+        # リャンタン 5567
+        for i in range(7):
+            if suit9[i] >= 2 and suit9[i+1] >= 1 and suit9[i+2] >= 1:
+                patterns.append(('ryantan', 4, [i, i+1, i+2], 'リャンタン'))
+            if suit9[i] >= 1 and suit9[i+1] >= 1 and suit9[i+2] >= 2:
+                patterns.append(('ryantan', 4, [i, i+1, i+2], 'リャンタン'))
+        
+        # ノベタン 4567
+        for i in range(len(vals)-3):
+            if vals[i+3] - vals[i] == 3:
+                patterns.append(('nobetan', 4, vals[i:i+4], 'ノベタン'))
+                break
+        
+        # 中膨れ 3445 (pair at i, adjacent both sides)
+        for i in range(1, 8):
+            if suit9[i] >= 2 and suit9[i-1] >= 1 and suit9[i+1] >= 1:
+                patterns.append(('nakabukure', 2, [i-1, i, i+1], '中膨れ'))
+        
+        # === 愚形パターン（切る）===
+        
+        # ペンチャン 12
+        if 0 in vals and 1 in vals:
+            patterns.append(('penchan', -2, [0, 1], 'ペンチャン'))
+        if 7 in vals and 8 in vals:
+            patterns.append(('penchan', -2, [7, 8], 'ペンチャン'))
+        
+        # 孤立牌
+        for v in vals:
+            adj = (v-1 in vals) or (v+1 in vals) or (v-2 in vals) or (v+2 in vals)
+            if not adj and suit9[v] == 1:
+                patterns.append(('isolated', -2, [v], '孤立'))
+        
+        # 両面で挟まれたカンチャン(33455型) → 残り牌次第で愚形化
+        if visible9 is not None:
+            for i in range(7):
+                if suit9[i] >= 1 and suit9[i+1] == 0 and suit9[i+2] >= 1:
+                    if suit9[i] >= 2 or suit9[i+2] >= 2:  # 33455 or 22344
+                        mid_remaining = 4 - visible9[i+1]
+                        if mid_remaining <= 1:
+                            patterns.append(('dead_kanchan', -4, [i, i+2], f'死亡カンチャン(残{mid_remaining})'))
+        
+        # === コンテキスト依存パターン ===
+        # 過剰複合形: ブロック数が十分で、このスートに4枚以上
+        total_tiles = sum(suit9)
+        if total_tiles >= 4 and blocks_total >= 5:
+            patterns.append(('excess_complex', -3, vals, f'過剰複合({total_tiles}枚)'))
+        
+        return patterns
+    
+    @staticmethod
+    def _suit_keep_value(suit9: list, visible9: list = None, blocks_total: int = 5) -> float:
+        """スートの維持価値。パターンマッチングで算出。"""
+        patterns = Evaluator._classify_suit_patterns(suit9, visible9, blocks_total)
+        base = 0.0
+        # 基本: ユニーク牌数 + 接続数
+        vals = [i for i in range(9) if suit9[i] > 0]
+        if not vals:
+            return -5.0
+        base += len(vals) * 1.0  # 種類数
+        for i in range(8):
+            if suit9[i] > 0 and suit9[i+1] > 0:
+                base += 1.5  # 隣接
+        for i in range(7):
+            if suit9[i] > 0 and suit9[i+2] > 0:
+                base += 0.5  # 1gap
+        
+        # パターンのスコアを加算
+        for name, delta, _, _ in patterns:
+            base += delta
+        
+        # 残り枚数割引
+        if visible9 is not None:
+            for v in vals:
+                rem = 4 - visible9[v]
+                if rem == 0:
+                    base -= 2.0  # 自摸れない牌は価値なし
+                elif rem == 1:
+                    base -= 0.5
+        
+        return base
+
+    @staticmethod
     def _any_opponent_has_open_meld(state: GameState) -> bool:
         for seat in range(4):
             if seat == state.my_seat:
@@ -2745,13 +2988,206 @@ class Evaluator:
             assist_sq = self._assist_squeeze_bonus(tile)
             v += assist_sq
 
+        # 序盤の浮き字牌ブースト: 1〜EARLY_HONOR_TURN 巡目、字牌の切りやすさを
+        # 種類別に判定。手牌内枚数が keep_thresh 以下の字牌ほど優先的に切らせる。
+        # 序盤特例: 1〜EARLY_HONOR_AGGRESSIVE_TURN 巡目までは keep_thresh を
+        # 1 段下げる (浮き字牌をより積極的に切らせる)。4 巡目以降で染め手/四喜和
+        # 狙いがない場合は通常の keep_thresh に戻す。
+        # EARLY_HONOR_BIAS (デフォルト 0 = 無効) の値が字牌評価に加算される。
+        early_turn_limit = self.params.get('EARLY_HONOR_TURN', 6)
+        aggressive_turn_limit = self.params.get('EARLY_HONOR_AGGRESSIVE_TURN', 3)
+        current_turn_eval = (self.state.tsumo_count - 1) // 4 + 1
+        if current_turn_eval <= early_turn_limit:
+            early_honor_bias = self.params.get('EARLY_HONOR_BIAS', 0.0)
+            if early_honor_bias != 0.0 and is_honor(tile_to_id(tile)):
+                tid = tile_to_id(tile)
+                hand_counts_e = self.state.my_hand_counts()
+                seat_wind_id = 27 + ((self.state.my_seat - self.state.ju) % 4)
+                bakaze_id = 27 + (self.state.chang % 4)
+                # 字牌種類別の keep 閾値
+                if 27 <= tid <= 30:
+                    if tid == seat_wind_id:
+                        keep_th = self.params.get('JIKAZE_KEEP_THRESH', 3)
+                        kind = '自風'
+                    elif tid == bakaze_id:
+                        keep_th = self.params.get('BAKAZE_KEEP_THRESH', 3)
+                        kind = '場風'
+                    else:
+                        keep_th = self.params.get('OTAKAZE_KEEP_THRESH', 1)
+                        kind = 'オタ風'
+                else:  # 31=白, 32=發, 33=中
+                    keep_th = self.params.get('SANGEN_KEEP_THRESH', 3)
+                    kind = '三元牌'
+                # 序盤 1-3 巡はより積極的に字牌を切る (浮き 1 枚目を優先)
+                if current_turn_eval <= aggressive_turn_limit:
+                    keep_th = max(1, keep_th - 1)
+                # 染め手/四喜和狙いなら keep_th を 1 段戻す (残す)
+                honor_count = sum(hand_counts_e[i] for i in range(27, 34))
+                if honor_count >= self.params.get('OTKAZE_HONITSU_HONOR_THRESH', 6):
+                    keep_th += 1
+                # 手構造補正: 刻子寄り手 (字牌 + 么九多め) は字牌を温存、
+                # 順子寄り手 (中張の連なり多め) は字牌を切る。
+                shape = self._classify_hand_shape(hand_counts_e)
+                if shape == '刻子寄り':
+                    keep_th += self.params.get('KOTSU_KEEP_BONUS', 1)
+                elif shape == '順子寄り':
+                    keep_th -= self.params.get('SHUNSU_AGGRESSIVE_BONUS', 1)
+                # 順位補正: トップ目 (rank 0) は手作り優先で字牌を温存、
+                # 最下位 (rank 3) はスピード寄せで字牌を切りやすい。
+                rank = self.state.my_score_rank()
+                if rank == 0:
+                    keep_th += self.params.get('RANK0_HONOR_BONUS', 1)
+                elif rank == 3:
+                    keep_th -= self.params.get('RANK3_HONOR_BONUS', 1)
+                # 期待飜数補正: 手役期待飜数が低い (2 飜未満) 場合は字牌を
+                # 積極的に切る (手役構成が弱いなら序盤から字牌を流して
+                # 構成やり直し) 人間行動に近い。
+                # 逆に期待飜数が高い (3 飜以上) 場合は字牌を温存 (手作り急ぐ)
+                est_han = self._estimate_han_safe()
+                low_han_th = self.params.get('LOW_HAN_THRESH', 2)
+                high_han_th = self.params.get('HIGH_HAN_THRESH', 3)
+                if est_han < low_han_th:
+                    keep_th -= self.params.get('LOW_HAN_HONOR_CUT', 1)
+                elif est_han >= high_han_th:
+                    keep_th += self.params.get('HIGH_HAN_HONOR_KEEP', 1)
+                keep_th = max(0, keep_th)
+                if hand_counts_e[tid] <= keep_th:
+                    v += early_honor_bias
+                    self.record_detail(tile, f"序盤浮き{kind}({hand_counts_e[tid]}枚<=keep_th={keep_th}, shape={shape})ブースト (+{early_honor_bias})")
+
         if self._is_kokushi_protect_mode():
             tile_id = tile_to_id(tile)
             if tile_id in Evaluator._YAOCHU_INDICES:
                 kokushi_penalty = self.params.get('KOKUSHI_DISCARD_PENALTY', 2000)
                 v -= kokushi_penalty
                 self.record_detail(tile, f"国士無双狙い: 么九牌温存 (-{kokushi_penalty})")
+            return v
+
+        # 序盤の孤立么九アクティブ切り: 序盤 (1〜EARLY_YAOCHU_TURN 巡目) で
+        # 切ろうとしている牌が「手牌内 1 枚の么九」なら加点。
+        # 序盤は孤立么九 (両面/嵌張どちらの搭子にもなれない) を
+        # 積極的に切ることが人間鳳凰卓の標準的な判断。
+        # 国士無双狙い (上記) と混同しないように別ブロック。
+        yaochu_turn_limit = self.params.get('EARLY_YAOCHU_TURN', 4)
+        current_turn_y = (self.state.tsumo_count - 1) // 4 + 1
+        if current_turn_y <= yaochu_turn_limit:
+            early_yaochu_bias = self.params.get('EARLY_YAOCHU_BIAS', 0.0)
+            if early_yaochu_bias != 0.0:
+                tid_y = tile_to_id(tile)
+                # 么九牌 (0, 8, 9, 17, 18, 26) かつ 手牌内 1 枚
+                if tid_y in Evaluator._YAOCHU_INDICES:
+                    counts_y = self.state.my_hand_counts()
+                    if counts_y[tid_y] == 1:
+                        v += early_yaochu_bias
+                        self.record_detail(tile, f"序盤孤立么九ブースト (+{early_yaochu_bias})")
+
+        # ドラ・赤5 温存ロジック: 序盤 (1〜DORA_KEEP_TURN 巡目) でドラ表示牌と
+        # 一致する牌や赤5を切ろうとすると減点。人間は序盤にドラを大事に
+        # するため、これらを残して高打点を狙う行動に近い。
+        # ただし終盤 (DORA_KEEP_TURN+1 巡以降) は他家がリーチしていなければ
+        # ドラ待ちが残る可能性が下がるため減点を弱める。
+        dora_keep_turn = self.params.get('DORA_KEEP_TURN', 6)
+        if current_turn_y <= dora_keep_turn:
+            dora_keep_penalty = self.params.get('DORA_KEEP_PENALTY', 50)
+            tid_d = tile_to_id(tile)
+            doras = self.state.doras  # ドラ表示牌のリスト
+            # tile が赤5なら penalty (他家から出にくいが手作り中は残す価値あり)
+            if tile.startswith('0'):
+                v -= dora_keep_penalty
+                self.record_detail(tile, f"序盤赤5温存 (-{dora_keep_penalty})")
+            else:
+                # tile がドラ表示牌の次の牌 (=ドラそのもの)
+                dora_target_ids = set()
+                for d in doras:
+                    d_id = tile_to_id(d)
+                    dora_target_ids.add(d_id)
+                if tid_d in dora_target_ids:
+                    v -= dora_keep_penalty
+                    self.record_detail(tile, f"序盤ドラ温存 (-{dora_keep_penalty})")
+
+        # 中張の孤立牌アクティブ切り: 序盤 (1〜MIDDLE_EDGE_TURN 巡目) で
+        # 切ろうとしている牌が「中張 (2-8) で手牌内 1 枚」なら加点。
+        # 中張の孤立牌は両面/嵌張のいずれの搭子にもなれず、序盤は
+        # 浮かせる価値が低い。人間鳳凰卓の序盤で中張の孤立牌を
+        # 積極的に切ることが多い。
+        # ドラ/赤5/連番の一部なら減点を弱める。
+        middle_turn_limit = self.params.get('MIDDLE_EDGE_TURN', 4)
+        if current_turn_y <= middle_turn_limit:
+            middle_edge_bias = self.params.get('MIDDLE_EDGE_BIAS', 0.0)
+            if middle_edge_bias != 0.0:
+                # tile をパース: 2m/8p など
+                if len(tile) == 2 and tile[1] in ('m', 'p', 's'):
+                    n = int(tile[0])
+                    s = tile[1]
+                    if 2 <= n <= 8:  # 中張
+                        counts_m = self.state.my_hand_counts()
+                        tid_m = tile_to_id(tile)
+                        # 端 (2, 8) は加点強め、中央 (3-7) は加点弱め
+                        if n in (2, 8):
+                            bonus = middle_edge_bias
+                        else:
+                            bonus = middle_edge_bias // 2
+                        if counts_m[tid_m] == 1:  # 手牌内 1 枚 (孤立)
+                            v += bonus
+                            self.record_detail(tile, f"序盤中張{n}{s}孤立ブースト (+{bonus})")
+                        elif counts_m[tid_m] == 2 and current_turn_y <= 2:
+                            # 超序盤 1-2 巡なら 2 枚の雀頭候補も 1 枚流す (加点弱め)
+                            v += bonus // 2
+                            self.record_detail(tile, f"超序盤中張{n}{s}雀頭候補ブースト (+{bonus // 2})")
         return v
+
+    def _estimate_han_safe(self) -> int:
+        """
+        @title 期待飜数の見積もり (try/except 安全版)
+        @description strategy_manager._estimate_han() を呼ぶが、
+            内部で例外が出た場合は 0 を返す。字牌処理の
+            期待飜数補正で使う。
+        @returns {int} 期待飜数
+        """
+        try:
+            return self.strategy._estimate_han()
+        except Exception:
+            return 0
+
+    def _classify_hand_shape(self, hand_counts: List[int]) -> str:
+        """
+        @title 手構造分類
+        @description 手牌を「刻子寄り」「順子寄り」「混合」の3種類に分類する。
+        牌 ID ごとの枚数を使い、中張の連なり (3 枚以上連続) と
+        字牌/么九の枚数の比率で判定する。
+
+        判定基準:
+        - 中張連なりスコア = 各スート (萬/筒/索) で連続する牌 ID のペア数
+        - 刻子寄り: 連なりスコア < 4 かつ 字牌+么九枚数 >= 5
+        - 順子寄り: 連なりスコア >= 6
+        - その他: 混合
+
+        @param {List[int]} hand_counts - 34 要素の手牌カウント
+        @returns {str} '刻子寄り' / '順子寄り' / '混合'
+        """
+        # 中張の連なりをカウント
+        shun_score = 0
+        for suit_base in (0, 9, 18):  # 萬子, 筒子, 索子
+            for i in range(7):  # 1-2-3 から 7-8-9 まで 7 組
+                if (hand_counts[suit_base + i] > 0 and
+                    hand_counts[suit_base + i + 1] > 0 and
+                    hand_counts[suit_base + i + 2] > 0):
+                    shun_score += min(hand_counts[suit_base + i],
+                                     hand_counts[suit_base + i + 1],
+                                     hand_counts[suit_base + i + 2])
+
+        # 字牌 + 么九 (0, 8, 9, 17, 18, 26 + 27-33) の枚数
+        yaochu_count = 0
+        for tid in (0, 8, 9, 17, 18, 26):
+            yaochu_count += hand_counts[tid]
+        for tid in range(27, 34):
+            yaochu_count += hand_counts[tid]
+
+        if shun_score >= 6:
+            return '順子寄り'
+        if yaochu_count >= 5 and shun_score < 4:
+            return '刻子寄り'
+        return '混合'
 
     def _is_kokushi_protect_mode(self) -> bool:
         hand_counts = self.state.my_hand_counts()
@@ -3007,7 +3443,7 @@ class Evaluator:
             return None, float('inf')
         unique_tiles = list(dict.fromkeys(hand))
         mode = self.strategy.get_strategy_mode()
-        # Why: 安牌を切るためのロジック（安全牌の強制選択）は「完全撤退」モードのときのみ適用します。
+        # Why: 安牌を切るためのロジック（安全牌の絞り込み処理）は「完全撤退」モードのときのみ適用します。
         # 「撤退準備」の段階では、安牌を手元に残す（抱える）ことを優先するため、ここでは強制フィルタリングを行いません。
         if mode == "完全撤退":
             threshold = self.params.get('SCORE_SUJI', 500)
@@ -3602,6 +4038,43 @@ class Evaluator:
         # 大明槓は専用判定に委ねる（シャンテン計算や副露封印より優先）
         if type_ == 2:
             return self.should_daiminkan(tiles, from_seat)
+
+        # 序盤チー禁止: EARLY_TURN_DISABLE 巡目まではチーを完全封印。
+        # 序盤は手役構成 (両面/タンヤオ/染め手) を作る最中なので、面子の自由度
+        # を残すためチーは鳴かない。役牌ポンは序盤でも鳴く (自風の三枚目確定
+        # などでスピード優先)。ポンの序盤制限は OTKAZE_PON_DISABLE で別途扱う。
+        early_disable = self.params.get('MELD_EARLY_TURN_DISABLE', 0)
+        current_turn_meld = (self.state.tsumo_count - 1) // 4 + 1
+        if early_disable > 0 and current_turn_meld <= early_disable and type_ == 0:
+            return False
+
+        # オタ風ポン: 通常は禁止 (0 翻確定) だが染め手・四喜和狙いなら許可。
+        # OTKAZE_PON_DISABLE (デフォルト True) でも例外:
+        # - 染め手狙い: 手牌内字牌が HONITSU_HONOR_THRESH 以上 (デフォルト 6 枚)
+        #   → 鳴いて混一色・字一色を完成させる価値がある
+        # - 四喜和狙い: 手牌内東南西北が SHUSUUSHI_HONOR_THRESH 以上 (デフォルト 8 枚)
+        #   → 小四喜/大四喜確定に必要
+        if type_ == 1 and self.params.get('OTKAZE_PON_DISABLE', True):
+            target_id = tile_to_id(tiles[0])
+            seat_wind = 27 + ((self.state.my_seat - self.state.ju) % 4)
+            round_wind = 27 + (self.state.chang % 4)
+            # 27,28,29,30 = 東南西北 の字牌。自風・場風以外がオタ風
+            if 27 <= target_id <= 30 and target_id != seat_wind and target_id != round_wind:
+                hand_counts_e = self.state.my_hand_counts()
+                # 手牌内字牌枚数 (東南西北白發中の合計)
+                honor_count = sum(hand_counts_e[i] for i in range(27, 34))
+                honitsu_th = self.params.get('OTKAZE_HONITSU_HONOR_THRESH', 6)
+                if honor_count >= honitsu_th:
+                    # 染め手狙い: 許可
+                    pass
+                else:
+                    # 四喜和狙い: 東南西北が手牌に何枚あるか
+                    wind_count = sum(hand_counts_e[i] for i in range(27, 31))
+                    shusuushi_th = self.params.get('OTKAZE_SHUSUUSHI_THRESH', 8)
+                    if wind_count >= shusuushi_th:
+                        pass
+                    else:
+                        return False
 
         bias = self._yaku_meld_bias(type_, tiles, hand_after, melds_after)
         if bias is False:

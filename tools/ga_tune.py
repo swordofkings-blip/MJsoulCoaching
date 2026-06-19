@@ -35,6 +35,7 @@ def _eval_worker(args):
 GENE_DEFS = {
     # 基礎の何切るスコア計算パラメータ
     'UKEIRE_MULTIPLIER': (2, 10, int),
+    'UKEIRE_AMPLIFY_DIV': (0, 200, int),
     'SHANTEN_MULTIPLIER': (50, 300, int),
     'SCORE_WALL_SUJI': (400, 1000, int),
     'SCORE_MUSUJI_PER_REACH': (-400, 0, int),
@@ -93,6 +94,78 @@ GENE_DEFS = {
     'meld_defense_absolute_threshold': (150, 600, int),
     'meld_defense_conditional_threshold': (50, 400, int),
     'meld_defense_conditional_push_min': (0.4, 0.90, float),
+
+    # 序盤副露ゲート: EARLY_TURN_DISABLE 巡目まではチーを完全封印。
+    # ポンの序盤制限は OTKAZE_PON_DISABLE (config 側で固定 True) で扱う。
+    'MELD_EARLY_TURN_DISABLE': (0, 6, int),
+
+    # ブロック削減ボーナス: 6→5 削減時
+    'BLOCK_REDUCTION_BONUS': (0, 200, int),
+    # 高シャンテン6ブロック維持ペナルティ (三向聴以上)
+    'PENALTY_6BLOCK_HIGH_SHANTEN': (0, 300, int),
+    # 中シャンテン7ブロック維持ペナルティ (一向聴/二向聴)
+    'PENALTY_6BLOCK_MID_SHANTEN': (0, 200, int),
+
+    # 序盤浮き字牌ブースト: 序盤は字牌(枚数<=2)を優先的に切らせる
+    'EARLY_HONOR_BIAS': (0, 300, int),
+    'EARLY_HONOR_TURN': (0, 10, int),
+    'EARLY_HONOR_AGGRESSIVE_TURN': (0, 6, int),
+    # 字牌種類別の「序盤に残す枚数」閾値
+    'JIKAZE_KEEP_THRESH': (1, 3, int),
+    'BAKAZE_KEEP_THRESH': (1, 3, int),
+    'SANGEN_KEEP_THRESH': (1, 3, int),
+    'OTAKAZE_KEEP_THRESH': (0, 2, int),
+
+    # オタ風ポン例外: 染め手/四喜和狙いの判定閾値
+    'OTKAZE_HONITSU_HONOR_THRESH': (4, 9, int),
+    'OTKAZE_SHUSUUSHI_THRESH': (6, 10, int),
+
+    # 染め手/四喜和攻撃ブーストの閾値
+    'HONITSU_BOOST_THRESH': (5, 9, int),
+    'SHUSUUSHI_BOOST_THRESH': (6, 10, int),
+
+    # 手構造補正: 刻子寄り手 = 字牌を温存, 順子寄り手 = 字牌を切る
+    'KOTSU_KEEP_BONUS': (0, 2, int),
+    'SHUNSU_AGGRESSIVE_BONUS': (0, 2, int),
+    # 順位補正: トップ目 = 字牌温存, 最下位 = 字牌切り
+    'RANK0_HONOR_BONUS': (0, 2, int),
+    'RANK3_HONOR_BONUS': (0, 2, int),
+    # 期待飜数補正: 低い手 (2飜未満) なら字牌を積極切り
+    'LOW_HAN_THRESH': (1, 4, int),
+    'LOW_HAN_HONOR_CUT': (0, 2, int),
+    # 期待飜数補正: 高い手 (3飜以上) なら字牌を温存
+    'HIGH_HAN_THRESH': (2, 6, int),
+    'HIGH_HAN_HONOR_KEEP': (0, 2, int),
+
+    # 序盤の孤立么九アクティブ切り: 序盤 1-3 巡で孤立么九を切らせる
+    'EARLY_YAOCHU_TURN': (0, 6, int),
+    'EARLY_YAOCHU_BIAS': (0, 300, int),
+    # 高シャンテン(三向聴以上)の手組み補正
+    'HIGH_SHANTEN_ISOLATED_CUT_BONUS': (0, 300, int),
+    'HIGH_SHANTEN_RYANMEN_KEEP_BONUS': (0, 300, int),
+    # 弱ブロック（孤立牌）関連パラメータ
+    'WEAK_BLOCK_TERMINAL_PENALTY': (0, 200, int),
+    'WEAK_BLOCK_SHAPE_PENALTY': (0, 200, int),
+    'WEAK_BLOCK_SLIM_BONUS': (0, 200, int),
+    # 孤立字牌の確率的評価
+    'ZERO_VISIBLE_HONOR_BONUS': (0, 300, int),
+    'YAKUHAI_KEEP_VALUE': (0, 500, int),
+    'GENBUTSU_VALUE_PER_TURN': (0, 20, int),
+    # 中張牌内の優先順位（2/8 vs 5/6）
+    'ISOLATED_EDGE_BONUS': (0, 200, int),
+    'ISOLATED_28_BONUS': (0, 200, int),
+    # 余剰対子整理
+    'EXCESS_PAIR_BREAK_BONUS': (0, 200, int),
+    # ブロック貢献度ゼロ牌整理
+    'ZERO_BLOCK_CONTRIB_CUT_BONUS': (0, 300, int),
+    # スート維持価値比較
+    'SUIT_KEEP_VALUE_SCALE': (0, 200, int),
+    # ドラ・赤5 温存: 序盤にドラ・赤5を切ると減点
+    'DORA_KEEP_TURN': (0, 10, int),
+    'DORA_KEEP_PENALTY': (0, 200, int),
+    # 中張の孤立牌アクティブ切り: 序盤 1-3 巡で孤立 2-8 を切る
+    'MIDDLE_EDGE_TURN': (0, 6, int),
+    'MIDDLE_EDGE_BIAS': (0, 300, int),
 
     # 人読み: 対戦相手の統計デフォルト値
     'OPPONENT_DEFAULT_CALL_RATE': (0.15, 0.55, float),
