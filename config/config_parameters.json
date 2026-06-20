@@ -397,12 +397,12 @@
   "PENALTY_6BLOCK_MID_SHANTEN": 31,
   "HIGH_SHANTEN_ISOLATED_CUT_BONUS": 0,
   "HIGH_SHANTEN_RYANMEN_KEEP_BONUS": 0,
-  "meld_defense_riichi_penalty_per_tile": 285,
-  "meld_defense_threat_penalty_per_tile": 326,
-  "meld_defense_min_defense_weight": 0.208,
+  "meld_defense_riichi_penalty_per_tile": 293,
+  "meld_defense_threat_penalty_per_tile": 352,
+  "meld_defense_min_defense_weight": 0.182,
   "meld_defense_absolute_threshold": 322,
-  "meld_defense_conditional_threshold": 77,
-  "meld_defense_conditional_push_min": 0.638,
+  "meld_defense_conditional_threshold": 178,
+  "meld_defense_conditional_push_min": 0.691,
   "WEAK_BLOCK_TERMINAL_PENALTY": 0,
   "WEAK_BLOCK_SHAPE_PENALTY": 48,
   "WEAK_BLOCK_SLIM_BONUS": 62,
@@ -413,5 +413,7 @@
   "ISOLATED_EDGE_BONUS": 81,
   "EXCESS_PAIR_BREAK_BONUS": 7,
   "ZERO_BLOCK_CONTRIB_CUT_BONUS": 49,
-  "SUIT_KEEP_VALUE_SCALE": 0
+  "SUIT_KEEP_VALUE_SCALE": 0,
+  "HONOR_VISIBLE_CUT_BONUS": 25,
+  "HONOR_CROWD_CUT_BONUS": 30
 }

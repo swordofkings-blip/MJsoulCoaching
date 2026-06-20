@@ -160,6 +160,9 @@ GENE_DEFS = {
     'ZERO_BLOCK_CONTRIB_CUT_BONUS': (0, 300, int),
     # スート維持価値比較
     'SUIT_KEEP_VALUE_SCALE': (0, 200, int),
+    # 字牌一貫評価（見え枚数+過密）
+    'HONOR_VISIBLE_CUT_BONUS': (0, 100, int),
+    'HONOR_CROWD_CUT_BONUS': (0, 100, int),
     # ドラ・赤5 温存: 序盤にドラ・赤5を切ると減点
     'DORA_KEEP_TURN': (0, 10, int),
     'DORA_KEEP_PENALTY': (0, 200, int),

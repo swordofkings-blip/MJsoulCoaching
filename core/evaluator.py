@@ -2078,6 +2078,21 @@ class AttackEvaluator:
                 early_honor_bonus = self.params.get('EARLY_HONOR_DISCARD_BONUS', 50)
                 bonus += early_honor_bonus
                 self.record_detail(tile, f"序盤字牌整理促進ボーナス (+{early_honor_bonus})")
+            # 見え枚数+過密状態による統一字牌評価（孤立字牌のみ）
+            # 河・副露・ドラ表示牌の見え枚数を考慮。自分の手牌の1枚は除外。
+            if not is_pair and not is_dora and counts[discard_id] == 1:
+                visible_opp = visible_all[discard_id]  # 手牌込みの見え枚数（対子落とし考慮）
+                isolated_honor_ct = sum(1 for t in range(27, 34) if counts[t] == 1)
+                # 見え枚数効果: 相手に見えている枚数で判断
+                # 0枚(完全生牌) = 危険 → 残す(-), 3枚(全公開) = 安全 → 切る(+)
+                vis_effect = (visible_opp - 1) * self.params.get('HONOR_VISIBLE_CUT_BONUS', 20)
+                # 過密効果: 孤立字牌が3枚以上で切る促進
+                crowd_effect = max(0, isolated_honor_ct - 2) * self.params.get('HONOR_CROWD_CUT_BONUS', 25)
+                total_adj = vis_effect + crowd_effect
+                if total_adj != 0:
+                    bonus += total_adj
+                    self.record_detail(tile, f"字牌統合(見{visible_opp}密{isolated_honor_ct}) ({total_adj:+d})")
+            # 弱ブロック（孤立牌）関連パラメータ
             # 孤立字牌の確率的評価: 完成確率 vs 安全価値
             # 人間の思考: 「この字牌が役になる確率より、今切って安全牌になる価値の方が高い」
             if is_honor(discard_id) and not is_pair and not is_dora and counts[discard_id] == 1:
