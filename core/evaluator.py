@@ -238,12 +238,6 @@ class DefenseEvaluator:
                     ids.add(tile_to_id(t))
                 except Exception:
                     continue
-            for m in self.state.melds[seat]:
-                for t in m.tiles:
-                    try:
-                        ids.add(tile_to_id(t))
-                    except Exception:
-                        continue
             common = ids if common is None else common & ids
             if not common:
                 return set()
@@ -333,22 +327,14 @@ class DefenseEvaluator:
         # なぜセットを用いるか：重複を排除し、他家現物判定のルックアップ（in 演算）を O(1) で高速化するためです。
         genbutsu = set()
         
-        # 1. 河の現物
+        # 1. 河の現物（そのプレイヤーが捨てた牌のみ。副露は含まない）
         for t in self.state.river[seat]:
             try:
                 genbutsu.add(tile_to_id(t))
             except Exception:
                 continue
                 
-        # 2. 副露（メルド）を構成する牌
-        for m in self.state.melds[seat]:
-            for t in m.tiles:
-                try:
-                    genbutsu.add(tile_to_id(t))
-                except Exception:
-                    continue
-                    
-        # 3. リーチ後通過牌（このプレイヤーがリーチ者の場合）
+        # 2. リーチ後通過牌（このプレイヤーがリーチ者の場合）
         # なぜこれを行うか：リーチ後に誰かが切って通った牌はフリテンにより安全となるため、現物として扱います。
         if self.state.reach_states[seat].is_reach:
             post_count = 0
