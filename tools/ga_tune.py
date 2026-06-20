@@ -163,6 +163,8 @@ GENE_DEFS = {
     # 字牌一貫評価（見え枚数+過密）
     'HONOR_VISIBLE_CUT_BONUS': (0, 100, int),
     'HONOR_CROWD_CUT_BONUS': (0, 100, int),
+    # 安牌優先順位
+    'INDIVIDUAL_GENBUTSU_BONUS': (0, 100, int),
     # ドラ・赤5 温存: 序盤にドラ・赤5を切ると減点
     'DORA_KEEP_TURN': (0, 10, int),
     'DORA_KEEP_PENALTY': (0, 200, int),

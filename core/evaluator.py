@@ -635,20 +635,29 @@ class DefenseEvaluator:
         # リーチ者がいる場合（電脳麻将危険度評価モデルの適用）
         # ============================================================
         
-        # 1. 共通現物の早期リターン判定
+        # 1. 個別現物（単独リーチ時）の早期リターン判定
+        # なぜ個別現物を共通現物より先に判定するか：
+        # 個別現物は「今は安全だが、他者が今後リーチすると危険になる可能性がある」牌。
+        # 一方、共通現物は全警戒対象に現物＝今後も常に安全。
+        # 従って「なくなる前に使い切る」ため、個別現物を優先して切る。
+        if n_reach == 1:
+            for seat in reach_seats:
+                if tile_id in self._genbutsu_ids_for_seat(seat):
+                    score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
+                    # 個別現物は後で危険になる可能性を考慮し、共通現物より高めに
+                    if tile_id in self._common_genbutsu_ids(reach_seats):
+                        self.record_detail(tile, f"リーチ者共通現物 (+{score})")
+                    else:
+                        score += self.params.get('INDIVIDUAL_GENBUTSU_BONUS', 20)
+                        self.record_detail(tile, f"リーチ者個別現物 (+{score})")
+                    return score
+
+        # 2. 共通現物の早期リターン判定（個別で返らなかった場合）
         common_genbutsu = self._common_genbutsu_ids(reach_seats)
         if tile_id in common_genbutsu:
             score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
             self.record_detail(tile, f"他家共通現物 (+{score})")
             return score
-
-        # 2. 個別現物（単独リーチ時）の早期リターン判定
-        if n_reach == 1:
-            for seat in reach_seats:
-                if tile_id in self._genbutsu_ids_for_seat(seat):
-                    score = self.params.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
-                    self.record_detail(tile, f"リーチ者個別現物 (S{seat}) (+{score})")
-                    return score
 
         # 3. リーチ後通過牌（他家立直時）の早期リターン判定
         # なぜ行うか：複数リーチ時でも、立直後に誰かが切って通った牌はフリテンにより完全にロンされないためです。
