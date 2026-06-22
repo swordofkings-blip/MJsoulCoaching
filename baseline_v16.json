@@ -1,0 +1,99 @@
+{
+  "log_count": 10,
+  "log_count_ok": 0,
+  "log_count_error": 10,
+  "errors": [
+    [
+      "2026010100gm-00a9-0000-0aa8cefa",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-16fc5a75",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-325ff95a",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-20559d73",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-339ce9e2",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-3b87a142",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-333184ee",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-42994671",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-3bca4427",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ],
+    [
+      "2026010100gm-00a9-0000-3593948c",
+      "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    ]
+  ],
+  "rounds_total": 0,
+  "discard_total": 0,
+  "discard_match": 0,
+  "meld_total": 0,
+  "meld_match": 0,
+  "overall_total": 0,
+  "overall_match": 0,
+  "elapsed_sec": 0.36078619956970215,
+  "sec_per_log": 0.03607861995697022,
+  "workers": 6,
+  "per_log": [
+    {
+      "id": "2026010100gm-00a9-0000-0aa8cefa",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-16fc5a75",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-325ff95a",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-20559d73",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-339ce9e2",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-3b87a142",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-333184ee",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-42994671",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-3bca4427",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    },
+    {
+      "id": "2026010100gm-00a9-0000-3593948c",
+      "status": "err:UnboundLocalError:cannot access local variable 'open_meld_count' where it is not associated with a value"
+    }
+  ]
+}

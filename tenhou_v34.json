@@ -1,0 +1,108 @@
+{
+  "log_count": 10,
+  "log_count_ok": 10,
+  "log_count_error": 0,
+  "errors": [],
+  "rounds_total": 110,
+  "discard_total": 4063,
+  "discard_match": 2987,
+  "meld_total": 1439,
+  "meld_match": 1172,
+  "overall_total": 5502,
+  "overall_match": 4159,
+  "elapsed_sec": 99.31111884117126,
+  "sec_per_log": 9.931111884117126,
+  "workers": 6,
+  "per_log": [
+    {
+      "id": "2026010100gm-00a9-0000-333184ee",
+      "status": "ok",
+      "rounds": 11,
+      "discard_total": 373,
+      "discard_match": 265,
+      "meld_total": 101,
+      "meld_match": 83
+    },
+    {
+      "id": "2026010100gm-00a9-0000-339ce9e2",
+      "status": "ok",
+      "rounds": 12,
+      "discard_total": 489,
+      "discard_match": 365,
+      "meld_total": 175,
+      "meld_match": 138
+    },
+    {
+      "id": "2026010100gm-00a9-0000-325ff95a",
+      "status": "ok",
+      "rounds": 14,
+      "discard_total": 431,
+      "discard_match": 321,
+      "meld_total": 157,
+      "meld_match": 132
+    },
+    {
+      "id": "2026010100gm-00a9-0000-20559d73",
+      "status": "ok",
+      "rounds": 9,
+      "discard_total": 358,
+      "discard_match": 261,
+      "meld_total": 128,
+      "meld_match": 109
+    },
+    {
+      "id": "2026010100gm-00a9-0000-0aa8cefa",
+      "status": "ok",
+      "rounds": 14,
+      "discard_total": 582,
+      "discard_match": 446,
+      "meld_total": 201,
+      "meld_match": 174
+    },
+    {
+      "id": "2026010100gm-00a9-0000-16fc5a75",
+      "status": "ok",
+      "rounds": 13,
+      "discard_total": 478,
+      "discard_match": 353,
+      "meld_total": 157,
+      "meld_match": 125
+    },
+    {
+      "id": "2026010100gm-00a9-0000-3b87a142",
+      "status": "ok",
+      "rounds": 9,
+      "discard_total": 296,
+      "discard_match": 206,
+      "meld_total": 135,
+      "meld_match": 97
+    },
+    {
+      "id": "2026010100gm-00a9-0000-3593948c",
+      "status": "ok",
+      "rounds": 11,
+      "discard_total": 403,
+      "discard_match": 289,
+      "meld_total": 125,
+      "meld_match": 101
+    },
+    {
+      "id": "2026010100gm-00a9-0000-3bca4427",
+      "status": "ok",
+      "rounds": 9,
+      "discard_total": 346,
+      "discard_match": 258,
+      "meld_total": 134,
+      "meld_match": 113
+    },
+    {
+      "id": "2026010100gm-00a9-0000-42994671",
+      "status": "ok",
+      "rounds": 8,
+      "discard_total": 307,
+      "discard_match": 223,
+      "meld_total": 126,
+      "meld_match": 100
+    }
+  ]
+}
