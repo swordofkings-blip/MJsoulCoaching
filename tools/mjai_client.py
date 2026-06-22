@@ -247,22 +247,35 @@ class MjaiPipeClient:
                     self._send({"type": "dahai", "actor": self._id,
                                 "pai": "1m", "tsumogiri": False})
 
-            elif t == "dahai" and msg.get("actor") != self._id and \
-                    msg.get("possible_actions", []):
-                try:
-                    decs = self._query_pipe(extra_dahai={
-                        "type": "dahai", "actor": msg["actor"],
-                        "pai": msg["pai"], "tsumogiri": msg.get("tsumogiri", False)
-                    })
+        elif t == "dahai" and msg.get("actor") != self._id and \
+                msg.get("possible_actions", []):
+            try:
+                decs = self._query_pipe(extra_dahai={
+                    "type": "dahai", "actor": msg["actor"],
+                    "pai": msg["pai"], "tsumogiri": msg.get("tsumogiri", False)
+                })
+                # decs は dict または list の可能性あり。dict ならそのまま、list なら先頭
+                if isinstance(decs, list):
                     dec = decs[0] if decs else None
-                except Exception as ex:
-                    print(f"Error querying pipe on opponent dahai: {ex}", file=sys.stderr)
-                    dec = None
-
-                if dec and dec.get("type") in ("hora", "pon", "chi", "daiminkan"):
-                    self._send(dec)
                 else:
+                    dec = decs
+            except Exception as ex:
+                print(f"Error querying pipe on opponent dahai: {ex}", file=sys.stderr)
+                dec = None
+
+            if dec and isinstance(dec, dict) and dec.get("type") in ("hora", "pon", "chi", "daiminkan"):
+                self._send(dec)
+            elif dec and isinstance(dec, dict) and dec.get("type") == "dahai":
+                # AIが手出しを選択(鳴き拒否)。possible_actionsにmeldがある場合はプロトコル違反になるのでnoneを返す
+                has_meld_option = any(
+                    a.get("type") in ("pon", "chi", "daiminkan")
+                    for a in msg.get("possible_actions", [])
+                )
+                if has_meld_option:
                     self._send({"type": "none", "actor": self._id})
+                else:
+                    self._send({"type": "dahai", "actor": self._id,
+                                "pai": dec.get("pai", "1m"), "tsumogiri": dec.get("tsumogiri", False)})
             else:
                 self._send({"type": "none", "actor": self._id})
 

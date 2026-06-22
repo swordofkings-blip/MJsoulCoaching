@@ -961,7 +961,7 @@ class StrategyManager:
         if self._push_score_cache is not None:
             return self._push_score_cache
         a_base = self.compute_base_attack()
-        t_max = self.compute_opponent_threat()
+        t_max = self.compute_opponent_threat_with_reach_boost()
         if t_max <= 0.0:
             hand_counts = self.state.my_hand_counts()
             open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
@@ -979,9 +979,48 @@ class StrategyManager:
         # --- 人読み: リーチ押し引き補正 ---
         push_score = self._apply_player_stats_riichi_adjust(push_score)
         push_score = self._apply_position_override(push_score)
+        # 人間例外: 4位(ラス回避)+テンパイは押す
+        # ただし2リーチ以上はオリる
+        n_reach = sum(1 for s in range(4) if s != self.state.my_seat and self.state.reach_states[s].is_reach)
+        if n_reach >= 1:
+            hand_counts = self.state.my_hand_counts()
+            open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+            shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+            rank = self.state.my_score_rank()
+            if rank == 3 and shanten <= 0:
+                if n_reach >= 2:
+                    push_score = min(push_score, 0.02)
+                else:
+                    push_score = max(push_score, 0.75)
+            elif rank == 3 and shanten == 1:
+                if n_reach >= 2:
+                    push_score = min(push_score, 0.02)
+                else:
+                    push_score = max(push_score, 0.4)
         res = max(0.0, min(1.0, push_score))
         self._push_score_cache = res
         return res
+
+    def compute_opponent_threat_with_reach_boost(self) -> float:
+        """
+        @title 対家リーチ脅威度をブーストした最大脅威度
+        @description 対家にリーチ者がいる場合、脅威度をブーストして
+                    ファジィ推論が「高脅威」側(Y低/X高)に倒れるようにする。
+                    人間はリーチ時に97%オリる → ファジィの X軸を「高」側に
+                    強く振る → 「完全撤退」「回し打ち」「危険度勝負」のいずれかが選択される。
+        @returns {float} ブースト済み最大脅威度 (0.0〜1.0)
+        """
+        t_max = self.compute_opponent_threat()
+        n_reach = sum(1 for s in range(4) if s != self.state.my_seat and self.state.reach_states[s].is_reach)
+        if n_reach >= 1:
+            # 1リーチ: X軸高(0.65)に持っていく
+            # 2リーチ+: より強く(0.85)
+            if n_reach >= 2:
+                boosted = max(t_max, 0.85)
+            else:
+                boosted = max(t_max, 0.70)
+            return min(1.0, boosted)
+        return t_max
 
     def _apply_player_stats_riichi_adjust(self, push_score: float) -> float:
         player_stats = self.state.player_stats or {}
@@ -1081,6 +1120,52 @@ class StrategyManager:
                 return push_score
         return push_score
 
+    def tile_class_push_bias(self, tile: str) -> float:
+        """
+        @title 牌分類による押し/オリバイアス
+        @description 天鳳人間ログから導かれたルール:
+                  字牌を切る = 押す判断(自分の弱い牌を処分しつつ安全に進める)
+                  中張牌を切る = オリる判断(安全牌を通す)
+                  端牌を切る = 中間(状況次第)
+                  人間データ: 字牌切りの100%が押す、中張切りの100%がオリる。
+                  染め手進行中は字牌切り傾向がさらに強まる(3-4シャン 41-46%)。
+        @param {str} tile - 切る牌
+        @returns {float} 押しバイアス(正=押し寄り、負=オリ寄り)
+        """
+        from str_converter import tile_to_id as t2id
+        is_honor_tile = is_honor(t2id(tile))
+        is_terminal_tile = tile[0] in ('1', '9')
+
+        # 染め手進行中(主力色7枚以上 + 3-4シャンテン): 字牌切りバイアスを強化
+        # 人間は字牌を切って染め手を積極的に完成させる
+        dye_bonus_active = False
+        try:
+            hand = self.state.my_hand
+            if hand:
+                counts = hand_to_counts(hand)
+                suits_count = [sum(counts[i:i+9]) for i in (0, 9, 18)]
+                max_suit = max(suits_count)
+                open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+                if open_meld_count == 0:
+                    sh = ShantenCalculator.calculate_closed_effective(counts)
+                else:
+                    sh = ShantenCalculator.calculate_open(counts, open_meld_count)
+                if max_suit >= 7 and sh >= 3:
+                    dye_bonus_active = True
+        except Exception:
+            pass
+
+        if is_honor_tile:
+            base_bias = self.params.get('PUSH_SAFE_TILES_BONUS', 0.3)
+            if dye_bonus_active:
+                # 染め手進行中: 字牌を切る = 手を進めつつオリる (中間押しの強化)
+                base_bias = self.params.get('DYE_HONOR_PUSH_BONUS', 0.45)
+            return base_bias
+        elif is_terminal_tile:
+            return self.params.get('TERMINAL_TILE_PUSH_BONUS', 0.15)
+        else:
+            return -self.params.get('FOLD_SAFE_TILES_BONUS', 0.3)
+
     def is_high_hand_value_first_turn(self) -> bool:
         base_attack = self.compute_base_attack()
         y_low, y_med, y_high = self.fuzzy_engine.get_y_membership(base_attack)
@@ -1114,30 +1199,58 @@ class StrategyManager:
 
     def get_strategy_mode(self) -> str:
         """
-        @title 戦略モードの取得
-        @description 押し引きスコア、攻撃度、脅威度から決定される最終的な戦略モード（日本語）を返します。
+        @title 戦略モードの取得(ファジィ推論ベース)
+        @description 押し引きスコア、攻撃度、脅威度から決定される最終的な戦略モードを返します。
+                  人間は「牌タイプ選択」と「モード選択」を統合的に行うため、
+                  ここではファジィマトリクスでモードを決定し、牌選択レベルは
+                  evaluator.tile_class_push_bias() で別途調整する。
+                  対家リーチ時は脅威度をブーストしてファジィで「高脅威」側を強制する。
         @returns {str} 戦略モード（例: '全力攻撃', '完全撤退' など）
         """
         if self._strategy_mode_cache is not None:
             return self._strategy_mode_cache
+
+        # 前方全押し(全ツッパ)モード: 終盤4位+残り僅か → 例外
         if self.is_zenchi_mode():
             self._strategy_mode_cache = "全力攻撃"
             return "全力攻撃"
 
-        # なぜこのようにするか：以前のファジィ制御導入前のシステムでは、押し引きスコア (push_score) が
-        # ベタオリ閾値 (MODE_BETAORI_THRESHOLD) 以下のときに「防御」モードに移行していました。
-        # 現在の「完全撤退」モードはかつての「防御」に相当するため、push_score が閾値以下の場合は、
-        # 順位状況や点数差（オーラストップ目など）の押し引き判断を最優先し、ファジィ推論を上書きして強制的に完全撤退にします。
         push = self.compute_push_score()
+
+        # 人間例外: 4位+テンパイ → 押す(対家1リーチのみ)
+        n_reach = sum(1 for s in range(4) if s != self.state.my_seat and self.state.reach_states[s].is_reach)
+        if n_reach >= 1:
+            hand_counts = self.state.my_hand_counts()
+            open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+            shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+            rank = self.state.my_score_rank()
+            if rank == 3 and shanten <= 0 and n_reach < 2:
+                # 4位テンパイ + 1リーチのみ → 全力攻撃(押す)
+                self._strategy_mode_cache = "全力攻撃"
+                return "全力攻撃"
+            elif rank == 3 and shanten == 1 and n_reach < 2:
+                # 4位1シャンテン + 1リーチのみ → 押し気味
+                self._strategy_mode_cache = "押し気味"
+                return "押し気味"
+
+        # ベース攻撃度 + 脅威度(リーチ時はブースト済み)でファジィ評価
+        base_attack = self.compute_base_attack()
+        max_threat = self.compute_opponent_threat_with_reach_boost()
+
+        # ファジィ推論: X軸 = 脅威度(リーチ時0.70+), Y軸 = 攻撃度
+        mode, _ = self.fuzzy_engine.evaluate_strategy(base_attack, max_threat)
+
+        # push_score が極端に低い場合(オリ寄り)、ファジィの結果を「完全撤退」に上書き
+        # 人間は 0.05 以下で「オリ判断」を示す
         betaori_th = self.params.get('MODE_BETAORI_THRESHOLD', 0.05)
         if push <= betaori_th:
-            self._strategy_mode_cache = "完全撤退"
-            return "完全撤退"
+            mode = "完全撤退"
 
-        base_attack = self.compute_base_attack()
-        max_threat = self.compute_opponent_threat()
+        # push_score が低い(= 0.25以下)場合は「撤退準備」を維持(ファジィの結果より優先)
+        retreat_th = self.params.get('MODE_RETREAT_PREP_THRESHOLD', 0.25)
+        if push <= retreat_th and mode not in ("完全撤退", "撤退準備"):
+            mode = "撤退準備"
 
-        mode, _ = self.fuzzy_engine.evaluate_strategy(base_attack, max_threat)
         self._strategy_mode_cache = mode
         return mode
 

@@ -2894,9 +2894,14 @@ class Evaluator:
         push_score = self.strategy.compute_push_score()
         mode = self.strategy.get_strategy_mode()
 
+        # オリモード時の字牌切り: 人間は字牌を処分として切る(中間押し)
+        # 字牌を少しだけ優先することで、人間の中間押しを再現
+        is_fold_mode = mode in ('完全撤退', '撤退準備', 'スリム化', '様子見')
+
         alpha = self.params.get('FUZZY_VAL_ALPHA', 0.70)
         beta = self.params.get('FUZZY_VAL_BETA', 0.85)
         gamma = self.params.get('FUZZY_VAL_GAMMA', 0.40)
+        slim_weight = self.params.get('FUZZY_SLIM_DEFENSE_WEIGHT', 0.3)
         safe_threshold = self.params.get('SCORE_SUJI', 500)
 
         if mode == "全力攻撃":
@@ -2924,7 +2929,6 @@ class Evaluator:
             self.record_detail(tile, f"戦略モード「回し打ち」(攻撃比率: {gamma:.2f})を適用")
 
         elif mode == "スリム化":
-            slim_weight = self.params.get('FUZZY_SLIM_DEFENSE_WEIGHT', 0.3)
             v = float(v_defense * (1 - slim_weight) + v_attack * slim_weight)
             self.record_detail(tile, f"戦略モード「スリム化」(攻撃比率: {slim_weight:.2f})を適用")
 
@@ -3823,7 +3827,7 @@ class Evaluator:
         """
         hand_counts = self.state.my_hand_counts()
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
-        
+
         # 前提条件のチェック
         if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
             return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "すでに立直しています。"}
@@ -3831,6 +3835,19 @@ class Evaluator:
             return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "門前（メンゼン）ではないため立直できません。"}
         if self.state.scores[self.state.my_seat] < 1000:
             return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "持ち点が1000点未満のため立直できません。"}
+
+        # ルールベース判定
+        rule_result = self._rule_based_should_riichi()
+        if rule_result is not None:
+            riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
+            tag = "ルール【立直推奨】" if rule_result else "ルール【ダマテン推奨】"
+            reason_text = f"{tag} (翻数基準) リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}"
+            return {
+                "should_riichi": rule_result,
+                "score": round(riichi_ev, 3),
+                "threshold": round(damaten_ev, 3),
+                "reason": reason_text
+            }
 
         riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
         should_riichi = riichi_ev > damaten_ev
@@ -3847,6 +3864,147 @@ class Evaluator:
             "threshold": round(damaten_ev, 3),
             "reason": reason_text
         }
+
+    def _count_dora_in_hand(self, hand: List[str] = None) -> int:
+        if hand is None:
+            hand = self.state.my_hand
+        doras = self.state.doras
+        return sum(1 for h in hand for d in doras if d and id_to_tile(tile_to_id(d)) == h)
+
+    def _count_yakuhai_in_hand(self, hand: List[str] = None) -> int:
+        from collections import Counter
+        if hand is None:
+            hand = self.state.my_hand
+        cnt = Counter(hand)
+        bakaze = ['E', 'S', 'W', 'N'][self.state.chang % 4]
+        jikaze = ['E', 'S', 'W', 'N'][self.state.my_seat]
+        jihai = ['h', 'g', 'r']
+        n = 0
+        if f'{bakaze}p' in cnt: n += cnt[f'{bakaze}p']
+        if f'{jikaze}p' in cnt: n += cnt[f'{jikaze}p']
+        for j in jihai:
+            if f'{j}h' in cnt: n += cnt[f'{j}h']
+        return n
+
+    def _count_ura_candidates_in_wall(self) -> int:
+        visible = self.state.all_visible_counts()
+        ura_count = 0
+        for d in self.state.doras:
+            if not d: continue
+            tid = tile_to_id(d)
+            if 0 <= tid < 34:
+                ura_count += max(0, 4 - visible[tid])
+        return ura_count
+
+    def _wait_remaining_total(self) -> int:
+        waits = self._wait_tiles_for_tenpai()
+        if not waits:
+            return 0
+        visible = self.state.all_visible_counts()
+        total = 0
+        for w in waits:
+            tid = w if isinstance(w, int) else tile_to_id(w)
+            if 0 <= tid < 34:
+                total += max(0, 4 - visible[tid])
+        return total
+
+    def _rule_based_should_riichi(self) -> Optional[bool]:
+        """
+        @title ルールベースのリーチ判定（人間判断ベース）
+        @description 天鳳人間ログ分析に基づくルール。
+                  閾値はすべて config パラメータ化されており GA で調整可能。
+        @returns True=リーチ推奨, False=ダマテン推奨, None=EV比較に委ねる
+        """
+        p = self.params
+        if self.state.is_any_opponent_reach():
+            return False
+        if self.state.scores[self.state.my_seat] < 1000:
+            return False
+        hand_counts = self.state.my_hand_counts()
+        if sum(hand_counts) != 14:
+            return False
+        if any(m.is_open for m in self.state.my_melds):
+            return False
+
+        from hand_value import estimate_han_advanced
+        han = estimate_han_advanced(
+            self.state.my_hand, self.state.my_melds, self.state.doras,
+            is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
+            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju
+        )
+        han = max(han, 1)
+        wait_total = self._wait_remaining_total()
+        dora = self._count_dora_in_hand()
+        yakuhai = self._count_yakuhai_in_hand()
+        ura = self._count_ura_candidates_in_wall()
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        is_dealer = (self.state.my_seat == self.state.dealer_seat)
+        my_score = self.state.scores[self.state.my_seat]
+        rank = sorted(self.state.scores, reverse=True).index(my_score) + 1
+        is_4th = (rank == 4)
+        is_top = (rank == 1)
+
+        # 閾値パラメータ(すべて GA 調整対象)
+        th = lambda key, default: p.get(key, default)
+
+        # 高打点: han_threshold_4 翻以上なら基本的にリーチ
+        han_th4 = th('RIICHI_HAN_HIGH_THRESH', 4)
+        if han >= han_th4:
+            # 終盤+悪形ならダマテンも検討
+            late_turn_damaten = th('RIICHI_LATE_TURN_DAMATEN', 12)
+            late_wait_max = th('RIICHI_LATE_WAIT_MAX', 4)
+            very_late_turn = th('RIICHI_VERY_LATE_TURN', 13)
+            very_late_wait_max = th('RIICHI_VERY_LATE_WAIT_MAX', 6)
+            if turn >= very_late_turn and wait_total <= very_late_wait_max:
+                return False
+            if turn >= late_turn_damaten and wait_total <= late_wait_max:
+                return False
+            return True
+
+        # 中打点: han_threshold_mid (デフォルト3) 翻
+        han_th3 = th('RIICHI_HAN_MID_THRESH', 3)
+        if han >= han_th3:
+            wait_good = th('RIICHI_WAIT_GOOD_THRESH', 7)
+            wait_min = th('RIICHI_WAIT_MIN_MID', 4)
+            dora_th = th('RIICHI_DORA_MID_THRESH', 1)
+            yakuhai_th = th('RIICHI_YAKUHAI_MID_THRESH', 3)
+            dora_double = th('RIICHI_DORA_DOUBLE_THRESH', 2)
+            turn_min = th('RIICHI_TURN_MIN_MID', 1)
+            turn_max = th('RIICHI_TURN_MAX_MID', 11)
+            if wait_total >= wait_good:
+                return True
+            if wait_total >= wait_min and (dora >= dora_th or yakuhai >= yakuhai_th):
+                return True
+            if dora >= dora_double and wait_total >= wait_min:
+                return True
+            if wait_total >= 3 and turn_min <= turn <= turn_max:
+                return True
+            return False
+
+        # 低打点: 厳しめ
+        wait_good_low = th('RIICHI_WAIT_GOOD_LOW', 7)
+        turn_min_low = th('RIICHI_TURN_MIN_LOW', 1)
+        turn_max_low = th('RIICHI_TURN_MAX_LOW', 11)
+        wait_vlow = th('RIICHI_WAIT_VERY_LOW', 10)
+        ura_th = th('RIICHI_URA_THRESH', 1)
+        dora_low = th('RIICHI_DORA_LOW_THRESH', 2)
+        yakuhai_low = th('RIICHI_YAKUHAI_LOW_THRESH', 3)
+        last_wait = th('RIICHI_LAST_WAIT_LOW', 5)
+        last_turn = th('RIICHI_LAST_TURN', 10)
+
+        if wait_total >= wait_good_low and turn_min_low <= turn <= turn_max_low:
+            return True
+        if wait_total >= wait_vlow and ura >= ura_th:
+            return True
+        if dora >= dora_low:
+            return True
+        if yakuhai >= yakuhai_low:
+            return True
+        if is_4th and wait_total >= last_wait and turn >= last_turn:
+            return True
+        if han == 2 and wait_total >= 3 and turn_min_low <= turn <= turn_max_low - 3:
+            return True
+        return False
 
     def should_riichi(self) -> bool:
         if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
@@ -3866,6 +4024,11 @@ class Evaluator:
             return False
         if self.state.scores[self.state.my_seat] < 1000:
             return False
+
+        # ルールベース判定（人間判断ベース）
+        rule_result = self._rule_based_should_riichi()
+        if rule_result is not None:
+            return rule_result
 
         riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
         return riichi_ev > damaten_ev
