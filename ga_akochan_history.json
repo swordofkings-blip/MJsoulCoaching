@@ -1,0 +1,29 @@
+{
+  "best_score": 39.2,
+  "best_gene": {
+    "RIICHI_URA_MULT": 1.5,
+    "RIICHI_FOLD_RATE": 0.45,
+    "RIICHI_DEFENSE_COST": 0.2,
+    "DAMATEN_FLEX_BONUS": 5,
+    "DAMATEN_YAKU_IMP_BONUS": 0.02,
+    "DAMATEN_WAIT_IMP_BONUS": 0.0,
+    "PUSH_SAFE_TILES_BONUS": 0.3,
+    "FOLD_SAFE_TILES_BONUS": 0.3,
+    "TERMINAL_TILE_PUSH_BONUS": 0.15,
+    "DYE_HONOR_PUSH_BONUS": 0.45,
+    "RIICHI_LATE_PENALTY": 0.85,
+    "RIICHI_OPP_REACH_PENALTY": 0.55
+  },
+  "history": [
+    {
+      "0": 39.2,
+      "1": -7.2,
+      "2": 9.8
+    },
+    {
+      "0": 39.2,
+      "1": -7.2,
+      "2": 9.8
+    }
+  ]
+}
