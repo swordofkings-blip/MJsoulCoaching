@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # 雀魂コーチングくん - forwarder.exe ビルド設定
 # ビルドコマンド: pyinstaller build/forwarder.spec
-# 注: spec ファイルからの相対パスで解決される
+# 注: onedir モードで再起動時のリソース抽出問題を回避
 
 import os
 from PyInstaller.utils.hooks import collect_submodules
@@ -53,19 +53,19 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# Why: COLLECT を使って onedir 形式でビルド。
+# onefile だと再起動時に forwarder.pkg の展開が失敗して 500 エラーになるが、
+# onedir なら _internal/ ディレクトリに展開済みなので再起動が安定する。
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='forwarder',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -73,4 +73,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='forwarder',
 )

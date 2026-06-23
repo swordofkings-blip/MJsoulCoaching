@@ -1493,19 +1493,45 @@ class PacketHandler(BaseHTTPRequestHandler):
         if self.path == '/api/restart':
             self._send_json({"status": "ok", "message": "Restarting server..."})
             self.wfile.flush()
+            import time
+            import shutil
+
             # __pycache__を削除して古いキャッシュを無効化
             for root, dirs, files in os.walk(_FW_ROOT):
                 for d in dirs:
                     if d == '__pycache__':
-                        import shutil
                         shutil.rmtree(os.path.join(root, d), ignore_errors=True)
-            # Pythonはモジュールキャッシュを持つため、ファイル変更を反映するには完全なプロセス再起動が必要
+
+            # Why: PyInstaller で exe 化した場合の再起動ロジック。
+            # 新プロセスを別 stdout/stderr で spawn して、旧プロセスのファイルロックを回避。
             if getattr(sys, 'frozen', False):
                 cmd = [sys.executable]
             else:
                 cmd = [sys.executable, os.path.abspath(__file__)]
-            subprocess.Popen(cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
-            import time
+
+            try:
+                # 旧プロセスから完全に独立した新プロセスを起動
+                # Why: DETACHED_PROCESS を指定しないと新プロセスがコンソールを
+                # 共有できず、PyInstaller の展開に失敗する。
+                DETACHED_PROCESS = 0x00000008
+
+                # デバッグ用: 新プロセスの stdout/stderr を別ファイルに
+                restart_log_dir = os.path.join(os.path.dirname(_FW_ROOT), 'logs')
+                os.makedirs(restart_log_dir, exist_ok=True)
+                new_stdout = open(os.path.join(restart_log_dir, 'restart_stdout.log'), 'wb')
+                new_stderr = open(os.path.join(restart_log_dir, 'restart_stderr.log'), 'wb')
+
+                subprocess.Popen(
+                    cmd,
+                    cwd=os.path.dirname(os.path.abspath(__file__)),
+                    creationflags=DETACHED_PROCESS,
+                    stdout=new_stdout,
+                    stderr=new_stderr,
+                )
+            except Exception as e:
+                sys.stderr.write(f"[restart] Failed to spawn: {e}\n")
+                sys.stderr.flush()
+
             time.sleep(1.0)
             os._exit(0)
         if self.path == '/api/evaluate':
@@ -1603,6 +1629,11 @@ def run(server_class=HTTPServer, handler_class=PacketHandler, port=8080):
     @param {int} port - サーバー待機ポート (デフォルト: 8080)
     """
     server_address = ('', port)
+    # Why: ソケットオプション SO_REUSEADDR を有効化。
+    # PyInstaller で exe 化した再起動時に、旧プロセスのソケットが TIME_WAIT 状態でも
+    # 新プロセスが同じポートにバインドできるようにする。
+    # これがないと再起動後に 500 エラー (templates が見つからない) が発生する。
+    HTTPServer.allow_reuse_address = True
     httpd = server_class(server_address, handler_class)
     # ハードコードされた数値 8080 は、ローカル開発サーバー用ポートとして一般的で重複を避けるために選定されたものです。
     print(f"Starting server on port {port}...")
