@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 @title 配布用パッケージングスクリプト
-@description PyInstaller の onedir ビルドで生成された実行ファイル (forwarder.exe) と
-             _internal/ ディレクトリ、説明書 (README.txt) を抽出し、配布用の
-             ZIP アーカイブを自動生成します。
+@description PyInstaller の onedir ビルドで生成された
+             雀魂コーチングくん.exe (日本語名のランチャー) と _internal/ ディレクトリ、
+             説明書 (README.txt) を抽出し、配布用の ZIP アーカイブを自動生成します。
 @usage
     # 1. ビルドを実行 (onedir モード)
     pyinstaller --clean --noconfirm build/forwarder.spec
@@ -13,14 +13,15 @@
 
 @output
     dist/雀魂コーチングくん_release/
-    ├── forwarder.exe         # PyInstaller ビルド済みランチャー
-    ├── _internal/            # Python ランタイム + ライブラリ
+    ├── 雀魂コーチングくん.exe      # PyInstaller ビルド済みランチャー
+    ├── _internal/                  # Python ランタイム + ライブラリ
+    │   ├── 雀魂コーチングくん.exe    # 内部ランチャー
     │   ├── *.dll, *.pyd
     │   ├── base_library.zip
-    │   ├── templates/        # サーバーテンプレート
-    │   ├── majsoul_wrapper/  # パケット解析
+    │   ├── templates/              # サーバーテンプレート
+    │   ├── majsoul_wrapper/        # パケット解析
     │   └── ...
-    └── README.txt            # 導入マニュアル
+    └── README.txt                  # 導入マニュアル
 
     dist/雀魂コーチングくん_release_v1.1.zip
 """
@@ -30,6 +31,7 @@ import zipfile
 import shutil
 
 PROJECT_NAME = "雀魂コーチングくん"
+EXE_NAME = f"{PROJECT_NAME}.exe"
 VERSION = "1.1"
 
 
@@ -43,9 +45,12 @@ def create_distribution_dir():
     os.makedirs(dist_root)
 
     # コピー元とコピー先
-    # onedir ビルドの出力: dist/forwarder/ (forwarder.exe + _internal/)
+    # onedir ビルドの出力:
+    #   dist/雀魂コーチングくん/雀魂コーチングくん.exe (ランチャー)
+    #   dist/雀魂コーチングくん/_internal/ (Python ランタイム + ライブラリ)
     items_to_copy = [
-        ("dist/forwarder", "."),  # ディレクトリごとコピー
+        (f"dist/{PROJECT_NAME}/{EXE_NAME}", EXE_NAME),
+        (f"dist/{PROJECT_NAME}/_internal", "_internal"),
         ("docs/README.txt", "README.txt"),
     ]
 
