@@ -12,8 +12,9 @@ import glob
 import os
 import sys
 import subprocess
+import threading
 import urllib.parse
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from google.protobuf.json_format import MessageToDict
 
 _FW_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -1521,10 +1522,15 @@ class PacketHandler(BaseHTTPRequestHandler):
                 new_stdout = open(os.path.join(restart_log_dir, 'restart_stdout.log'), 'wb')
                 new_stderr = open(os.path.join(restart_log_dir, 'restart_stderr.log'), 'wb')
 
+                # 環境変数で再起動を通知 (新プロセスはブラウザを開かない)
+                env = os.environ.copy()
+                env['COACH_RESTARTED'] = '1'
+
                 subprocess.Popen(
                     cmd,
                     cwd=os.path.dirname(os.path.abspath(__file__)),
                     creationflags=DETACHED_PROCESS,
+                    env=env,
                     stdout=new_stdout,
                     stderr=new_stderr,
                 )
@@ -1620,15 +1626,54 @@ class PacketHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-def run(server_class=HTTPServer, handler_class=PacketHandler, port=8080):
+def _open_browser_when_ready(url, check_interval=0.2, max_wait=10.0):
+    """
+    @title サーバー準備完了後にブラウザを開く
+    @description サーバーが応答可能になるまで待機し、ブラウザで指定 URL を開きます。
+    @param {str} url - 開く URL
+    @param {float} check_interval - チェック間隔 (秒)
+    @param {float} max_wait - 最大待機時間 (秒)
+    """
+    import urllib.request
+    import time
+    import webbrowser
+    import traceback
+
+    start = time.time()
+    server_ready = False
+    while time.time() - start < max_wait:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                if resp.status == 200:
+                    server_ready = True
+                    break
+        except Exception:
+            time.sleep(check_interval)
+    # サーバーが応答可能になってからブラウザを開く
+    if server_ready:
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            print(f"[browser] Failed to open: {e}")
+            traceback.print_exc()
+    else:
+        # タイムアウトしても開く (サーバーが起動していれば表示されるはず)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+
+def run(server_class=ThreadingHTTPServer, handler_class=PacketHandler, port=8080):
     """
     @title サーバー起動関数
     @description HTTPサーバーを指定されたポートで待機起動します。/api/restart POSTを受けると完全なプロセス再起動を行います。
-    @param {type} server_class - HTTPServer クラス
+    @param {type} server_class - ThreadingHTTPServer クラス (デフォルト: マルチスレッド)
     @param {type} handler_class - 処理用のハンドラークラス
     @param {int} port - サーバー待機ポート (デフォルト: 8080)
     """
     server_address = ('', port)
+    print(f"Creating server on port {port}...", flush=True)
     # Why: ソケットオプション SO_REUSEADDR を有効化。
     # PyInstaller で exe 化した再起動時に、旧プロセスのソケットが TIME_WAIT 状態でも
     # 新プロセスが同じポートにバインドできるようにする。
@@ -1636,7 +1681,22 @@ def run(server_class=HTTPServer, handler_class=PacketHandler, port=8080):
     HTTPServer.allow_reuse_address = True
     httpd = server_class(server_address, handler_class)
     # ハードコードされた数値 8080 は、ローカル開発サーバー用ポートとして一般的で重複を避けるために選定されたものです。
-    print(f"Starting server on port {port}...")
+    print(f"Starting server on port {port}...", flush=True)
+
+    # Why: 初回起動時にブラウザを自動で開く。
+    # ただし /api/restart による再起動では開かない (ユーザーは既に開いているため)。
+    # 再起動かどうかは環境変数 COACH_RESTARTED で判別。
+    if os.environ.get('COACH_RESTARTED') != '1':
+        url = f"http://localhost:{port}/"
+        t = threading.Thread(
+            target=_open_browser_when_ready,
+            args=(url,),
+            daemon=True,
+        )
+        t.start()
+        print(f"Browser opening thread started", flush=True)
+
+    print(f"Calling serve_forever...", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

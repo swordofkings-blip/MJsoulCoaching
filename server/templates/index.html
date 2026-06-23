@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +8,9 @@
     <!-- Google Fonts の読み込み -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@300;400;700&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --bg-color: #0d0e12;
@@ -15,7 +18,8 @@
             --card-border: rgba(255, 255, 255, 0.08);
             --text-main: #f3f4f6;
             --text-muted: #9ca3af;
-            --accent-primary: #10b981; /* 緑 */
+            --accent-primary: #10b981;
+            /* 緑 */
             --accent-glow: rgba(16, 185, 129, 0.3);
             --accent-purple: #8b5cf6;
             --font-display: 'Outfit', 'Noto Sans JP', sans-serif;
@@ -33,7 +37,7 @@
             font-family: var(--font-display);
             min-height: 100vh;
             padding: 2rem;
-            background-image: 
+            background-image:
                 radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
                 radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
         }
@@ -163,10 +167,25 @@
             margin-right: 0.5rem;
         }
 
-        .seat-badge.east { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-        .seat-badge.south { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-        .seat-badge.west { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-        .seat-badge.north { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .seat-badge.east {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .seat-badge.south {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        .seat-badge.west {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+
+        .seat-badge.north {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
 
         .player-name {
             font-weight: 600;
@@ -207,7 +226,7 @@
             display: inline-block;
             width: 40px;
             height: 40px;
-            border: 3px solid rgba(255,255,255,.05);
+            border: 3px solid rgba(255, 255, 255, .05);
             border-radius: 50%;
             border-top-color: var(--accent-primary);
             animation: spin 1s ease-in-out infinite;
@@ -228,20 +247,25 @@
             align-items: center;
             gap: 4px;
         }
+
         .restart-btn:hover {
             background: rgba(239, 68, 68, 0.2);
             border-color: #f87171;
         }
+
         .restart-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
+
 <body>
     <header>
         <div>
@@ -264,16 +288,21 @@
                     display: flex;
                     align-items: center;
                     gap: 6px;
-                " onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'" onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
+                " onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'"
+                    onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
                     🔧 Tampermonkey スクリプトを導入
                 </a>
             </div>
-            <div style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.85; text-align: right; line-height: 1.4;">
+            <div
+                style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.85; text-align: right; line-height: 1.4;">
                 ※事前に拡張機能を導入してください (
-                <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja" target="_blank" style="color: var(--accent-purple); text-decoration: underline;">Chrome版</a> / 
-                <a href="https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepknomcihgpkip" target="_blank" style="color: var(--accent-purple); text-decoration: underline;">Edge版</a>
+                <a href="https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja"
+                    target="_blank" style="color: var(--accent-purple); text-decoration: underline;">Chrome版</a> /
+                <a href="https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepknomcihgpkip"
+                    target="_blank" style="color: var(--accent-purple); text-decoration: underline;">Edge版</a>
                 )<br>
-                <span style="color: var(--accent-primary);">※拡張機能設定 (chrome://extensions) の「デベロッパーモード」をONにしてください。</span><br>
+                <span style="color: var(--accent-primary);">※拡張機能設定 (chrome://extensions)
+                    の「デベロッパーモード」をONにしてください。</span><br>
                 <span style="color: var(--accent-primary);">※Vivaldi等をお使いの場合は、さらに詳細項目で「ユーザースクリプトを許可する」もONにしてください。</span>
             </div>
         </div>
@@ -316,13 +345,13 @@
             try {
                 const response = await fetch('/api/records');
                 if (!response.ok) throw new Error('API呼び出しに失敗しました');
-                
+
                 const records = await response.json();
-                
+
                 if (records.length === 0) {
                     grid.innerHTML = `
                         <div class="no-records">
-                            <p>保存された牌譜データがまだありません。ゲームをプレイするか、牌譜を表示してデータを取得してください。</p>
+                            <p>保存された牌譜データがまだありません。牌譜を表示してデータを取得してください。</p>
                         </div>
                     `;
                     return;
@@ -341,7 +370,7 @@
                     // 各席の情報をプレイヤー名とスコアで並べ替え
                     const seatClasses = ['east', 'south', 'west', 'north'];
                     const seatLabels = ['東', '南', '西', '北'];
-                    
+
                     let playersHtml = '';
                     if (rec.players && rec.players.length > 0) {
                         // 席順でソート (0, 1, 2, 3)
@@ -403,9 +432,9 @@
                     try {
                         const res = await fetch('/');
                         if (res.ok) { location.reload(); return; }
-                    } catch (_) {}
+                    } catch (_) { }
                 }
-            } catch (_) {}
+            } catch (_) { }
             btn.disabled = false;
             btn.textContent = '⟳ 再起動';
         }
@@ -414,4 +443,5 @@
         window.addEventListener('DOMContentLoaded', loadRecords);
     </script>
 </body>
+
 </html>
