@@ -1046,7 +1046,7 @@ class PacketHandler(BaseHTTPRequestHandler):
             # 保存されている trimmed 牌譜一覧をスキャンして返す
             try:
                 records = []
-                # 雀魂ラッパーフォルダ内のトリミング済みJSONを検索
+                # 雀魂コーチングくんフォルダ内のトリミング済みJSONを検索
                 files = glob.glob(os.path.join(_FW_ROOT, 'data', 'record_*_trimmed.json'))
                 for filepath in files:
                     try:

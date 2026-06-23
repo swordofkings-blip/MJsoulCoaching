@@ -1,5 +1,5 @@
 # ========================================
-# 雀魂ラッパー (.gitignore)
+# 雀魂コーチングくん (.gitignore)
 # 配布に不要な一時ファイル・データ・キャッシュを除外
 # ========================================
 
@@ -42,8 +42,18 @@ temp/
 tmp/
 *.tmp
 
-# ----- ビルド成果物 (build/ のみ保持、dist/ は除外) -----
-# forwarder.exe は build/ にあり git に含める
+# ----- ビルド成果物 (build/ は保持、PyInstaller 中間ファイルは除外) -----
+# forwarder.exe は build/ 内に保持
+# PyInstaller の中間ファイル (.toc, .pkg, .pyz 等) は除外
+build/forwarder/*.toc
+build/forwarder/*.pkg
+build/forwarder/*.pyz
+build/forwarder/localpycs/
+build/forwarder/warn-*.txt
+build/forwarder/Analysis-*.toc
+build/forwarder/EXE-*.toc
+build/forwarder/PKG-*.toc
+build/forwarder/PYZ-*.toc
 # その他のビルド成果物は除外
 *.pyc
 *.o

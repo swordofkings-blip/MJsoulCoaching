@@ -1,6 +1,6 @@
-# 雀魂ラッパー (Mahjong Soul Wrapper)
+# 雀魂コーチングくん
 
-雀魂 (Mahjong Soul) の牌譜をリアルタイムにキャプチャし、ブラウザで再生・AI 相談できるローカルツール。
+雀魂 (Mahjong Soul) の牌譜をリアルタイムにキャプチャし、ブラウザで再生・AI 相談できるツール。
 麻雀 AI コア (押しオリ判断・牌選択) も同梱。
 
 ## 機能
@@ -54,7 +54,7 @@ python tools/ga_akochan.py
 ## ディレクトリ構成
 
 ```
-雀魂ラッパー/
+雀魂コーチングくん/
 ├── README.md                    # 本ファイル
 ├── LICENSE                      # MIT License
 ├── .gitignore
