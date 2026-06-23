@@ -32,6 +32,7 @@ ENV/
 logs/
 *.mjson
 *.log
+data/
 
 # PKL データファイル (人間ログ解析結果、キャッシュ等)
 *.pkl
