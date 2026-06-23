@@ -96,23 +96,66 @@ def run_one_game_gene(game_idx: int, max_workers: int, start_seed: int, gene_pat
 
     # 3体の OurAI: それぞれ異なる遺伝子
     # gene_paths[0], [1], [2] の3つ
-    players = [
-        ("OurAI-0", lambda p: threading.Thread(
-            target=run_our_ai_with_genes,
-            args=(p, "OurAI-0", gene_paths[0] if len(gene_paths) > 0 else None, base_params),
-            daemon=True)),
-        ("OurAI-1", lambda p: threading.Thread(
-            target=run_our_ai_with_genes,
-            args=(p, "OurAI-1", gene_paths[1] if len(gene_paths) > 1 else None, base_params),
-            daemon=True)),
-        ("OurAI-2", lambda p: threading.Thread(
-            target=run_our_ai_with_genes,
-            args=(p, "OurAI-2", gene_paths[2] if len(gene_paths) > 2 else None, base_params),
-            daemon=True)),
-        ("Akochan", lambda p: threading.Thread(target=run_akochan, args=(p, akochan_cname), daemon=True))
+    # 4局で OurAI と Akochan の隣接が均等になるようローテーション
+    # 0=通常配置, 1=Akochan を右に1つ動かす, 2=2つ動かす, 3=3つ動かす
+    player_specs = [
+        ("OurAI-0", gene_paths[0] if len(gene_paths) > 0 else None),
+        ("OurAI-1", gene_paths[1] if len(gene_paths) > 1 else None),
+        ("OurAI-2", gene_paths[2] if len(gene_paths) > 2 else None),
+        ("Akochan", None),
     ]
-    shift = seat_offset
-    rotated_players = players[shift:] + players[:shift]
+
+    def build_launchers(base_params_local, gene_paths_local):
+        return [
+            ("OurAI-0", lambda p: threading.Thread(
+                target=run_our_ai_with_genes,
+                args=(p, "OurAI-0", gene_paths_local[0] if len(gene_paths_local) > 0 else None, base_params_local),
+                daemon=True)),
+            ("OurAI-1", lambda p: threading.Thread(
+                target=run_our_ai_with_genes,
+                args=(p, "OurAI-1", gene_paths_local[1] if len(gene_paths_local) > 1 else None, base_params_local),
+                daemon=True)),
+            ("OurAI-2", lambda p: threading.Thread(
+                target=run_our_ai_with_genes,
+                args=(p, "OurAI-2", gene_paths_local[2] if len(gene_paths_local) > 2 else None, base_params_local),
+                daemon=True)),
+            ("Akochan", lambda p: threading.Thread(target=run_akochan, args=(p, akochan_cname), daemon=True))
+        ]
+
+    # 4局で Akochan の位置を 0,1,2,3 にローテーション
+    # これにより各OurAIは各位置(左隣/対面/右隣)を均等に経験
+    ako_position = seat_offset  # Akochan の席位置
+    all_players = [("OurAI-0", base_params), ("OurAI-1", base_params), ("OurAI-2", base_params), ("Akochan", None)]
+    # 席に配置
+    seats = [None] * 4
+    seats[ako_position] = ("Akochan", None)
+    # 残りの席に OurAI-0,1,2 を配置 (Akochanの右隣から順に)
+    our_idx = 0
+    for s in range(4):
+        if seats[s] is None:
+            name = ["OurAI-0", "OurAI-1", "OurAI-2"][our_idx]
+            gene = [gene_paths[0], gene_paths[1], gene_paths[2]][our_idx]
+            seats[s] = (name, gene)
+            our_idx += 1
+
+    # seats[0..3] を threads 起動順にする
+    rotated_players = []
+    for s in range(4):
+        name, gene = seats[s]
+        if name == "Akochan":
+            rotated_players.append((name, lambda p: threading.Thread(target=run_akochan, args=(p, akochan_cname), daemon=True)))
+        else:
+            idx = int(name.split('-')[1])
+            rotated_players.append((name, lambda p, i=idx, g=gene: threading.Thread(
+                target=run_our_ai_with_genes, args=(p, f"OurAI-{i}", g, base_params), daemon=True)))
+
+    # Debug: print seat order
+    seat_names = [n for n, _ in rotated_players]
+    ako_idx = seat_names.index('Akochan')
+    left = seat_names[(ako_idx - 1) % 4]
+    right = seat_names[(ako_idx + 1) % 4]
+    across = seat_names[(ako_idx + 2) % 4]
+    print(f'    [Game {game_idx+1}] Akochan neighbors: L={left}, R={right}, Across={across}')
 
     threads = []
     akochan_thread = None
