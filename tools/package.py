@@ -52,6 +52,7 @@ def create_distribution_dir():
         (f"dist/{PROJECT_NAME}/{EXE_NAME}", EXE_NAME),
         (f"dist/{PROJECT_NAME}/_internal", "_internal"),
         ("docs/README.txt", "README.txt"),
+        ("LICENSE", "LICENSE"),
     ]
 
     print(f"--- 配布用ディレクトリの作成: {dist_root} ---")

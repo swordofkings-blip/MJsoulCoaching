@@ -33,6 +33,7 @@ logs/
 *.mjson
 *.log
 data/
+share/
 
 # PKL データファイル (人間ログ解析結果、キャッシュ等)
 *.pkl
@@ -59,6 +60,16 @@ build/forwarder/PYZ-*.toc
 *.pyc
 *.o
 *.obj
+
+# ----- PyInstaller onedir ビルド成果物 -----
+# dist/以下の _internal/ ディレクトリ (Python ランタイム + ライブラリ)
+# 各 DLL, PYD, base_library.zip 等は再生成可能なので除外
+dist/**/_internal/
+dist/**/_internal/**
+dist/**/*.pyd
+dist/**/*.dll
+dist/**/base_library.zip
+dist/**/logs/
 
 # ----- OS 固有 -----
 .DS_Store
