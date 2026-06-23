@@ -137,12 +137,14 @@ for log_id, blob in all_log_blobs.items():
                     mode = ev.strategy.get_strategy_mode()
                     hand = list(states[seat].my_hand)
                     best = ev.best_discard(hand)
-                    human_push = bd['defense_score'] > 0
-
-                    # Combined AI decision: use tile selection if mode + tile agrees
-                    if best is not None:
-                        ai_is_honor = is_honor(tile_to_id(best))
-                        ai_is_push = ai_is_honor or best[0] in ('1', '9')
+                    # 正しい解釈: defense_score>0 = 安全牌 = 人間はオリている
+                    # defense_score==0 = 危険牌 = 人間は押し
+                    human_push = bd['defense_score'] == 0
+                    # AI判定: 戦略モードベース
+                    if mode in ('全力攻撃', '押し気味', '危険度勝負', '積極駒組み'):
+                        ai_is_push = True
+                    elif mode in ('完全撤退', '撤退準備', 'スリム化', '回し打ち', '様子見'):
+                        ai_is_push = False
                     else:
                         ai_is_push = None
 
