@@ -32,7 +32,7 @@ import shutil
 
 PROJECT_NAME = "雀魂コーチングくん"
 EXE_NAME = f"{PROJECT_NAME}.exe"
-VERSION = "1.1"
+VERSION = "1.0"
 
 
 def create_distribution_dir():

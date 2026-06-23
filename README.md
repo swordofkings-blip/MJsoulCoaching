@@ -22,7 +22,7 @@
 1. `build/forwarder.exe` を実行
 2. ブラウザで `http://localhost:8080/` を開く
 3. 「🔧 Tampermonkey スクリプトを導入」ボタンをクリック
-4. 雀魂で対局をプレイ
+4. 雀魂で牌譜を確認
 5. ブラウザで `http://localhost:8080/` を再訪 → 牌譜一覧から再生
 
 詳細は [`docs/README.txt`](docs/README.txt) を参照。
