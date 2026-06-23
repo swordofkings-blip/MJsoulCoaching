@@ -36,6 +36,7 @@ class Meld:
 
 
 @dataclass
+@dataclass
 class ReachState:
     is_reach: bool = False
     reach_turn: int = -1
@@ -90,7 +91,12 @@ class GameState:
         self.river = [[], [], [], []]
         self.melds = [[], [], [], []]
         self.tsumo_count = 0
-        self.reach_states = [ReachState() for _ in range(4)]
+        # Why: リーチ状態は局をまたいで維持する(同点リーチ棒は局をまたいで加算される)
+        # 局開始時にリセットすると、他家のリーチ状態が他局の判断に反映されなくなる
+        # 既存の reach_states リストを保持して、is_reach のみ維持する
+        # (ただし on_reset で完全に初期化される)
+        if not hasattr(self, 'reach_states') or self.reach_states is None:
+            self.reach_states = [ReachState() for _ in range(4)]
         self.last_discard_seat = -1
         self.last_discard_tile = None
         self.last_self_drawn = None

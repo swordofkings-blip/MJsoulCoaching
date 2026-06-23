@@ -997,6 +997,12 @@ class StrategyManager:
                     push_score = min(push_score, 0.02)
                 else:
                     push_score = max(push_score, 0.4)
+            else:
+                # 人間データ分析: 1-リーチ+1シャンテン+非4位で人間は53%オリる
+                # 終盤の position override (1-シャンテン max 0.5) を抑制
+                if shanten >= 1:
+                    reach_penalty = self.params.get('REACH_PENALTY_NON4', 0.35) * n_reach
+                    push_score = max(0.0, push_score - reach_penalty)
         res = max(0.0, min(1.0, push_score))
         self._push_score_cache = res
         return res

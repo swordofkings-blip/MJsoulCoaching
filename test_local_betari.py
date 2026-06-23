@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 from statistics import mean
 
 sys.path.insert(0, '.')
-from core.game_state import GameState
+from core.game_state import GameState, ReachState
 from core.evaluator import Evaluator
 from core.str_converter import tile_to_id, hand_to_counts, is_honor
 from core.strategy_manager import ShantenCalculator
@@ -80,7 +80,17 @@ for log_id, blob in all_log_blobs.items():
     states = [GameState() for _ in range(4)]
     for s in range(4):
         states[s].my_seat = s
+    # 共有reach_states: 4つのGameStateで同じReachStateリストを参照させる
+    # (ベタオリデータとAIのビュー不一致を防ぐ)
+    shared_reach = [ReachState() for _ in range(4)]
+    for s in range(4):
+        states[s].reach_states = shared_reach
     awaiting = [False] * 4
+
+    def _share_reach_states():
+        # 局開始時に reach_states を共有リストに戻す
+        for s in range(4):
+            states[s].reach_states = shared_reach
 
     betari_to_check = {(d['kyoku'], d['turn'], d['seat'], d['discard_tile']): d for d in data_by_log[log_id]}
 
@@ -104,6 +114,7 @@ for log_id, blob in all_log_blobs.items():
             states[oya].dealer_seat = oya
             for s in range(4):
                 if s != oya: states[s].dealer_seat = oya
+            _share_reach_states()
             awaiting = [True] * 4
             continue
 
