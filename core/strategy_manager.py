@@ -620,6 +620,13 @@ class StrategyManager:
         V_max = self.params.get('THREAT_V_MAX', 48000.0)
         value = min(1.0, V / V_max)
 
+        # Why: 0巡目（あるいは序盤で他家の河に捨て牌がない段階）では他家の手牌情報が完全にゼロ。
+        # この状態で「平均的な手」の脅威を仮定すると、序盤の判断を誤らせる。
+        # 河に捨牌が1枚もない = その家から何の情報も得ていない、という意味なので
+        # 脅威度は 0 にする (BASE_THREAT もそのまま返す)。
+        if not is_reach and n_open == 0 and len(self.state.river[seat]) == 0:
+            return self.params.get('BASE_THREAT', 0.0), f'{seat_name}: 序盤・情報なし (脅威ゼロ)'
+
         # 門前ダマテンの場合は、警戒されにくいためダマテン警戒係数を掛けて減衰させる
         # ただし高ダマテン率プレイヤーはダマテンでも積極的にアガりに来るため、減衰率を緩和する
         if not is_reach and n_open == 0:
@@ -810,6 +817,7 @@ class StrategyManager:
         """
         @title 基礎攻撃度の算出
         @description 自家的シャンテン数や手牌ブロック数、役満可能性から基礎攻撃度を算出します。
+                  副露（鳴き）で確定済みの飜数も考慮します（既に2飜あるなら攻め継続の判断材料）。
         @returns {float} 基礎攻撃度 (0.0〜1.0)
         """
         if self._base_attack_cache is not None:
@@ -838,6 +846,8 @@ class StrategyManager:
             speed_score = block_factor / (shanten + 1.0)
             quality_boost = score_factor * speed_score * 0.15
             res = max(0.01, min(base_val + quality_boost, base_val * 1.3))
+            # 副露の確定飜数ブースト
+            res = self._apply_open_meld_boost(res, open_meld_count, shanten)
             self._base_attack_cache = res
             return res
         max_shanten = self.params.get('BASE_ATTACK_MAX_SHANTEN', 6)
@@ -861,21 +871,19 @@ class StrategyManager:
             base_res = max(0.01, min(base_val * block_factor + quality_boost, base_val * 2))
 
             # 染め手/四喜和ブースト: 字牌が大量に手牌にあれば染め手/四喜和狙い。
-            # 序盤は字牌を揃えて手役成立に寄せるため、攻撃度を一時的に上げる。
-            # HONITSU_BOOST_THRESH (字牌枚数), SHUSUUSHI_BOOST_THRESH (東南西北枚数) で
-            # ベース攻撃度に上乗せ。
             honor_count = sum(hand_counts[i] for i in range(27, 34))
             honitsu_th = self.params.get('HONITSU_BOOST_THRESH', 7)
             shusuushi_th = self.params.get('SHUSUUSHI_BOOST_THRESH', 8)
             yaku_boost = 0.0
             if honor_count >= honitsu_th:
-                # 字牌数に応じて攻撃度に最大 0.25 上乗せ (7 枚で +0.05, 10 枚で +0.25)
                 yaku_boost = min(0.25, 0.05 * (honor_count - honitsu_th + 1))
             wind_count = sum(hand_counts[i] for i in range(27, 31))
             if wind_count >= shusuushi_th:
-                # 風牌集中 (四喜和狙い): 攻撃度に追加ブースト
                 yaku_boost = min(0.4, yaku_boost + 0.05 * (wind_count - shusuushi_th + 1))
             base_res = min(1.0, base_res + yaku_boost)
+
+            # 副露の確定飜数ブースト
+            base_res = self._apply_open_meld_boost(base_res, open_meld_count, shanten)
             self._base_attack_cache = base_res
             return base_res
 
@@ -888,6 +896,19 @@ class StrategyManager:
 
         self._base_attack_cache = 0.0
         return 0.0
+
+    def _apply_open_meld_boost(self, base_res: float, open_meld_count: int, shanten: int) -> float:
+        # Why: 副露で確定済みの飜数（役牌・三元牌など）は「もう確保した打点」。
+        #      手牌が遠い状態でも、攻め継続の手がかりとして基礎攻撃度に加算する。
+        #      例: 2向聴で副露2飜確定 → base_attack を底上げして「危険度勝負」判定を出しやすくする。
+        if open_meld_count == 0:
+            return base_res
+        # 副露1組ごとに +0.15（最大 0.45 まで）
+        meld_boost = min(0.45, 0.15 * open_meld_count)
+        # シャンテン数が多いほどブーストを控えめに（遠い手は加点しても仕方ない）
+        if shanten >= 2:
+            meld_boost *= 0.6
+        return min(1.0, base_res + meld_boost)
 
     def _yakuman_attack_boost(self) -> float:
         """
@@ -1248,14 +1269,28 @@ class StrategyManager:
 
         # push_score が極端に低い場合(オリ寄り)、ファジィの結果を「完全撤退」に上書き
         # 人間は 0.05 以下で「オリ判断」を示す
+        # Why: 4向聴など攻撃度が低い状況では BASE_ATTACK が 0.04 程度になり、脅威が低くても
+        # オリ閾値を下回ってしまう。脅威がないのに完全撤退になると手効率が破綻するため、
+        # 脅威が一定以上ある時のみ「完全撤退」を強制する。
+        # ただし、テンパイ手 (shanten <= 0) はもう待つだけなのでオリる選択肢がない。
+        # 危険度勝負で押し (待ちを当てる) のが正しい。
         betaori_th = self.params.get('MODE_BETAORI_THRESHOLD', 0.05)
-        if push <= betaori_th:
+        betaori_threat_th = self.params.get('MODE_BETAORI_THREAT_THRESHOLD', 0.3)
+        hand_counts_for_shanten = self.state.my_hand_counts()
+        open_meld_count_for_shanten = sum(1 for m in self.state.my_melds if m.is_open)
+        current_shanten = ShantenCalculator.calculate_closed_effective(hand_counts_for_shanten) if open_meld_count_for_shanten == 0 else ShantenCalculator.calculate_open(hand_counts_for_shanten, open_meld_count_for_shanten)
+        if push <= betaori_th and max_threat >= betaori_threat_th and current_shanten > 0:
             mode = "完全撤退"
 
         # push_score が低い(= 0.25以下)場合は「撤退準備」を維持(ファジィの結果より優先)
+        # ただし脅威が極めて低い(=序盤で何も動いていない)場合は回し打ちに留める
+        # テンパイ手は 危険度勝負 を維持 (オリてもアガリがないので)
         retreat_th = self.params.get('MODE_RETREAT_PREP_THRESHOLD', 0.25)
-        if push <= retreat_th and mode not in ("完全撤退", "撤退準備"):
-            mode = "撤退準備"
+        retreat_threat_th = self.params.get('MODE_RETREAT_THREAT_THRESHOLD', 0.15)
+        if push <= retreat_th and mode not in ("完全撤退", "撤退準備") and current_shanten > 0:
+            if max_threat >= retreat_threat_th:
+                mode = "撤退準備"
+            # else: ファジィの結果（回し打ち/スリム化など）を維持
 
         self._strategy_mode_cache = mode
         return mode
@@ -1278,11 +1313,9 @@ class StrategyManager:
             "yakuman_seal": not self.is_meld_open_allowed(),
             "yakuman_boost": round(self._yakuman_attack_boost(), 3),
             "fuzzy_scores": {k: round(v, 3) for k, v in scores.items()},
-            # Why: フロントエンド側でファジィメンバシップ関数の中心点に合わせて
-            # ドットの位置を連続的に折れ線マッピングするための閾値パラメータ。
-            # 0.50 と 0.40 はデフォルト値として定義されている中段ピークの基準値。
-            "fuzzy_params": {
-                "y_med_peak": self.params.get('FUZZY_Y_MED_PEAK', 0.50),
-                "x_med_peak": self.params.get('FUZZY_X_MED_PEAK', 0.40)
-            }
+            # Why: フロントエンド側でマトリクスの境界位置とドット描画位置の双方に
+            # 同じ閾値を使うことで、視覚的な整合性（境界 = ファジィ遷移点）を保証する。
+            # MED-HIGH 境界は membership function の交点（MED=HIGH となる点）を解析的に解いた値。
+            # これによりドットが必ず active セル内に収まる。
+            "fuzzy_thresholds": self.fuzzy_engine.get_cell_boundaries()
         }

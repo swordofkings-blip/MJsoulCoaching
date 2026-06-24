@@ -88,7 +88,7 @@
         .app-container {
             display: flex;
             flex: 1;
-            height: calc(100vh - 65px);
+            height: 100vh;
             position: relative;
         }
 
@@ -738,8 +738,37 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
-            max-height: 280px;
+        }
+        .bot-coach-detail-floating {
+            display: none;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: 400px;
+            max-width: calc(100vw - 40px);
+            /* Why: 5項目分（約200px）に制限して推奨理由パネルと被らないようにする。
+             *      超過分はスクロールで閲覧可能。 */
+            max-height: 220px;
             overflow-y: auto;
+            z-index: 95;
+            flex-direction: column;
+            gap: 4px;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(139, 92, 246, 0.45);
+            background: rgba(20, 22, 36, 0.96);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        .bot-coach-detail-floating.is-shown {
+            display: flex;
+            animation: meldSlideIn 0.2s ease;
+        }
+        .bot-coach-detail-floating .bot-coach-reason {
+            display: block;
+            border: none;
+            background: transparent;
+            padding: 0;
         }
 
         .bot-coach-eval-row {
@@ -840,6 +869,41 @@
             border: 1px solid rgba(139, 92, 246, 0.35);
             border-radius: 8px;
         }
+        .bot-coach-strategy-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+            padding: 2px 0;
+        }
+        .bot-coach-strategy-header:hover { opacity: 0.85; }
+        .bot-coach-strategy-mode {
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: #a29bfe;
+            flex-shrink: 0;
+        }
+        .bot-coach-strategy-summary {
+            display: inline-flex;
+            gap: 8px;
+            font-size: 0.72rem;
+            color: rgba(255, 255, 255, 0.75);
+            margin-left: auto;
+        }
+        .bot-coach-strategy-mini b {
+            color: #a29bfe;
+            font-family: monospace;
+            margin-left: 2px;
+        }
+        .bot-coach-strategy-toggle {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.7rem;
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+        .bot-coach-strategy-header.expanded .bot-coach-strategy-toggle { transform: rotate(180deg); }
+        .bot-coach-strategy-body { margin-top: 6px; }
 
         .bot-coach-strategy-title {
             font-size: 0.72rem;
@@ -901,14 +965,12 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 6px;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
         }
 
         .bot-coach-strategy-grid {
+            position: absolute;
+            inset: 0;
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
             width: 100%;
             height: 100%;
         }
@@ -924,6 +986,7 @@
             padding: 2px;
             font-weight: bold;
             transition: all 0.3s ease;
+            overflow: hidden;
         }
 
         .cell-attack {
@@ -1014,16 +1077,44 @@
         /* 副露判断パネル */
         .bot-coach-meld-panel {
             display: none;
-            margin-bottom: 12px;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: 360px;
+            max-width: calc(100vw - 40px);
+            max-height: 70vh;
+            overflow-y: auto;
+            z-index: 100;
             padding: 12px;
-            border-radius: 8px;
-            border: 1px solid rgba(251, 191, 36, 0.35);
+            border-radius: 10px;
+            border: 1px solid rgba(251, 191, 36, 0.45);
             border-left: 4px solid var(--accent-yellow);
-            background: rgba(251, 191, 36, 0.08);
+            background: rgba(20, 22, 36, 0.96);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
             flex-direction: column;
             gap: 6px;
-            transition: opacity 0.25s ease;
+            transition: opacity 0.25s ease, transform 0.25s ease;
         }
+        .bot-coach-meld-panel.is-visible {
+            display: flex;
+            animation: meldSlideIn 0.25s ease;
+        }
+        @keyframes meldSlideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .bot-coach-meld-close {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+            padding: 0 4px;
+            margin-left: auto;
+        }
+        .bot-coach-meld-close:hover { color: #fff; }
 
         .bot-coach-meld-panel.is-visible {
             display: flex;
@@ -1119,6 +1210,18 @@
         .bot-coach-meld-eval-row.is-skip {
             border-color: rgba(156, 163, 175, 0.2);
             background: rgba(156, 163, 175, 0.04);
+        }
+        .bot-coach-meld-eval-row.is-forbidden {
+            opacity: 0.6;
+            border-left: 3px solid #ef4444;
+            background: rgba(239, 68, 68, 0.05);
+        }
+        .bot-coach-meld-eval-row.is-forbidden:hover {
+            opacity: 0.9;
+        }
+        .bot-coach-meld-eval-shanten.is-forbidden {
+            color: #ef4444;
+            font-weight: bold;
         }
 
         .bot-coach-meld-eval-label {
@@ -1469,11 +1572,6 @@
 </head>
 
 <body>
-    <header>
-        <h1 onclick="window.location.href='/'">雀魂 牌譜シミュレーター</h1>
-        <button class="back-btn" onclick="window.location.href='/'">一覧に戻る</button>
-    </header>
-
     <div class="app-container">
         <!-- 左列：盤面 + 下部コントロール -->
         <div class="left-column">
@@ -1593,6 +1691,7 @@
                 </div>
                 <div class="control-section">
                     <button class="legend-btn" onclick="toggleLegend()">凡例</button>
+                    <button class="legend-btn" onclick="window.location.href='/'">← 一覧</button>
                 </div>
             </div>
         </div>
@@ -1617,6 +1716,7 @@
                             <div class="bot-coach-meld-header">
                                 <span class="bot-coach-meld-badge">副露判断</span>
                                 <span id="botCoachMeldStatus"></span>
+                                <button class="bot-coach-meld-close" id="botCoachMeldClose" title="閉じる">✕</button>
                             </div>
                             <div class="bot-coach-meld-recommend-badge" id="botCoachMeldRecommendBadge"
                                 style="display:none;"></div>
@@ -1625,7 +1725,7 @@
                             <div class="bot-coach-eval-list" id="botCoachMeldEvalList"></div>
                         </div>
                         <div class="bot-coach-status" id="botCoachStatus"></div>
-                        <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
+                                        <div class="bot-coach-recommend" id="botCoachRecommend" style="display:none;">
                             <div class="bot-coach-recommend-tile" id="botCoachRecommendTile">--</div>
                             <div class="bot-coach-recommend-text" id="botCoachRecommendText">--</div>
                             <div class="bot-coach-near" id="botCoachNear"
@@ -1634,76 +1734,76 @@
                                 <span id="botCoachNearTiles"></span>
                             </div>
                         </div>
-                        <div class="bot-coach-riichi-panel" id="botCoachRiichiPanel"
-                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(52, 152, 219, 0.15); border: 1px solid #3498db; flex-direction: column; gap: 4px; border-left: 4px solid #3498db;">
-                            <div
-                                style="font-weight: bold; color: #3498db; display: flex; align-items: center; gap: 6px;">
-                                <span
-                                    style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.75rem;">立直判断</span>
-                                <span id="botCoachRiichiDecision">--</span>
+                        <div class="bot-coach-special-panel" id="botCoachSpecialPanel"
+                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); flex-direction: column; gap: 6px;">
+                            <div class="bot-coach-special-title" style="font-size: 0.72rem; color: rgba(255,255,255,0.6); letter-spacing: 0.05em; margin-bottom: 2px;">特殊判断</div>
+                            <div class="bot-coach-riichi-row" id="botCoachRiichiPanel" style="display:none; padding: 6px; border-radius: 4px; background: rgba(52, 152, 219, 0.10); border-left: 3px solid #3498db;">
+                                <div style="font-weight: bold; color: #3498db; display: flex; align-items: center; gap: 6px; font-size: 0.85rem;">
+                                    <span style="background:#3498db; color:white; padding:1px 5px; border-radius:3px; font-size:0.7rem;">立直</span>
+                                    <span id="botCoachRiichiDecision">--</span>
+                                </div>
+                                <div id="botCoachRiichiReason" style="font-size: 0.78rem; color: #bdc3c7; line-height: 1.4; margin-top: 2px;">
+                                    --</div>
                             </div>
-                            <div id="botCoachRiichiReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">
-                                --</div>
-                        </div>
-                        <div class="bot-coach-kan-panel" id="botCoachKanPanel"
-                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; flex-direction: column; gap: 4px; border-left: 4px solid #2ecc71;">
-                            <div
-                                style="font-weight: bold; color: #2ecc71; display: flex; align-items: center; gap: 6px;">
-                                <span
-                                    style="background:#2ecc71; color:white; padding:2px 6px; border-radius:4px; font-size:0.75rem;">暗槓判断</span>
-                                <span id="botCoachKanDecision">--</span>
+                            <div class="bot-coach-kan-row" id="botCoachKanPanel" style="display:none; padding: 6px; border-radius: 4px; background: rgba(46, 204, 113, 0.10); border-left: 3px solid #2ecc71;">
+                                <div style="font-weight: bold; color: #2ecc71; display: flex; align-items: center; gap: 6px; font-size: 0.85rem;">
+                                    <span style="background:#2ecc71; color:white; padding:1px 5px; border-radius:3px; font-size:0.7rem;">暗槓</span>
+                                    <span id="botCoachKanDecision">--</span>
+                                </div>
+                                <div id="botCoachKanReason" style="font-size: 0.78rem; color: #bdc3c7; line-height: 1.4; margin-top: 2px;">--</div>
                             </div>
-                            <div id="botCoachKanReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
+                            <div class="bot-coach-kyushu-row" id="botCoachKyushuPanel" style="display:none; padding: 6px; border-radius: 4px; background: rgba(139, 92, 246, 0.10); border-left: 3px solid #8b5cf6;">
+                                <div style="font-weight: bold; color: #8b5cf6; display: flex; align-items: center; gap: 6px; font-size: 0.85rem;">
+                                    <span style="background:#8b5cf6; color:white; padding:1px 5px; border-radius:3px; font-size:0.7rem;">九種九牌</span>
+                                    <span id="botCoachKyushuDecision">--</span>
+                                </div>
+                                <div id="botCoachKyushuReason" style="font-size: 0.78rem; color: #bdc3c7; line-height: 1.4; margin-top: 2px;">--</div>
                             </div>
-                        </div>
-                        <div class="bot-coach-kyushu-panel" id="botCoachKyushuPanel"
-                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(139, 92, 246, 0.15); border: 1px solid #8b5cf6; flex-direction: column; gap: 4px; border-left: 4px solid #8b5cf6;">
-                            <div
-                                style="font-weight: bold; color: #8b5cf6; display: flex; align-items: center; gap: 6px;">
-                                <span
-                                    style="background:#8b5cf6; color:white; padding:2px 6px; border-radius:4px; font-size:0.75rem;">九種九牌判断</span>
-                                <span id="botCoachKyushuDecision">--</span>
-                            </div>
-                            <div id="botCoachKyushuReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
-                            </div>
-                        </div>
-                        <div class="bot-coach-sufutsu-panel" id="botCoachSufutsuPanel"
-                            style="display:none; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(251, 191, 36, 0.15); border: 1px solid #fbbf24; flex-direction: column; gap: 4px; border-left: 4px solid #fbbf24;">
-                            <div
-                                style="font-weight: bold; color: #fbbf24; display: flex; align-items: center; gap: 6px;">
-                                <span
-                                    style="background:#fbbf24; color:#0b0c10; padding:2px 6px; border-radius:4px; font-size:0.75rem;">四風子連打判断</span>
-                                <span id="botCoachSufutsuDecision">--</span>
-                            </div>
-                            <div id="botCoachSufutsuReason" style="font-size: 0.8rem; color: #bdc3c7; line-height: 1.4;">--
+                            <div class="bot-coach-sufutsu-row" id="botCoachSufutsuPanel" style="display:none; padding: 6px; border-radius: 4px; background: rgba(251, 191, 36, 0.10); border-left: 3px solid #fbbf24;">
+                                <div style="font-weight: bold; color: #fbbf24; display: flex; align-items: center; gap: 6px; font-size: 0.85rem;">
+                                    <span style="background:#fbbf24; color:#0b0c10; padding:1px 5px; border-radius:3px; font-size:0.7rem;">四風連打</span>
+                                    <span id="botCoachSufutsuDecision">--</span>
+                                </div>
+                                <div id="botCoachSufutsuReason" style="font-size: 0.78rem; color: #bdc3c7; line-height: 1.4; margin-top: 2px;">--</div>
                             </div>
                         </div>
                         <div class="bot-coach-strategy" id="botCoachStrategy" style="display:none;">
-                            <div class="bot-coach-strategy-title">戦略モードの内訳</div>
-                            <div class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</div>
-                            <div class="bot-coach-strategy-map-container">
-                                <div class="bot-coach-strategy-grid">
-                                    <div class="bot-coach-strategy-cell cell-attack" id="cell_全力攻撃">全力攻撃</div>
-                                    <div class="bot-coach-strategy-cell cell-attack" id="cell_押し気味">押し気味</div>
-                                    <div class="bot-coach-strategy-cell cell-normal" id="cell_危険度勝負">危険度勝負</div>
-                                    <div class="bot-coach-strategy-cell cell-attack" id="cell_積極駒組み">積極駒組み</div>
-                                    <div class="bot-coach-strategy-cell cell-normal" id="cell_様子見">様子見</div>
-                                    <div class="bot-coach-strategy-cell cell-defend" id="cell_回し打ち">回し打ち</div>
-                                    <div class="bot-coach-strategy-cell cell-normal" id="cell_スリム化">スリム化</div>
-                                    <div class="bot-coach-strategy-cell cell-defend" id="cell_撤退準備">撤退準備</div>
-                                    <div class="bot-coach-strategy-cell cell-defend" id="cell_完全撤退">完全撤退</div>
-                                </div>
-                                <div class="bot-coach-strategy-plot-dot" id="botCoachStrategyPlotDot"
-                                    style="left: 0%; top: 100%;"></div>
+                            <div class="bot-coach-strategy-header" id="botCoachStrategyHeader">
+                                <span class="bot-coach-strategy-mode" id="botCoachStrategyMode">--</span>
+                                <span class="bot-coach-strategy-summary" id="botCoachStrategySummary">
+                                    <span class="bot-coach-strategy-mini" title="手牌価値">手 <b id="botCoachMiniAttack">0.00</b></span>
+                                    <span class="bot-coach-strategy-mini" title="場の脅威">場 <b id="botCoachMiniThreat">0.00</b></span>
+                                    <span class="bot-coach-strategy-mini" title="押し引き度">押 <b id="botCoachMiniPush">0.00</b></span>
+                                </span>
+                                <span class="bot-coach-strategy-toggle" id="botCoachStrategyToggle">▼</span>
                             </div>
-                            <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
-                            <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
+                            <div class="bot-coach-strategy-body" id="botCoachStrategyBody" style="display:none;">
+                                <div class="bot-coach-strategy-map-container">
+                                    <div class="bot-coach-strategy-grid">
+                                        <div class="bot-coach-strategy-cell cell-attack" id="cell_全力攻撃">全力攻撃</div>
+                                        <div class="bot-coach-strategy-cell cell-attack" id="cell_押し気味">押し気味</div>
+                                        <div class="bot-coach-strategy-cell cell-normal" id="cell_危険度勝負">危険度勝負</div>
+                                        <div class="bot-coach-strategy-cell cell-attack" id="cell_積極駒組み">積極駒組み</div>
+                                        <div class="bot-coach-strategy-cell cell-normal" id="cell_様子見">様子見</div>
+                                        <div class="bot-coach-strategy-cell cell-defend" id="cell_回し打ち">回し打ち</div>
+                                        <div class="bot-coach-strategy-cell cell-normal" id="cell_スリム化">スリム化</div>
+                                        <div class="bot-coach-strategy-cell cell-defend" id="cell_撤退準備">撤退準備</div>
+                                        <div class="bot-coach-strategy-cell cell-defend" id="cell_完全撤退">完全撤退</div>
+                                    </div>
+                                    <div class="bot-coach-strategy-plot-dot" id="botCoachStrategyPlotDot"
+                                        style="left: 0%; top: 100%;"></div>
+                                </div>
+                                <div class="bot-coach-strategy-params" id="botCoachStrategyParams"></div>
+                                <div class="bot-coach-strategy-threat" id="botCoachStrategyThreat">--</div>
+                            </div>
                         </div>
                         <div class="bot-coach-reason" id="botCoachReason" style="display:none;">
                             <div class="bot-coach-reason-title">推奨打牌の決定理由</div>
                             <div class="bot-coach-reason-text" id="botCoachReasonText">--</div>
                         </div>
-                        <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
+                        <div class="bot-coach-detail-floating" id="botCoachDetailFloating">
+                            <div class="bot-coach-eval-list" id="botCoachEvalList"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2239,6 +2339,23 @@
 
                 gameData = await response.json();
 
+                // 事前計算された各action評価データ（牌譜再生時の即時表示用）
+                // Why: forwarder.py の重い評価処理を介さず、eval.json を直接返す軽量エンドポイントを
+                //      使うことで「次巡」連打時のラグをゼロに近づける。
+                //      eval.json が無い牌譜（ライブ/未評価）はこの後 /api/evaluate にフォールバック。
+                window.__precomputedActions = {};
+                try {
+                    const evalResp = await fetch(`/api/eval-actions?uuid=${uuid}`);
+                    if (evalResp.ok) {
+                        const evalJson = await evalResp.json();
+                        if (evalJson && evalJson.available) {
+                            window.__precomputedActions = evalJson.actions || {};
+                        }
+                    }
+                } catch (e) {
+                    // eval-actions 取得失敗時はフォールバック (空のままだが requestBotCoachEvaluation が /api/evaluate を呼ぶ)
+                }
+
                 // mjai形式の牌を内部形式に変換 (E→1z, 0m→0m etc.)
                 const mjaiToInternal = {
                     'E': '1z', 'S': '2z', 'W': '3z', 'N': '4z', 'P': '5z', 'F': '6z', 'C': '7z'
@@ -2299,6 +2416,21 @@
                 rawActionsList = allActions.filter(act => {
                     return act.result && validClassNames.includes(act.result.class_name);
                 });
+
+                // Why: 事前計算データは actions リストのインデックスでキーが打たれているが、
+                // シミュレーターは rawActionsList のインデックスでステップ管理するため、
+                // 両者のマッピングを事前計算して高速ルックアップできるようにする。
+                window.__rawIdxToActionIdx = {};
+                {
+                    let ai = 0;
+                    for (let ri = 0; ri < rawActionsList.length; ri++) {
+                        while (ai < allActions.length && allActions[ai] !== rawActionsList[ri]) ai++;
+                        if (ai < allActions.length) {
+                            window.__rawIdxToActionIdx[ri] = ai;
+                            ai++;
+                        }
+                    }
+                }
 
                 // 打牌(RecordDiscardTile)を除外した、手番移動・配牌・鳴き・アガリ等の停止タイミングを抽出
                 timelineSteps = [];
@@ -2366,8 +2498,16 @@
                 engine.applyAction(rawActionsList[i]);
             }
 
-            renderBoard();
-            updatePromptPreview();
+            // Why: BOT コーチパネルを board render より先に即時反映。
+            //      ブラウザは同一スクリプト実行中の DOM 更新をバッチ処理するため、
+            //      重い renderBoard() 完了まで反映されない。requestAnimationFrame で
+            //      board render を次フレームに回し、コーチパネル更新を先に描画する。
+            _renderFromPrecomputed();
+
+            requestAnimationFrame(() => {
+                renderBoard();
+                updatePromptPreview();
+            });
         }
 
         /**
@@ -2519,6 +2659,18 @@
             return TILE_NAMES[tile] || tile;
         }
 
+        // 文字列中の牌表記 ('5m', '8p', '1z', '5mr' 等) を全て日本語表記に置換する。
+        // 副露評価の sub_label などに牌リストが含まれる場合の対応。
+        // 連結文字列 (例: "5m8p9s" のような空白なし) も処理するため、\b を使わない。
+        function convertTilesInString(str) {
+            if (!str) return str;
+            // 牌は 数字1桁 + [zmps] + 任意の r (赤5)。
+            // 連結していても順番にマッチする: "5m8p9s" → "5萬8p9索" → "5萬8筒9索"
+            return str.replace(/(\d[zmps]r?)/g, function (m) {
+                return TILE_NAMES[m] || m;
+            });
+        }
+
         /**
          * @title 卓面レンダリング関数
          * @description 現在の局状態（engine）に合わせて、HTMLの各プレイヤーのエリア（手牌、河、副露、席情報）、および卓中央の表示（ドラ、局名、残り枚数）を最新の状態に更新・描画します。
@@ -2612,8 +2764,12 @@
                 const hand = [...engine.hands[realSeat]];
                 const lastTsumo = engine.lastTsumo[realSeat];
 
+                // Why: ツモ牌が手牌配列に含まれているため、splice で取り除いてから描画しないと
+                //      同じ牌が2回表示されてしまう（手牌エリア内 + ツモ牌表示エリア）。
+                //      lastIndexOf で「最後の出現位置」を削除することで、ツモ牌（最後にpushされた牌）
+                //      を確実に取り除く。元の牌（理牌位置）はそのまま残る。
                 if (lastTsumo) {
-                    const tsumoIdx = hand.indexOf(lastTsumo);
+                    const tsumoIdx = hand.lastIndexOf(lastTsumo);
                     if (tsumoIdx !== -1) hand.splice(tsumoIdx, 1);
                 }
 
@@ -2798,6 +2954,44 @@
          * @description 現在の卓上の状態（自風、手牌、ツモ牌、副露、他家の副露、全員の河、点数状況、残り山牌数など）から、Geminiに「何切る」相談をするための詳細なMarkdownプロンプトテキストを動的に生成します。
          * @returns {string} Gemini送信用プロンプトのMarkdownテキスト
          */
+        function doraIndicatorToDora(indicator) {
+            // ドラ表示牌をドラ牌に変換する (例: "1p" → "2p", "8p" → "9p", "7z" → "5z")
+            // Why: Gemini 相談時にドラ表示牌だけでなく実際のドラ牌も伝えるため。
+            // 数牌: 次の数字 (9m → 1m, 8p → 9p, 1m → 2m)
+            // 風牌: 東→南→西→北→東
+            // 三元牌: 白→發→中→白
+            const suit = indicator[indicator.length - 1];
+            // Why: 牌 ID は 0-indexed (1m=0, 1p=9, 1s=18, 1z=27) で計算する必要がある。
+            // 旧コードは parseInt(indicator[0]) のみで 1m → 1 (誤) となっていたため、8p → 9p ではなく 1p になっていた。
+            let id;
+            if (suit === 'm') id = parseInt(indicator[0]) - 1;
+            else if (suit === 'p') id = 9 + (parseInt(indicator[0]) - 1);
+            else if (suit === 's') id = 18 + (parseInt(indicator[0]) - 1);
+            else id = 26 + parseInt(indicator[0]);  // 字牌 (1z=27, 5z=31)
+
+            let doraId;
+            if (id < 27) {
+                const base = Math.floor(id / 9) * 9;
+                doraId = base + (id - base + 1) % 9;
+            } else if (id < 31) {
+                doraId = 27 + (id - 27 + 1) % 4;
+            } else {
+                doraId = 31 + (id - 31 + 1) % 3;
+            }
+
+            if (doraId < 9) return (doraId + 1) + 'm';
+            if (doraId < 18) return (doraId - 9 + 1) + 'p';
+            if (doraId < 27) return (doraId - 18 + 1) + 's';
+            if (doraId === 27) return '1z';
+            if (doraId === 28) return '2z';
+            if (doraId === 29) return '3z';
+            if (doraId === 30) return '4z';
+            if (doraId === 31) return '5z';
+            if (doraId === 32) return '6z';
+            if (doraId === 33) return '7z';
+            return indicator;
+        }
+
         function generatePromptText() {
             // 麻雀の対局プレイヤーは4人（0〜3）であるため、4人分のデフォルト席名を定義する
             const names = ['席0', '席1', '席2', '席3'];
@@ -2820,8 +3014,12 @@
             const hand = [...engine.hands[perspectiveSeat]];
             const lastTsumo = engine.lastTsumo[perspectiveSeat];
 
+            // Why: ツモ牌が手牌配列に含まれているため、splice で取り除いてから描画しないと
+            //      同じ牌が2回表示されてしまう（手牌エリア内 + ツモ牌表示エリア）。
+            //      lastIndexOf で「最後の出現位置」を削除することで、ツモ牌（最後にpushされた牌）
+            //      を確実に取り除く。
             if (lastTsumo) {
-                const tsumoIdx = hand.indexOf(lastTsumo);
+                const tsumoIdx = hand.lastIndexOf(lastTsumo);
                 if (tsumoIdx !== -1) hand.splice(tsumoIdx, 1);
             }
             hand.sort(compareTiles);
@@ -2871,13 +3069,16 @@
 
             let prompt = `### 麻雀 局面検討プロンプト
 
-現在の状況において、何を切るのが最適か、牌効率や点数状況、他家の副露状況などを考慮した上で、思考プロセスを含めて詳細に検討してください。
+現在の状況において、以下の観点を考慮して思考プロセスを含め詳細に検討してください:
+- 何を切るのが最適か (牌効率、点数状況、他家の副露状況、巡目、残り山牌数)
+- 最もテンパイに近い打牌候補 と 安全牌を考慮した守備的な打牌候補 (それぞれメリット・デメリット)
+- ドラ表示牌に対応するドラ牌 (実際にアガリ時に翻がつく牌)
 
 #### 1. 基本情報
 * 局情報: ${engine.roundName} ${engine.ben}本場
 * 積み棒: ${engine.ben}本 (供託立直棒: ${engine.liqibang}本)
 * 残り山牌数: ${engine.leftTileCount}枚
-* ドラ表示牌: ${engine.doras.map(d => getTileText(d)).join(', ')}
+* ドラ表示牌: ${engine.doras.map(d => `${getTileText(d)}（ドラ${getTileText(doraIndicatorToDora(d))}）`).join(', ')}
 * 現在の巡目: ${myTurnCount}巡目
 
 #### 2. 自風・点数状況
@@ -2903,11 +3104,6 @@
 ${otherMeldsStr}
 #### 5. 全員の河 (捨て牌履歴)
 ${riversStr}
-#### 6. 検討依頼
-この手番で何を切るべきですか？
-* 最もテンパイに近い打牌候補
-* 安全牌を考慮した守備的な打牌候補
-それぞれについてメリット・デメリットを整理して回答してください。
 `;
             return prompt;
         }
@@ -2950,7 +3146,16 @@ ${riversStr}
             const mySeat = perspectiveSeat;
             const hand = [...engine.hands[mySeat]];
             const tsumo = engine.lastTsumo[mySeat];
-            const tsumoCount = engine.discards[mySeat].length + (tsumo ? 1 : 0);
+            // Why: AI は tsumo_count を「全プレイヤーの総ツモ数」として扱い、 (tsumo_count-1)//4+1 で巡目を計算します。
+            // 以前は自家 discards.length + 1 を送っていたため、巡目 4 (tsumo_count=4) → AI 巡目 1 となり、
+            // 序盤ボーナスや脅威度判定が全て「序盤」として誤動作していました。
+            // 正しい総ツモ数 = 4 * (自家巡目 - 1) + (自家座席 + 1)
+            //  自家巡目 = discards.length + (現ツモ ? 1 : 0)
+            //  myTsumoCount に既に現ツモが含まれているので、追加の +1 は不要。
+            // 例 (北家=3, 4巡目, 現ツモあり): myTsumoCount=4, tsumoCount = 4*3 + 4 = 16 → AI 巡目 4 ✓
+            // 例 (東家=0, 4巡目, 現ツモあり): myTsumoCount=4, tsumoCount = 4*3 + 1 = 13 → AI 巡目 4 ✓
+            const myTsumoCount = engine.discards[mySeat].length + (tsumo ? 1 : 0);
+            const tsumoCount = 4 * (myTsumoCount - 1) + (mySeat + 1);
 
             if (includeTsumo !== false && tsumo) {
                 const idx = hand.indexOf(tsumo);
@@ -3037,9 +3242,25 @@ ${riversStr}
             document.getElementById('botCoachKanPanel').style.display = 'none';
             document.getElementById('botCoachKyushuPanel').style.display = 'none';
             document.getElementById('botCoachSufutsuPanel').style.display = 'none';
+            document.getElementById('botCoachSpecialPanel').style.display = 'none';
             document.getElementById('botCoachStrategy').style.display = 'none';
             document.getElementById('botCoachReason').style.display = 'none';
             document.getElementById('botCoachEvalList').innerHTML = '';
+            // ホバー/クリックで表示される詳細フローティングも閉じる
+            const df = document.getElementById('botCoachDetailFloating');
+            if (df) df.classList.remove('is-shown');
+        }
+
+        // 統合パネル: 個別行の表示状態に応じて親パネルの表示も制御
+        function updateSpecialPanelVisibility() {
+            const panel = document.getElementById('botCoachSpecialPanel');
+            if (!panel) return;
+            const rows = ['botCoachRiichiPanel', 'botCoachKanPanel', 'botCoachKyushuPanel', 'botCoachSufutsuPanel'];
+            const anyVisible = rows.some(id => {
+                const el = document.getElementById(id);
+                return el && el.style.display !== 'none';
+            });
+            panel.style.display = anyVisible ? 'flex' : 'none';
         }
 
         /**
@@ -3048,6 +3269,18 @@ ${riversStr}
          * 脅威度の根拠テキスト（threat_reason）も下部に表示する。
          * @param {object|null} details - 戦略パラメータ辞書
          */
+        // 戦略モード内訳ドロップダウンのトグル
+        (function() {
+            const header = document.getElementById('botCoachStrategyHeader');
+            const body = document.getElementById('botCoachStrategyBody');
+            if (!header || !body) return;
+            header.addEventListener('click', () => {
+                const expanded = body.style.display !== 'none';
+                body.style.display = expanded ? 'none' : 'block';
+                header.classList.toggle('expanded', !expanded);
+            });
+        })();
+
         function renderStrategyDetails(details) {
             const box = document.getElementById('botCoachStrategy');
             const modeEl = document.getElementById('botCoachStrategyMode');
@@ -3061,6 +3294,14 @@ ${riversStr}
             }
             box.style.display = 'flex';
             modeEl.innerText = details.mode || '--';
+
+            // 畳んだ状態で表示する3つのミニ値（ヘッダー右側）
+            const miniAttack = document.getElementById('botCoachMiniAttack');
+            const miniThreat = document.getElementById('botCoachMiniThreat');
+            const miniPush = document.getElementById('botCoachMiniPush');
+            if (miniAttack) miniAttack.innerText = (details.base_attack || 0).toFixed(2);
+            if (miniThreat) miniThreat.innerText = (details.max_threat || 0).toFixed(2);
+            if (miniPush) miniPush.innerText = (details.push_score || 0).toFixed(2);
 
             const params = [
                 { label: '手牌価値', value: (details.base_attack || 0).toFixed(2) },
@@ -3093,39 +3334,34 @@ ${riversStr}
             if (plotDot) {
                 const baseAttack = details.base_attack || 0;
                 const maxThreat = details.max_threat || 0;
+                const grid = document.querySelector('.bot-coach-strategy-grid');
 
-                let xPct, yPct;
+                // Why: サーバーから渡される fuzzy_thresholds (membership function の交点) を使い、
+                // (1) マトリクス枠の境界、(2) ドット位置 の双方を同じ比率で揃える。
+                // 境界は MED=HIGH となる点を解析的に解いた値なので、ドットは必ず active セル内に収まる。
+                // X=0 → 左端、 X=1 → 右端、 Y=0 → 下端、 Y=1 → 上端 (CSS top は下向き)
+                const th = details.fuzzy_thresholds || {
+                    x_low_med: 0.15, x_med_high: 0.65,
+                    y_low_med: 0.25, y_med_high: 0.60,
+                };
 
-                // Why: サーバーからファジィパラメータ（中段ピーク値）が渡されている場合は、
-                // それを基準点として区分線形補間を行い、連続性を保ちつつセルの境界とプロット位置を整合させる。
-                // 16.67, 50.0, 83.33は3x3マスの中心座標（%）であり、これらを基準点として連続値補間を行う。
-                if (details.fuzzy_params) {
-                    const yMed = details.fuzzy_params.y_med_peak || 0.50;
-                    const xMed = details.fuzzy_params.x_med_peak || 0.40;
-
-                    // Y軸（手牌価値）の補間: Y軸は上が1.0、下が0.0。Y=0.0のとき一番下のマスの中心(83.33)、
-                    // Y=yMedのとき中央マスの中心(50.0)、Y=1.0のとき一番上のマスの中心(16.67)にマッピングする。
-                    if (baseAttack <= yMed) {
-                        yPct = 83.33 - (baseAttack / yMed) * (83.33 - 50.0);
-                    } else {
-                        yPct = 50.0 - ((baseAttack - yMed) / (1.0 - yMed)) * (50.0 - 16.67);
-                    }
-
-                    // X軸（場の脅威）の補間: X=0.0のとき一番左のマスの中心(16.67)、
-                    // X=xMedのとき中央マスの中心(50.0)、X=1.0のとき一番右のマスの中心(83.33)にマッピングする。
-                    if (maxThreat <= xMed) {
-                        xPct = 16.67 + (maxThreat / xMed) * (50.0 - 16.67);
-                    } else {
-                        xPct = 50.0 + ((maxThreat - xMed) / (1.0 - xMed)) * (83.33 - 50.0);
-                    }
+                // マトリクス枠を境界に合わせて動的生成
+                if (grid) {
+                    const xLowPct = (th.x_low_med * 100).toFixed(2);
+                    const xMidPct = ((th.x_med_high - th.x_low_med) * 100).toFixed(2);
+                    const xHighPct = ((1 - th.x_med_high) * 100).toFixed(2);
+                    // Y軸は上=1.0、下=0.0 なので、row1 (HIGH) = 1-y_med_high, row2 (MED) = y_med_high-y_low_med, row3 (LOW) = y_low_med
+                    const yHighPct = ((1 - th.y_med_high) * 100).toFixed(2);
+                    const yMidPct = ((th.y_med_high - th.y_low_med) * 100).toFixed(2);
+                    const yLowPct = (th.y_low_med * 100).toFixed(2);
+                    grid.style.gridTemplateColumns = `${xLowPct}% ${xMidPct}% ${xHighPct}%`;
+                    grid.style.gridTemplateRows = `${yHighPct}% ${yMidPct}% ${yLowPct}%`;
                 }
 
-                // Why: パラメータが存在しない場合は、従来の線形マッピング（0.0〜1.0 を 0%〜100% に）にフォールバック。
-                // 100はパーセンテージ換算用の基準値。
-                if (xPct === undefined || yPct === undefined) {
-                    xPct = Math.max(0, Math.min(100, maxThreat * 100));
-                    yPct = Math.max(0, Math.min(100, (1.0 - baseAttack) * 100));
-                }
+                // ドット位置: 線形マッピング（0% = 左端/下端、100% = 右端/上端）
+                // 端点でもドットが枠外に出ないよう厳密な 0%/100% は避ける
+                const xPct = Math.max(0.5, Math.min(99.5, maxThreat * 100));
+                const yPct = Math.max(0.5, Math.min(99.5, (1.0 - baseAttack) * 100));
 
                 plotDot.style.left = `${xPct.toFixed(1)}%`;
                 plotDot.style.top = `${yPct.toFixed(1)}%`;
@@ -3218,7 +3454,7 @@ ${riversStr}
                 document.getElementById('botCoachStrategy').style.display = 'none';
                 document.getElementById('botCoachEvalList').innerHTML = '';
             } else {
-                document.getElementById('botCoachStatus').innerHTML = `手番: ${data.summary ? data.summary.tsumo_count : 0} / 推奨: <strong>${data.recommended || '-'}</strong>`;
+                document.getElementById('botCoachStatus').innerHTML = `手番: ${data.summary ? data.summary.tsumo_count : 0} / 推奨: <strong>${getTileText(data.recommended) || '-'}</strong>`;
 
                 const recBox = document.getElementById('botCoachRecommend');
                 recBox.style.display = 'flex';
@@ -3226,7 +3462,7 @@ ${riversStr}
                 recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
                 recTile.innerText = getTileText(data.recommended);
                 document.getElementById('botCoachRecommendText').innerHTML =
-                    `<strong>${data.recommended}</strong> を切るのが最も評価値が高いと算出されました。`;
+                    `<strong>${getTileText(data.recommended)}</strong> を切るのが最も評価値が高いと算出されました。`;
 
                 if (data.near_tiles && data.near_tiles.length > 0) {
                     document.getElementById('botCoachNear').style.display = 'block';
@@ -3259,7 +3495,10 @@ ${riversStr}
                     riichiPanel.style.borderColor = '#e67e22';
                     riichiPanel.style.borderLeftColor = '#e67e22';
                 }
-                reasonEl.innerText = data.riichi_reason || '';
+                // Why: 理由テキストは \n を含むので <br> に変換して複数行表示。
+                //      新しい _explain_riichi_rule_basis で具体要因を提示。
+                const reasonText = (data.riichi_reason || '').replace(/\n/g, '<br>');
+                reasonEl.innerHTML = reasonText;
             } else {
                 riichiPanel.style.display = 'none';
             }
@@ -3282,7 +3521,7 @@ ${riversStr}
                     kanPanel.style.borderColor = '#95a5a6';
                     kanPanel.style.borderLeftColor = '#95a5a6';
                 }
-                reasonEl.innerText = data.kan_reason || '';
+                reasonEl.innerHTML = (data.kan_reason || '').replace(/\n/g, '<br>');
             } else {
                 kanPanel.style.display = 'none';
             }
@@ -3305,7 +3544,7 @@ ${riversStr}
                     kyushuPanel.style.borderColor = '#2ecc71';
                     kyushuPanel.style.borderLeftColor = '#2ecc71';
                 }
-                reasonEl.innerText = data.kyushu_kyuhai.reason || '';
+                reasonEl.innerHTML = (data.kyushu_kyuhai.reason || '').replace(/\n/g, '<br>');
             } else {
                 kyushuPanel.style.display = 'none';
             }
@@ -3328,10 +3567,13 @@ ${riversStr}
                     sufutsuPanel.style.borderColor = '#2ecc71';
                     sufutsuPanel.style.borderLeftColor = '#2ecc71';
                 }
-                reasonEl.innerText = data.sufutsusenru.reason || '';
+                reasonEl.innerHTML = (data.sufutsusenru.reason || '').replace(/\n/g, '<br>');
             } else {
                 sufutsuPanel.style.display = 'none';
             }
+
+            // 統合パネル（特殊判断）の表示制御
+            updateSpecialPanelVisibility();
 
             // 5. 評価候補リスト（リーチ中でない場合のみ描画）
             const list = document.getElementById('botCoachEvalList');
@@ -3412,7 +3654,54 @@ ${riversStr}
         /**
          * @title BOTコーチAPI呼び出し
          * @description /api/evaluate に現在の局面をPOST送信し、レスポンスでUIを更新する。
+         * Why: 「次巡」連打時に古いリクエストのレスポンスが後から到着してUIを上書きするバグを防ぐため、
+         *      AbortController で前回リクエストをキャンセル + シーケンス番号で最新のみ採用する。
          */
+        let _coachEvalSeq = 0;
+        let _coachEvalAbort = null;
+        let _meldEvalSeq = 0;
+        let _meldEvalAbort = null;
+        let _lastCoachHash = null;  // 同一局面の連続リクエストをスキップするため
+        function _hashPayload(p) {
+            // 局面評価に影響する主要フィールドだけハッシュ化（高速化のため）
+            return JSON.stringify({
+                h: p.hand, m: p.melds, r: p.river, d: p.doras,
+                t: p.tsumo_count, l: p.left_tile_count, s: p.scores, x: p.my_seat
+            });
+        }
+        /**
+         * @title 事前計算データから即座にUI更新
+         * @description 牌譜再生時、record_evaluator が保存した各action評価データを
+         *              board render を待たずに即座に BOT コーチパネルに反映する。
+         *              サーバ往復ゼロで「ぱっ」と切り替わる。
+         * @returns {boolean} 事前計算データを使って表示したか
+         */
+        function _renderFromPrecomputed() {
+            if (!window.__precomputedActions || !window.__rawIdxToActionIdx) return false;
+            const cri = timelineSteps[currentActionIndex];
+            if (cri === undefined) return false;
+            // 現在のステップ (非打牌) の直後にある打牌アクションが対象
+            // （典型的には RecordDealTile → ユーザー打牌 の流れ）
+            const nextRawIdx = cri + 1;
+            const actionIdx = window.__rawIdxToActionIdx[nextRawIdx];
+            if (actionIdx === undefined) return false;
+            const pre = window.__precomputedActions[String(actionIdx)];
+            if (!pre || !pre.recommended) return false;
+            const data = {
+                status: 'ok',
+                recommended: pre.recommended,
+                near_tiles: pre.near_tiles || [],
+                push_score: pre.push_score || 0,
+                strategy_details: pre.strategy_details || {},
+                evaluations: pre.evaluations || [],
+            };
+            renderBotCoachUI(data);
+            renderReasonForTile(pre.reason || `「${pre.recommended}」推奨`);
+            window.__lastCoachRecommended = data.recommended;
+            window.__lastCoachNear = data.near_tiles;
+            highlightRecommendedTile(data.recommended, data.near_tiles);
+            return true;
+        }
         function requestBotCoachEvaluation() {
             const payload = buildCoachPayload();
             if (!payload) {
@@ -3435,23 +3724,92 @@ ${riversStr}
                 clearBotCoachUI();
                 return;
             }
+            // 同一局面ならスキップ（次巡連打時の無駄なリクエスト削減）
+            const hash = _hashPayload(payload);
+            if (hash === _lastCoachHash && _coachEvalSeq > 0) return;
+            _lastCoachHash = hash;
+
+            // Why: 牌譜再生時は事前計算済みデータがあればそれを使うことで /api/evaluate を省略。
+            // サーバ負荷・レスポンス遅延をゼロに近づける。
+            if (_renderFromPrecomputed()) return;
+
+            // 前回の進行中リクエストをキャンセル
+            if (_coachEvalAbort) {
+                try { _coachEvalAbort.abort(); } catch (_) {}
+            }
+            const mySeq = ++_coachEvalSeq;
+            const ac = new AbortController();
+            _coachEvalAbort = ac;
             fetch('/api/evaluate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: ac.signal
             })
                 .then(r => r.json())
                 .then(data => {
+                    // 新しいリクエストが先に発火していたらこのレスポンスは破棄
+                    if (mySeq !== _coachEvalSeq) return;
                     renderBotCoachUI(data);
                     window.__lastCoachRecommended = data.recommended || null;
                     window.__lastCoachNear = data.near_tiles || [];
                     highlightRecommendedTile(data.recommended || null, data.near_tiles);
                 })
                 .catch(err => {
+                    if (err && err.name === 'AbortError') return;
                     console.warn('coach api error', err);
                 });
         }
 
+
+        // 副露パネルの閉じるボタン
+        (function() {
+            const closeBtn = document.getElementById('botCoachMeldClose');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const mp = document.getElementById('botCoachMeldPanel');
+                    if (mp) {
+                        mp.classList.remove('is-visible');
+                        mp.classList.remove('is-loading');
+                        mp.dataset.active = "0";
+                    }
+                });
+            }
+        })();
+
+        // 推奨打牌のホバー/クリックで理由＋評価リストをフローティング表示
+        (function() {
+            const recommend = document.getElementById('botCoachRecommend');
+            const detail = document.getElementById('botCoachDetailFloating');
+            if (!recommend || !detail) return;
+            let pinned = false;  // クリックで固定（hover解除でも閉じない）
+
+            function showDetail() { detail.classList.add('is-shown'); }
+            function hideDetail() {
+                if (!pinned) detail.classList.remove('is-shown');
+            }
+
+            recommend.addEventListener('mouseenter', showDetail);
+            recommend.addEventListener('mouseleave', hideDetail);
+            detail.addEventListener('mouseenter', showDetail);
+            detail.addEventListener('mouseleave', hideDetail);
+
+            recommend.addEventListener('click', (e) => {
+                e.stopPropagation();
+                pinned = !pinned;
+                if (pinned) showDetail();
+                else hideDetail();
+            });
+
+            // 他の場所をクリックしたら閉じる（pinned含む）
+            document.addEventListener('click', (e) => {
+                if (!recommend.contains(e.target) && !detail.contains(e.target)) {
+                    pinned = false;
+                    detail.classList.remove('is-shown');
+                }
+            });
+        })();
 
         function requestBotCoachMeldEvaluation() {
             const mp = document.getElementById("botCoachMeldPanel");
@@ -3561,7 +3919,7 @@ ${riversStr}
                 }
             }
             payload.meld_candidates = candidates;
-            _send_meld_eval(payload, sl[di] + '家が <b>' + dt + '</b> を捨てました', mp);
+            _send_meld_eval(payload, sl[di] + '家が <b>' + getTileText(dt) + '</b> を捨てました', mp);
         }
 
         /**
@@ -3605,10 +3963,21 @@ ${riversStr}
             mp.dataset.active = "1";
             mp.classList.add('is-loading');
             mp.classList.add('is-visible');
+            // Why: 連打で古い手牌のレスポンスが後から到着するバグを防ぐため、
+            //      AbortController + シーケンス番号で最新リクエストの結果のみ反映する。
+            if (_meldEvalAbort) {
+                try { _meldEvalAbort.abort(); } catch (_) {}
+            }
+            const mySeq = ++_meldEvalSeq;
+            const ac = new AbortController();
+            _meldEvalAbort = ac;
             fetch('/api/evaluate-meld', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: ac.signal
             }).then(r => r.json()).then(data => {
+                // 新しいリクエストが先に発火していたら破棄
+                if (mySeq !== _meldEvalSeq) return;
                 mp.classList.remove('is-loading');
                 if (data.status !== 'ok' || !data.candidates) { mp.classList.remove('is-visible'); return; }
 
@@ -3642,13 +4011,17 @@ ${riversStr}
                 data.candidates.forEach(c => {
                     const isBest = c.type === best;
                     const isSkip = c.type === 'skip';
+                    const isForbidden = c.forbidden === true;
                     const sc = typeof c.best_score === 'number' ? c.best_score : 0;
                     const sh = c.shanten !== undefined ? c.shanten : 99;
-                    const pct = Math.max(0, Math.min(100, (Math.abs(sc) / maxScore) * 100));
+                    // 禁止状態の行は表示領域を確保するため最低値を設定
+                    const displayScore = isForbidden ? Math.min(-500, sc) : sc;
+                    const pct = Math.max(0, Math.min(100, (Math.abs(displayScore) / maxScore) * 100));
 
                     let shantenText, shantenClass = '';
                     if (sh <= -1) { shantenText = '和了'; shantenClass = 'is-huura'; }
                     else if (sh === 0) { shantenText = '聴牌'; shantenClass = 'is-tenpai'; }
+                    else if (isForbidden) { shantenText = '禁止'; shantenClass = 'is-forbidden'; }
                     else { shantenText = sh + '向聴'; }
 
                     let iconClass, iconText;
@@ -3662,22 +4035,25 @@ ${riversStr}
                     let rowClass = 'bot-coach-meld-eval-row';
                     if (isBest) rowClass += ' is-recommended';
                     if (isSkip) rowClass += ' is-skip';
+                    if (isForbidden) rowClass += ' is-forbidden';
 
-                    evalHtml += '<div class="' + rowClass + '">';
+                    evalHtml += '<div class="' + rowClass + '" ' + (c.forbidden_reason ? 'title="' + c.forbidden_reason + '"' : '') + '>';
                     evalHtml += '<div class="bot-coach-meld-eval-label">';
                     evalHtml += '<div class="bot-coach-meld-eval-type">';
                     evalHtml += '<div class="bot-coach-meld-type-icon ' + iconClass + '">' + iconText + '</div>';
-                    evalHtml += '<span>' + (isBest ? '★ ' : '') + c.label + '</span>';
+                    evalHtml += '<span>' + (isBest ? '★ ' : '') + convertTilesInString(c.label) + '</span>';
                     evalHtml += '</div>';
                     if (c.sub_label) {
-                        evalHtml += '<div class="bot-coach-meld-eval-sub">' + c.sub_label + '</div>';
+                        evalHtml += '<div class="bot-coach-meld-eval-sub">' + convertTilesInString(c.sub_label) + '</div>';
+                    } else if (c.forbidden_reason) {
+                        evalHtml += '<div class="bot-coach-meld-eval-sub" style="color:#ef4444;">🚫 ' + c.forbidden_reason + '</div>';
                     }
                     evalHtml += '</div>';
                     evalHtml += '<div class="bot-coach-meld-eval-bar-wrap">';
                     evalHtml += '<div class="bot-coach-meld-eval-bar"><div class="bot-coach-meld-eval-bar-fill" style="width:' + pct.toFixed(0) + '%;"></div></div>';
                     evalHtml += '</div>';
                     evalHtml += '<div class="bot-coach-meld-eval-score-box">';
-                    evalHtml += '<div class="bot-coach-meld-eval-score">' + sc.toFixed(0) + '</div>';
+                    evalHtml += '<div class="bot-coach-meld-eval-score">' + (isForbidden ? '−' : '') + Math.abs(displayScore).toFixed(0) + '</div>';
                     evalHtml += '<div class="bot-coach-meld-eval-shanten ' + shantenClass + '">' + shantenText + '</div>';
                     evalHtml += '</div>';
                     evalHtml += '</div>';

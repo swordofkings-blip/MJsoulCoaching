@@ -30,7 +30,12 @@ hiddenimports = [
 hiddenimports += collect_submodules('majsoul_wrapper')
 hiddenimports += collect_submodules('core')
 
-# データファイル: サーバーテンプレート + ブラウザフック + majsoul_wrapper/proto の JSON
+# データファイル: サーバーテンプレート + ブラウザフック + majsoul_wrapper/proto の JSON + 設定ファイル
+# Why: majsoul_hook.js (Tampermonkey ユーザースクリプト) は
+# /majsoul_hook.user.js エンドポイントで配信されるため、バンドルに含める必要がある。
+# onedir モードでは _internal/ 内に配置される。
+# 設定ファイル (config/) は forwarder.py が実行時に ../config/ から読み込むため、
+# onedir 出力ディレクトリに含める必要がある (PyInstaller バンドルではない)。
 datas = [
     (os.path.join(ROOT_DIR, 'server', 'templates'), 'templates'),
     (os.path.join(ROOT_DIR, 'server', 'majsoul_hook.js'), '.'),

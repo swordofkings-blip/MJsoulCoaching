@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>雀魂 牌譜ライブラリ</title>
     <!-- Google Fonts の読み込み -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -222,6 +225,113 @@
             color: var(--text-muted);
         }
 
+        /* AI 総合評価 (S~C) バッジ (小さめ: プレイヤー名の横に表示) */
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
+        }
+        .player-info .player-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .grade-wrap {
+            display: inline-flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .grade-mini {
+            display: inline-block;
+            min-width: 1.4rem;
+            text-align: center;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: bold;
+            color: white;
+            line-height: 1.3;
+            cursor: help;
+        }
+        .grade-mini.grade-s { background: linear-gradient(135deg, #f59e0b, #ef4444); box-shadow: 0 0 6px rgba(245, 158, 11, 0.6); }
+        .grade-mini.grade-a { background: linear-gradient(135deg, #3b82f6, #8b5cf6); }
+        .grade-mini.grade-b { background: linear-gradient(135deg, #10b981, #059669); }
+        .grade-mini.grade-c { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .grade-mini.grade-d { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+        .grade-mini.grade-e, .grade-mini.grade-pending { background: #6b7280; }
+
+        /* AI評価中スピナー（タイトル付近用） */
+        .eval-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(139, 92, 246, 0.25);
+            border-top-color: #a29bfe;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
+        .eval-spinner.hidden { display: none; }
+        .eval-spinner-text {
+            display: inline-block;
+            font-size: 0.7rem;
+            color: #a29bfe;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* カードヘッダ用 S~C 集計バッジ */
+        .header-grades {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .grade-pill {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            color: white;
+            line-height: 1.3;
+        }
+        .grade-pill.grade-s { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+        .grade-pill.grade-a { background: linear-gradient(135deg, #3b82f6, #8b5cf6); }
+        .grade-pill.grade-b { background: linear-gradient(135deg, #10b981, #059669); }
+        .grade-pill.grade-c { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .grade-pill.grade-d { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+        .grade-pill.grade-e { background: #6b7280; }
+
+        .new-record-toast {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 0.8rem 1.4rem;
+            border-radius: 12px;
+            font-weight: bold;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .new-record-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
         .loader {
             display: inline-block;
             width: 40px;
@@ -267,6 +377,7 @@
 </head>
 
 <body>
+    <div id="newRecordToast" class="new-record-toast"></div>
     <header>
         <div>
             <h1>雀魂 牌譜ライブラリ</h1>
@@ -337,8 +448,12 @@
 
         /**
          * 牌譜一覧を取得して画面に描画します。
+         * @param {boolean} force - true なら件数に関係なく再描画 (初期ロード用)
          */
-        async function loadRecords() {
+        let _lastRecordCount = -1;
+        let _lastRecordIds = '';
+        let _lastEvalHash = '';
+        async function loadRecords(force = false) {
             const grid = document.getElementById('recordGrid');
             const loading = document.getElementById('loadingState');
 
@@ -347,6 +462,22 @@
                 if (!response.ok) throw new Error('API呼び出しに失敗しました');
 
                 const records = await response.json();
+
+                // Why: 件数/UUID だけでなく評価ステータスも比較する。
+                // 牌譜追加時は UUID リスト、eval 完了時は評価ステータスが変化するため検知できる。
+                const ids = records.map(r => r.uuid).join('|');
+                const evalHash = records.map(r => {
+                    if (!r.evaluations) return 'pending';
+                    return Object.entries(r.evaluations).map(([k, v]) => `${k}:${v.grade}:${v.avg_score}`).join('|');
+                }).join('#');
+                if (!force && _lastRecordCount === records.length && _lastRecordIds === ids && _lastEvalHash === evalHash) {
+                    return;
+                }
+                const newCount = records.length - _lastRecordCount;
+                const newEvals = records.filter(r => r.evaluations && (!force || true)).length;
+                _lastRecordCount = records.length;
+                _lastRecordIds = ids;
+                _lastEvalHash = evalHash;
 
                 if (records.length === 0) {
                     grid.innerHTML = `
@@ -378,11 +509,21 @@
                         sortedPlayers.forEach(p => {
                             const badgeClass = seatClasses[p.seat] || '';
                             const label = seatLabels[p.seat] || '';
+                            // 評価グレード (あれば名前の横に表示)
+                            const ev = (rec.evaluations || {})[String(p.seat)];
+                            let gradeBadge = '';
+                            if (ev && ev.count > 0) {
+                                gradeBadge = `<span class="grade-mini grade-${ev.grade.toLowerCase()}" title="平均マッチスコア: ${ev.avg_score}">${ev.grade}</span>`;
+                            } else if (rec.evaluations) {
+                                // 評価中
+                                gradeBadge = `<span class="grade-mini grade-pending" title="評価中">-</span>`;
+                            }
                             playersHtml += `
                                 <div class="player-row">
-                                    <div>
+                                    <div class="player-info">
                                         <span class="seat-badge ${badgeClass}">${label}</span>
                                         <span class="player-name">${p.nickname}</span>
+                                        <span class="grade-wrap">${gradeBadge}</span>
                                     </div>
                                     <span class="player-score">${p.score !== undefined ? p.score : ''}</span>
                                 </div>
@@ -394,9 +535,39 @@
 
                     const gameTypeStr = rec.category === 2 ? '四人戦' : '三人戦';
 
+                    // カードヘッダに S~C の集計バッジを追加 (デバッグ/視認性のため)
+                    let headerGradesHtml = '';
+                    if (rec.evaluations) {
+                        const evalList = Object.values(rec.evaluations).filter(e => e && e.count > 0);
+                        if (evalList.length > 0) {
+                            const gradeOrder = ['S', 'A', 'B', 'C', 'D', 'E'];
+                            const gradeCount = {};
+                            for (const e of evalList) {
+                                gradeCount[e.grade] = (gradeCount[e.grade] || 0) + 1;
+                            }
+                            headerGradesHtml = '<div class="header-grades">';
+                            for (const g of gradeOrder) {
+                                if (gradeCount[g]) {
+                                    headerGradesHtml += `<span class="grade-pill grade-${g.toLowerCase()}" title="${g}: ${gradeCount[g]}人">${g}×${gradeCount[g]}</span>`;
+                                }
+                            }
+                            headerGradesHtml += '</div>';
+                        }
+                    }
+
+                    // AI評価中フラグ: rec.evaluations が null なら未完了
+                    const isEvalPending = !rec.evaluations;
+                    const evalSpinnerHtml = isEvalPending
+                        ? '<span class="eval-spinner" title="AI評価中"></span><span class="eval-spinner-text">AI評価中…</span>'
+                        : '<span class="eval-spinner hidden"></span>';
+
                     card.innerHTML = `
                         <div class="card-header">
-                            <span class="uuid-label">UUID: ${rec.uuid.slice(0, 15)}...</span>
+                            <div>
+                                <span class="uuid-label">UUID: ${rec.uuid.slice(0, 15)}...</span>
+                                ${evalSpinnerHtml}
+                                ${headerGradesHtml}
+                            </div>
                             <span class="game-type">${gameTypeStr}</span>
                         </div>
                         <div class="players-list">
@@ -409,6 +580,14 @@
                     grid.appendChild(card);
                 });
 
+                // 新着通知 (更新があった場合のみ)
+                if (newCount > 0 && _lastRecordCount > 0) {
+                    showNewRecordNotification(newCount);
+                } else if (newCount === 0 && _lastRecordCount > 0 && evalHash !== _lastEvalHash) {
+                    // 既存牌譜の評価が完了した場合
+                    showEvalCompleteNotification(records.length);
+                }
+
             } catch (err) {
                 console.error(err);
                 grid.innerHTML = `
@@ -417,6 +596,32 @@
                     </div>
                 `;
             }
+        }
+
+        /**
+         * 新着牌譜の通知を表示
+         */
+        function showNewRecordNotification(count) {
+            const toast = document.getElementById('newRecordToast');
+            if (!toast) return;
+            toast.textContent = `🆕 新しい牌譜が ${count} 件追加されました`;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 4000);
+        }
+
+        /**
+         * 評価完了通知を表示
+         */
+        function showEvalCompleteNotification(total) {
+            const toast = document.getElementById('newRecordToast');
+            if (!toast) return;
+            toast.textContent = `📊 AI 評価が完了しました (合計 ${total} 件)`;
+            toast.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)';
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.style.background = '';
+            }, 4000);
         }
 
         async function restartServer() {
@@ -439,8 +644,11 @@
             btn.textContent = '⟳ 再起動';
         }
 
-        // 読み込み実行
-        window.addEventListener('DOMContentLoaded', loadRecords);
+        // 初期読み込み + 5 秒ごとの自動ポーリング
+        window.addEventListener('DOMContentLoaded', () => {
+            loadRecords(true);
+            setInterval(() => loadRecords(false), 5000);
+        });
     </script>
 </body>
 

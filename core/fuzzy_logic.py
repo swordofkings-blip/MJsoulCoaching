@@ -19,6 +19,49 @@ class FuzzyLogicEngine:
             return 1.0 if val >= 1.0 else 0.0
         return max(0.0, (val - bound) / (1.0 - bound))
 
+    def _solve_med_eq_high(self, peak: float, width: float, bound: float) -> float | None:
+        # 三角 MED と線形 HIGH の交点を解析的に解く
+        # val >= peak の場合: 1 - (val - peak)/width = (val - bound)/(1 - bound)
+        # 整理: val = (1 + peak/width + bound/(1-bound)) / (1/width + 1/(1-bound))
+        if width <= 0.0 or bound >= 1.0:
+            return None
+        denom = 1.0 / width + 1.0 / (1.0 - bound)
+        if denom <= 0:
+            return None
+        numer = 1.0 + peak / width + bound / (1.0 - bound)
+        val = numer / denom
+        if val < peak or val > 1.0:
+            return None
+        return val
+
+    def get_cell_boundaries(self) -> dict:
+        # セル境界: 各軸で membership function が交差する点
+        # LOW-MED 境界: LOW が 0 になる点 (= low_bound)
+        # MED-HIGH 境界: MED = HIGH になる点 (解析的に解く)
+        y_low_bound = self.params.get('FUZZY_Y_LOW_BOUND', 0.25)
+        y_med_peak = self.params.get('FUZZY_Y_MED_PEAK', 0.50)
+        y_med_width = self.params.get('FUZZY_Y_MED_WIDTH', 0.25)
+        y_high_bound = self.params.get('FUZZY_Y_HIGH_BOUND', 0.60)
+        x_low_bound = self.params.get('FUZZY_X_LOW_BOUND', 0.15)
+        x_med_peak = self.params.get('FUZZY_X_MED_PEAK', 0.40)
+        x_med_width = self.params.get('FUZZY_X_MED_WIDTH', 0.25)
+        x_high_bound = self.params.get('FUZZY_X_HIGH_BOUND', 0.65)
+
+        y_med_high = self._solve_med_eq_high(y_med_peak, y_med_width, y_high_bound)
+        if y_med_high is None or y_med_high < y_low_bound:
+            y_med_high = y_high_bound
+
+        x_med_high = self._solve_med_eq_high(x_med_peak, x_med_width, x_high_bound)
+        if x_med_high is None or x_med_high < x_low_bound:
+            x_med_high = x_high_bound
+
+        return {
+            "x_low_med": x_low_bound,
+            "x_med_high": x_med_high,
+            "y_low_med": y_low_bound,
+            "y_med_high": y_med_high,
+        }
+
     def get_y_membership(self, base_attack: float) -> tuple[float, float, float]:
         y_low_bound = self.params.get('FUZZY_Y_LOW_BOUND', 0.25)
         y_med_peak = self.params.get('FUZZY_Y_MED_PEAK', 0.50)
@@ -74,3 +117,4 @@ class FuzzyLogicEngine:
                 best_mode = mode
 
         return best_mode, scores
+

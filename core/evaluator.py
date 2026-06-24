@@ -509,18 +509,49 @@ class DefenseEvaluator:
 
         # リーチ者がいなくても基本的な安全度を評価
         if not reach_seats:
-            # 字牌の見え枚数で安全判定
+            # 字牌: (手牌内枚数, 河・場の枚数) のマトリクスで安全判定
+            # Why: 残り枚数 (4 - 手牌 - 河) と相手視点で安全度ラインが決まる。
+            # 優先順: 絶対安全 → 超安全 → 状況2択 (スジライン) → 明確な危険 (ワンチャンスライン) → 最も危険
             if is_honor(tile_id):
                 visible = self.state.all_visible_counts()
                 my_counts = self.state.my_hand_counts()
-                total_count = visible[tile_id]
-                public_count = total_count - my_counts[tile_id]
-                # なぜこのようにするか：自分が3枚や4枚持っている場合も残数は1枚以下になり、他家はトイツを作れずシャボ待ちが否定されるため安全だからです。
-                # また、河に2枚見えている場合も他家はトイツを持てないのでシャボが否定されます。
-                if total_count >= 3 or public_count >= 2:
-                    score = self.params.get('SCORE_HONOR', SCORE_HONOR)
-                    self.record_detail(tile, f"字牌安牌判定 (全体{total_count}/公開{public_count}) (+{score})")
+                hand_count = my_counts[tile_id]
+                public_count = visible[tile_id] - hand_count
+                remaining = 4 - hand_count - public_count
+
+                # 絶対安全 (放銃0%): 残り0枚、自分が最後の1枚
+                if remaining == 0:
+                    score = self.params.get('SCORE_HONOR_ABSOLUTE', 1000)
+                    self.record_detail(tile, f"字牌絶対安全 (手牌{hand_count}/河{public_count}) (+{score})")
                     return score
+                # 超安全 (ほぼ鉄安): 残り1枚、単騎のみ
+                if remaining == 1 and public_count == 2 and hand_count == 1:
+                    score = self.params.get('SCORE_HONOR_SUPER_SAFE', 700)
+                    self.record_detail(tile, f"字牌超安全 (手牌{hand_count}/河{public_count}) (+{score})")
+                    return score
+                # 状況2択 (スジライン): 残り1枚、シャボ待ち
+                if remaining == 1 and public_count == 1 and hand_count == 2:
+                    score = self.params.get('SCORE_HONOR_SHABO', 500)
+                    self.record_detail(tile, f"字牌状況2択シャボ (手牌{hand_count}/河{public_count}) (+{score})")
+                    return score
+                # 状況2択 (スジライン): 残り1枚、生牌単騎狙い
+                if remaining == 1 and public_count == 0 and hand_count == 3:
+                    score = self.params.get('SCORE_HONOR_SHINPAI_TANKI', 300)
+                    self.record_detail(tile, f"字牌状況2択生牌単騎 (手牌{hand_count}/河{public_count}) (+{score})")
+                    return score
+                # 明確な危険 (ワンチャンスライン): 残り2枚、1枚枯れ
+                if remaining == 2 and public_count == 1 and hand_count == 1:
+                    score = self.params.get('SCORE_HONOR_DANGER', 200)
+                    self.record_detail(tile, f"字牌明確な危険 (手牌{hand_count}/河{public_count}) (+{score})")
+                    return score
+                # 最も危険: 残り2枚、生牌 (無筋の么九牌と同等)
+                if remaining == 2 and public_count == 0 and hand_count == 2:
+                    score = self.params.get('SCORE_HONOR_MOST_DANGEROUS', 50)
+                    self.record_detail(tile, f"字牌最も危険 (手牌{hand_count}/河{public_count}) (+{score})")
+                    return score
+                # 残り1枚: 残り1枚 (1, 0) ケース
+                if remaining == 1 and public_count == 0 and hand_count == 1:
+                    return 0
                 return 0
             # 現物（誰かの河にある牌）は基本安全
             for s in range(4):
@@ -1992,13 +2023,20 @@ class AttackEvaluator:
                     bonus -= base_penalty
                     self.record_detail(tile, f"三元牌対子保持ペナルティ (-{base_penalty})")
                 elif not is_pair and not is_aggressive_mode:
-                    # なぜこのようにするか：3シャンテン以上（手が遠い）または5ブロック以上（十分なブロック数）のときは、
-                    # 孤立役牌を重ねてブロックを作る価値よりも手効率を最優先すべきなため、整理ペナルティを除外します。
+                    # なぜこのようにするか：人間は3-4向聴でも「白中は後で刻子にできるかも」と判断して
+                    # 序盤から手牌に残す傾向がある。三元牌は字牌の中でも価値が高いため、
+                    # 3向聴以上でも軽いペナルティを課して「北（オタ風）＜白＝中」の序列を保つ。
+                    # 5向聴以上（手が極度に遠い）のみ完全に除外して手効率最優先とする。
                     if shanten < 3 and blocks < 5:
                         sangen_mult = self.params.get('SANGEN_PENALTY_MULTIPLIER', 0.75)
                         val_penalty = int(base_penalty * sangen_mult * vis_factor)
                         bonus -= val_penalty
                         self.record_detail(tile, f"三元牌整理ペナルティ (-{val_penalty})")
+                    elif shanten < 5:
+                        sangen_keep = self.params.get('HIGH_SHANTEN_SANGEN_KEEP', 10)
+                        val_penalty = int(sangen_keep * vis_factor)
+                        bonus -= val_penalty
+                        self.record_detail(tile, f"高シャンテン三元牌保持ペナルティ (-{val_penalty})")
             bakaze = 27 + (self.state.chang % 4)
             wind_idx = (self.state.my_seat - self.state.ju) % 4
             jikaze = 27 + wind_idx
@@ -2009,26 +2047,43 @@ class AttackEvaluator:
                     self.record_detail(tile, f"場風対子保持ペナルティ (-{base_penalty})")
                 elif is_double_wind:
                     if not is_pair and not is_aggressive_mode:
-                        # 3シャンテン以上、または5ブロック以上の場合は不要なのでペナルティを除外します
+                        # 3-4向聴でも軽いペナルティを残して役牌価値を維持
                         if shanten < 3 and blocks < 5:
                             val_penalty = int(base_penalty * 1.5 * vis_factor)
                             bonus -= val_penalty
                             self.record_detail(tile, f"ダブ風切りペナルティ (-{val_penalty})")
+                        elif shanten < 5:
+                            double_wind_keep = self.params.get('HIGH_SHANTEN_DOUBLE_WIND_KEEP', 10)
+                            val_penalty = int(double_wind_keep * vis_factor)
+                            bonus -= val_penalty
+                            self.record_detail(tile, f"高シャンテンダブ風保持ペナルティ (-{val_penalty})")
                 else:
                     if not is_pair and not is_aggressive_mode:
-                        # 3シャンテン以上、または5ブロック以上の場合は不要なのでペナルティを除外します
+                        # 3-4向聴でも軽いペナルティを残して役牌価値を維持
                         if shanten < 3 and blocks < 5:
                             val_penalty = int(base_penalty * 0.5 * vis_factor)
                             bonus -= val_penalty
                             self.record_detail(tile, f"不要場風切りペナルティ (-{val_penalty})")
+                        elif shanten < 5:
+                            bakaze_keep = self.params.get('HIGH_SHANTEN_BAKAZE_KEEP', 5)
+                            val_penalty = int(bakaze_keep * vis_factor)
+                            bonus -= val_penalty
+                            self.record_detail(tile, f"高シャンテン場風保持ペナルティ (-{val_penalty})")
             if discard_id == jikaze:
                 if not is_pair and not is_double_wind and not is_aggressive_mode:
-                    # 3シャンテン以上、または5ブロック以上の場合は不要なのでペナルティを除外します
+                    # 3-4向聴でも軽いペナルティを残して自風牌価値を維持
                     if shanten < 3 and blocks < 5:
                         val_penalty = int(base_penalty * 1.0 * vis_factor)
                         bonus -= val_penalty
                         self.record_detail(tile, f"不要自風切りペナルティ (-{val_penalty})")
+                    elif shanten < 5:
+                        jikaze_keep = self.params.get('HIGH_SHANTEN_JIKAZE_KEEP', 5)
+                        val_penalty = int(jikaze_keep * vis_factor)
+                        bonus -= val_penalty
+                        self.record_detail(tile, f"高シャンテン自風保持ペナルティ (-{val_penalty})")
             elif not is_pair and discard_id not in SANGEN and discard_id != bakaze:
+                # 客風（オタ風）: 序盤から価値なし。人間は「北は役にならない」と序盤から認識。
+                # 3-4向聴でも積極的に切れるように vis_factor を弱めない。
                 val_bonus = int(self.params.get('HONOR_DISCARD_BONUS', 20) * vis_factor)
                 bonus += val_bonus
                 self.record_detail(tile, f"不要客風整理ボーナス (+{val_bonus})")
@@ -3819,57 +3874,269 @@ class Evaluator:
 
         return (riichi_ev, damaten_ev)
 
+    def _compute_win_rate_dfs(self) -> float:
+        """
+        @title DFS による立直時の和了確率
+        @description _wait_tiles_for_tenpai を流用して、実際に立直で上がれる牌の枚数をカウント。
+                  各待ち牌について「立直 + ドラ + 役牌」≥ 2翻 なら有効な和了牌として数える。
+                  単タイル枚数確率より正確（引いた牌が和了形にならないケースを除外）。
+        @returns {float} 和了確率 (0.0 〜 1.0)
+        """
+        from core.str_converter import tile_to_id
+        wait_ids = self._wait_tiles_for_tenpai()  # 待ち牌のIDリスト
+        if not wait_ids:
+            return 0.0
+        # 現在の確定翻数（ドラ+役牌）
+        base_han = self._estimate_riichi_han_actual()  # ドラ+役牌
+        visible = self.state.all_visible_counts()
+        valid_count = 0
+        for tid in wait_ids:
+            remaining = 4 - visible[tid]
+            if remaining <= 0:
+                continue
+            # この牌を引いた手で 立直(1) + base_han >= 2 なら有効
+            # 立直確定なので +1 で判定
+            if base_han + 1 >= 2:
+                valid_count += remaining
+        return min(1.0, valid_count / max(1, self.state.left_tile_count))
+
+    def _estimate_riichi_han_actual(self) -> int:
+        """
+        @title 立直時の現実的な最大翻数
+        @description 待ち牌ごとに成立可能な役を厳密にカウントし、最大翻数を返す。
+                  estimate_han_advanced のような「部分役の希望的カウント」は行わない。
+                  立直判断の表示用にのみ使用。
+        @returns {int} 最大翻数
+        """
+        from core.str_converter import hand_to_counts, tile_to_id
+        from collections import Counter
+        hand = self.state.my_hand
+        if not hand:
+            return 0
+        doras = self.state.doras
+        # ドラ牌と赤ドラをカウント
+        from core.str_converter import dora_indicator_to_dora
+        dora_tiles = [dora_indicator_to_dora(d) for d in doras if d]
+        counts = hand_to_counts(hand)
+        # ドラの枚数（赤ドラ含む）
+        dora_count = 0
+        dora_ids = set()
+        for d in dora_tiles:
+            did = tile_to_id(d)
+            dora_ids.add(did)
+            dora_count += counts[did] if did < len(counts) else 0
+        # 赤ドラ（常にカウント）
+        aka_count = sum(1 for h in hand if h in ('0m', '0p', '0s'))
+        dora_count += aka_count
+
+        # 役牌（三元牌・自風・場風）の枚数
+        sw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.my_seat, 27)
+        rw = {0: 27, 1: 28, 2: 29, 3: 30}.get(self.state.chang % 4, 27)
+        yakuhai_ids = {31, 32, 33, sw, rw}
+        yakuhai_count = sum(1 for tid in range(34) if tid in yakuhai_ids and counts[tid] >= 3)
+        yakuhai_pair = sum(1 for tid in range(34) if tid in yakuhai_ids and counts[tid] == 2)
+        # 役牌の対子は雀頭として機能（1翻）
+        yakuhai_han = yakuhai_count + (1 if yakuhai_pair > 0 else 0)
+
+        # 待ち牌を列挙（簡略化: 各牌グループについて1枚追加したと仮定）
+        # 実際の実装は厳密に行うと複雑なので、handの牌構成から判定
+        all_tile_ids = set()
+        for t in hand:
+            all_tile_ids.add(tile_to_id(t))
+        # 暗刻の数をカウント
+        concealed_triplets = sum(1 for tid in range(34) if counts[tid] >= 3)
+        # 順子の数（簡易: 各スートの123,234,345,456,567,678,789 パターンをチェック）
+        sequence_count = 0
+        for s in range(3):  # 萬, 筒, 索
+            for start in range(7):  # 123, 234, ..., 789
+                base = s * 9 + start
+                if counts[base] >= 1 and counts[base + 1] >= 1 and counts[base + 2] >= 1:
+                    sequence_count += 1
+        # 対子の数
+        pair_count = sum(1 for tid in range(34) if counts[tid] == 2)
+
+        # 面子構成: 4面子+1雀頭 が成立するか
+        # 既に4面子+1雀頭の場合、最大翻数
+        if concealed_triplets + sequence_count >= 4 and (pair_count >= 1 or counts[sw] >= 2 or counts[rw] >= 2 or any(counts[t] >= 2 for t in [31, 32, 33])):
+            # 4面子+1雀頭が成立
+            base_han = dora_count + yakuhai_han
+            # ドラ + 役牌
+            return base_han
+
+        # 4面子+1雀頭が成立しない場合（例: 単騎待ち）
+        # 最大翻数は ドラ + 役牌 程度
+        return dora_count + yakuhai_han
+
     def get_riichi_decision_details(self) -> dict:
         """
         @title 立直判断の根拠詳細化
         @description 現在のテンパイ手牌において、立直推奨値を計算しその内訳と判断理由を日本語で返します。
-        @returns {dict} {"should_riichi": bool, "score": float, "threshold": float, "reason": str}
+                  ルール判定時はどの閾値・要因で推奨されたかを具体的理由として返す。
+        @returns {dict} {"should_riichi": bool, "score": float, "threshold": float,
+                          "reason": str, "factors": dict, "rule_basis": str}
         """
         hand_counts = self.state.my_hand_counts()
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
 
         # 前提条件のチェック
         if any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat):
-            return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "すでに立直しています。"}
+            return {"should_riichi": False, "score": 0.0, "threshold": 0.0,
+                    "reason": "すでに立直しています。", "factors": {}, "rule_basis": "既立直"}
         if open_meld_count > 0:
-            return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "門前（メンゼン）ではないため立直できません。"}
+            return {"should_riichi": False, "score": 0.0, "threshold": 0.0,
+                    "reason": "門前（メンゼン）ではないため立直できません。", "factors": {}, "rule_basis": "副露済み"}
         if self.state.scores[self.state.my_seat] < 1000:
-            return {"should_riichi": False, "score": 0.0, "threshold": 0.0, "reason": "持ち点が1000点未満のため立直できません。"}
+            return {"should_riichi": False, "score": 0.0, "threshold": 0.0,
+                    "reason": "持ち点が1000点未満のため立直できません。", "factors": {}, "rule_basis": "持ち点小"}
+
+        # 共通の評価指標を計算
+        # Why: estimate_han_advanced は部分役（progress > 0.4）も加算するため
+        #      現状の手牌で「最大何翻出るか」を過大評価する（例: 単騎中待ちで 4翻と表示）。
+        #      立直判断では現在の待ち・手牌構成で成立する役のみカウントする専用関数を使う。
+        #      立直翻は立直を前提として +1 する。
+        han = self._estimate_riichi_han_actual() + 1
+        han = max(han, 1)
+        wait_total = self._wait_remaining_total()
+        dora = self._count_dora_in_hand()
+        yakuhai = self._count_yakuhai_in_hand()
+        ura = self._count_ura_candidates_in_wall()
+        turn = (self.state.tsumo_count - 1) // 4 + 1
+        is_dealer = (self.state.my_seat == self.state.dealer_seat)
+        my_score = self.state.scores[self.state.my_seat]
+        rank = sorted(self.state.scores, reverse=True).index(my_score) + 1
+        is_4th = (rank == 4)
+
+        factors = {
+            '翻数': han,
+            '有効牌数': wait_total,
+            'ドラ': dora,
+            '役牌': yakuhai,
+            '裏ドラ候補': ura,
+            '巡目': turn,
+            '順位': f"{rank}位",
+        }
 
         # ルールベース判定
         rule_result = self._rule_based_should_riichi()
         if rule_result is not None:
             riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
-            tag = "ルール【立直推奨】" if rule_result else "ルール【ダマテン推奨】"
-            reason_text = f"{tag} (翻数基準) リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}"
+            # どの閾値で決まったかを説明
+            rule_basis = self._explain_riichi_rule_basis(
+                han, wait_total, dora, yakuhai, ura, turn, rank, rule_result
+            )
+            tag = "立直推奨" if rule_result else "ダマテン推奨"
+            if rule_result:
+                # Why: EV 比較ではなくルール（実戦的判断基準）で推奨された理由を
+                # 具体的な要因として並べる。EV だけだと「ダマテンのが高そう」と見えるため。
+                reason_lines = [
+                    f"【{tag}】{rule_basis}",
+                    f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）",
+                ]
+                if damaten_ev > riichi_ev:
+                    reason_lines.append(
+                        f"※ ダマテンEV={damaten_ev:+.2f} のほうが高いが、"
+                        f"リーチの打点・一発・裏ドラ期待値で総合的に有利"
+                    )
+            else:
+                reason_lines = [
+                    f"【{tag}】{rule_basis}",
+                    f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）",
+                ]
             return {
                 "should_riichi": rule_result,
                 "score": round(riichi_ev, 3),
                 "threshold": round(damaten_ev, 3),
-                "reason": reason_text
+                "reason": "\n".join(reason_lines),
+                "factors": factors,
+                "rule_basis": rule_basis,
             }
 
         riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
         should_riichi = riichi_ev > damaten_ev
 
-        reason_text = f"リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}"
-        if should_riichi:
-            reason_text += " -> 【立直推奨】"
-        else:
-            reason_text += " -> 【ダマテン推奨】"
+        diff = abs(riichi_ev - damaten_ev)
+        tag = "立直推奨" if should_riichi else "ダマテン推奨"
+        reason_text = (
+            f"【{tag}】リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}（差 {diff:.2f}）\n"
+            f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）"
+        )
 
         return {
             "should_riichi": should_riichi,
             "score": round(riichi_ev, 3),
             "threshold": round(damaten_ev, 3),
-            "reason": reason_text
+            "reason": reason_text,
+            "factors": factors,
+            "rule_basis": "EV比較",
         }
+
+    def _explain_riichi_rule_basis(self, han, wait_total, dora, yakuhai, ura, turn, rank, rule_result) -> str:
+        # Why: ルールで立直/ダマテンが推奨された理由を人間に分かりやすく提示する。
+        #      どの閾値を満たした/超えたかを箇条書きで示す。
+        p = self.params
+        th = lambda key, default: p.get(key, default)
+        parts = []
+        if rule_result:
+            if han >= th('RIICHI_HAN_HIGH_THRESH', 4):
+                parts.append(f"{han}翻は高打点")
+                if turn >= th('RIICHI_VERY_LATE_TURN', 13) and wait_total <= th('RIICHI_VERY_LATE_WAIT_MAX', 6):
+                    parts.append("終盤だが超悪形のため例外的にダマテン寄り")
+                elif turn >= th('RIICHI_LATE_TURN_DAMATEN', 12) and wait_total <= th('RIICHI_LATE_WAIT_MAX', 4):
+                    parts.append("終盤+悪形だが基本リーチ有利")
+            elif han >= th('RIICHI_HAN_MID_THRESH', 3):
+                parts.append(f"{han}翻は中打点")
+                if wait_total >= th('RIICHI_WAIT_GOOD_THRESH', 7):
+                    parts.append(f"有効牌 {wait_total}枚で好形")
+                elif wait_total >= th('RIICHI_WAIT_MIN_MID', 4) and (dora >= th('RIICHI_DORA_MID_THRESH', 1) or yakuhai >= th('RIICHI_YAKUHAI_MID_THRESH', 3)):
+                    if dora >= th('RIICHI_DORA_MID_THRESH', 1):
+                        parts.append(f"ドラ{dora}枚で打点加算期待")
+                    if yakuhai >= th('RIICHI_YAKUHAI_MID_THRESH', 3):
+                        parts.append(f"役牌{yakuhai}枚")
+                elif dora >= th('RIICHI_DORA_DOUBLE_THRESH', 2) and wait_total >= th('RIICHI_WAIT_MIN_MID', 4):
+                    parts.append(f"ドラ{dora}枚で打点大幅加算")
+                elif turn_min := th('RIICHI_TURN_MIN_MID', 1) <= turn <= th('RIICHI_TURN_MAX_MID', 11):
+                    parts.append(f"中盤({turn}巡目) で有効牌{wait_total}枚")
+            else:
+                parts.append(f"{han}翻は低打点")
+                if wait_total >= th('RIICHI_WAIT_GOOD_LOW', 7) and th('RIICHI_TURN_MIN_LOW', 1) <= turn <= th('RIICHI_TURN_MAX_LOW', 11):
+                    parts.append(f"有効牌 {wait_total}枚で好形")
+                elif wait_total >= th('RIICHI_WAIT_VERY_LOW', 10) and ura >= th('RIICHI_URA_THRESH', 1):
+                    parts.append(f"有効牌 {wait_total}枚＋裏ドラ候補 {ura}枚")
+                elif dora >= th('RIICHI_DORA_LOW_THRESH', 2):
+                    parts.append(f"ドラ{dora}枚で打点加算")
+                elif yakuhai >= th('RIICHI_YAKUHAI_LOW_THRESH', 3):
+                    parts.append(f"役牌{yakuhai}枚")
+                elif rank == 4 and wait_total >= th('RIICHI_LAST_WAIT_LOW', 5) and turn >= th('RIICHI_LAST_TURN', 10):
+                    parts.append("4位で終盤・好形なら押す")
+        else:
+            # ダマテン推奨
+            if han < th('RIICHI_HAN_HIGH_THRESH', 4):
+                if wait_total <= th('RIICHI_LATE_WAIT_MAX', 4):
+                    parts.append(f"翻数 {han}翻で有効牌 {wait_total}枚と悪形")
+                if turn >= th('RIICHI_LATE_TURN_DAMATEN', 12):
+                    parts.append(f"終盤({turn}巡目) でダマテン有利")
+            else:
+                if turn >= th('RIICHI_VERY_LATE_TURN', 13) and wait_total <= th('RIICHI_VERY_LATE_WAIT_MAX', 6):
+                    parts.append(f"{han}翻だが超終盤({turn}巡目)＋超悪形(有効牌 {wait_total}枚)")
+                elif turn >= th('RIICHI_LATE_TURN_DAMATEN', 12) and wait_total <= th('RIICHI_LATE_WAIT_MAX', 4):
+                    parts.append(f"{han}翻だが終盤({turn}巡目)＋悪形(有効牌 {wait_total}枚)")
+        if not parts:
+            parts.append("明確な根拠なし（EV比較に委ねる）")
+        return " / ".join(parts)
 
     def _count_dora_in_hand(self, hand: List[str] = None) -> int:
         if hand is None:
             hand = self.state.my_hand
         doras = self.state.doras
-        return sum(1 for h in hand for d in doras if d and id_to_tile(tile_to_id(d)) == h)
+        from core.str_converter import dora_indicator_to_dora
+        # Why: state.doras は表示牌のまま渡されることがある（engine.doras が変換前の値）。
+        #      内部でドラ表示牌→ドラ牌に変換してから照合する。既にドラ牌なら変換は no-op。
+        dora_tiles = [dora_indicator_to_dora(d) for d in doras if d]
+        dora_count = sum(1 for h in hand for d in dora_tiles if d and id_to_tile(tile_to_id(d)) == h)
+        # 赤ドラ: 0m/0p/0s（赤5）はドラ表示牌に関わらず常にドラとしてカウント
+        # （このAIの独自ルール。標準麻雀ではドラ牌が5のときだけ赤ドラになる）
+        aka_count = sum(1 for h in hand if h in ('0m', '0p', '0s'))
+        return dora_count + aka_count
 
     def _count_yakuhai_in_hand(self, hand: List[str] = None) -> int:
         from collections import Counter
@@ -3926,13 +4193,28 @@ class Evaluator:
         if any(m.is_open for m in self.state.my_melds):
             return False
 
+        # Why: estimate_han_advanced は partial 役（progress > 0.4）も加算するため過大評価になる。
+        #      成立可能な役のみカウントする _estimate_riichi_han_actual を使う。
+        #      +1 は立直翻（立直を前提とした判断のため）。
+        #      さらに、一発・裏ドラの期待翻を加算（人間判断: カン回数で裏ドラ期待値が変動）。
+        #      裏ドラ期待値: カンなし 0.5 / カン1回 1.0 / カン2回 1.5 / 暗カン 1.2-1.4
+        #      和了確率 = 立直で実際に上がれる牌数 / 残り山牌数（DFS で各牌を検証）
         from hand_value import estimate_han_advanced
-        han = estimate_han_advanced(
-            self.state.my_hand, self.state.my_melds, self.state.doras,
-            is_open=False, has_reach=False, is_ippatsu=False, is_tsumo=False,
-            seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju
-        )
+        han = self._estimate_riichi_han_actual() + 1
         han = max(han, 1)
+        wait_total = self._wait_remaining_total()
+        kan_count = max(0, len(self.state.doras) - 1) if self.state.doras else 0
+        if kan_count >= 2:
+            ura_exp = 1.5
+        elif kan_count == 1:
+            ura_exp = 1.0
+        else:
+            ura_exp = 0.5
+        ippatsu_exp = 0.1
+        # DFS: 立直で実際に上がれる牌の枚数をカウント
+        win_rate = self._compute_win_rate_dfs()
+        expected_bonus = (ura_exp + ippatsu_exp) * win_rate
+        han += expected_bonus
         wait_total = self._wait_remaining_total()
         dora = self._count_dora_in_hand()
         yakuhai = self._count_yakuhai_in_hand()
@@ -3959,6 +4241,14 @@ class Evaluator:
                 return False
             if turn >= late_turn_damaten and wait_total <= late_wait_max:
                 return False
+            return True
+
+        # 特別ケース: ドラ1以上持ち+テンパイ → 立直必須
+        # Why: ドラのみ（1翻）は役として成立しないため、ダマテンでは上がれない。
+        #      立直することで初めて役が成立（立直+ドラ=2翻）するため、立直が唯一の和了手段。
+        if dora >= 1 and not is_4th and wait_total >= 2:
+            return True
+        if dora >= 2:
             return True
 
         # 中打点: han_threshold_mid (デフォルト3) 翻

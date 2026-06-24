@@ -12,8 +12,8 @@ import glob
 import os
 import sys
 import subprocess
-import threading
 import urllib.parse
+import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from google.protobuf.json_format import MessageToDict
 
@@ -115,6 +115,41 @@ def trim_game_record(data):
     else:
         return data
 
+def _try_decode_record_fallback(raw_bytes):
+    """
+    @title 牌譜データ強制デコード (フォールバック)
+    @description 牌譜レスポンスのパケットを、初期パケット欠落時でも
+                強制的にデコードして保存する。
+    @param {bytes} raw_bytes - パケット生バイト列
+    """
+    try:
+        from majsoul_wrapper.liqi import fromProtobuf, MsgType
+        # Type 3 = Res (レスポンス)
+        print(f"[Fallback] First 8 bytes: {raw_bytes[:8].hex()}", flush=True)
+        if raw_bytes[0] != 3 and not (hasattr(MsgType, 'Res') and raw_bytes[0] == MsgType.Res.value):
+            print(f"[Fallback] First byte {raw_bytes[0]} is not 3 (Res). Skipping.", flush=True)
+            return
+        # Protobuf メッセージブロックを抽出
+        msg_block = fromProtobuf(raw_bytes[3:])
+        if len(msg_block) < 2 or msg_block[1]['type'] != 'string':
+            print(f"[Fallback] msg_block length={len(msg_block)} or type mismatch. msg_block={msg_block[:3] if msg_block else 'empty'}", flush=True)
+            return
+        pb_bytes = msg_block[1]['data']
+        # ResGameRecord としてデコード試行
+        res_record = pb.ResGameRecord()
+        res_record.ParseFromString(pb_bytes)
+        res_dict = MessageToDict(res_record)
+        # 牌譜データの実体があるか確認
+        head = res_dict.get('head', {})
+        if not head or 'uuid' not in head:
+            print(f"[Fallback] No head or uuid in res_dict. keys={list(res_dict.keys())[:5]}", flush=True)
+            return
+        print("[Info] [Fallback] Decoded game record from raw packet.")
+        save_game_record(res_dict)
+    except Exception as fe:
+        print(f"[Warning] Fallback decode failed: {fe}")
+
+
 def save_game_record(data_dict):
     """
     @title 牌譜データ保存関数
@@ -200,17 +235,9 @@ def save_game_record(data_dict):
     # data フォルダが存在することを確認
     os.makedirs(os.path.join(_FW_ROOT, 'data'), exist_ok=True)
 
-    # 元の巨大デコード版を保存
-    filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}.json")
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=2)
-
-    # 保存成功をコンソールに目立たせて表示
-    # ハードコードされた数値 80 は、区切り線の長さをコンソールの標準的な幅に合わせるために指定されたものです
-    print("=" * 80)
-    print(f"[Success] 元の牌譜データをJSON保存しました: {filename}")
-
     # トリミングした軽量版データを生成し、別ファイルとして保存
+    # Why: 元の生 JSON は保存容量が大きいが、シミュレーターは trimmed/eval しか使わないため
+    #      元データは破棄してディスク容量を節約する。
     trimmed_data = trim_game_record(output_data)
     trimmed_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_trimmed.json")
     with open(trimmed_filename, 'w', encoding='utf-8') as f:
@@ -219,6 +246,65 @@ def save_game_record(data_dict):
     print(f"[Success] 軽量化された牌譜データをJSON保存しました: {trimmed_filename}")
     print("=" * 80)
 
+    # 牌譜の AI 総合評価 (S~C 評価) をバックグラウンドで実行
+    # Why: 各打牌を AI で再評価し、実際の打牌との一致度から S~C グレードを算出。
+    # 計算に時間がかかるため、別スレッドで実行し結果をキャッシュする。
+    _schedule_record_evaluation(uuid, trimmed_filename)
+
+
+def _schedule_record_evaluation(uuid: str, trimmed_filename: str):
+    """牌譜の AI 総合評価をバックグラウンドで実行し、結果をキャッシュする"""
+    import threading
+    eval_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_eval.json")
+
+    # 既に評価結果があればスキップ
+    if os.path.exists(eval_filename):
+        return
+
+    def _run():
+        try:
+            with open(trimmed_filename, 'r', encoding='utf-8') as f:
+                record = json.load(f)
+            from core.record_evaluator import evaluate_record
+            result = evaluate_record(record)
+            # キャッシュに保存
+            with open(eval_filename, 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+            print(f"[Success] 牌譜 {uuid} の AI 評価を保存しました: {eval_filename}")
+        except Exception as e:
+            print(f"[Warning] 牌譜 {uuid} の AI 評価に失敗しました: {e}")
+            # 失敗マーカーを保存 (無限再試行を防ぐ)
+            try:
+                with open(eval_filename, 'w', encoding='utf-8') as f:
+                    json.dump({}, f, ensure_ascii=False)
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+_eval_cache = {}
+_EVAL_CACHE_MAX = 64
+
+def _eval_cache_key(payload: dict) -> str:
+    # 評価結果に影響する主要フィールドだけハッシュ化
+    import hashlib
+    key_data = {
+        'hand': payload.get('hand', []),
+        'melds': payload.get('melds', []),
+        'river': payload.get('river', []),
+        'doras': payload.get('doras', []),
+        'tsumo_count': payload.get('tsumo_count', 0),
+        'left_tile_count': payload.get('left_tile_count', 70),
+        'scores': payload.get('scores', []),
+        'my_seat': payload.get('my_seat', 0),
+        'reach_states': payload.get('reach_states', []),
+        'chang': payload.get('chang', 0),
+        'ju': payload.get('ju', 0),
+    }
+    s = json.dumps(key_data, sort_keys=True, ensure_ascii=False)
+    return hashlib.md5(s.encode('utf-8')).hexdigest()
+
 def evaluate_state(payload: dict) -> dict:
     """
     @title 局面評価エントリポイント
@@ -226,6 +312,11 @@ def evaluate_state(payload: dict) -> dict:
     @param {dict} payload - リクエストボディ。手牌・河・鳴き・ドラ・点数・巡目・立直情報を含む。
     @returns {dict} レスポンスJSON (recommended, strategy_details, evaluations, summary)
     """
+    # Why: 同一局面の連続評価を省略して「次巡」連打時のサーバー負荷を削減。
+    # params は結果に影響しないのでキーから除外（config 変更時のみ無効化される）。
+    cache_key = _eval_cache_key(payload)
+    if cache_key in _eval_cache:
+        return _eval_cache[cache_key]
     state = _restore_game_state(payload)
     params = payload.get("params", None)
     if params is None:
@@ -312,7 +403,7 @@ def evaluate_state(payload: dict) -> dict:
     kyushu_kyuhai_data = _build_kyushu_kyuhai_data(state)
     sufutsusenru_data = _build_sufutsusenru_data(state, evaluator)
 
-    return {
+    result = {
         "status": "ok",
         "recommended": recommended,
         "near_tiles": near_tiles,
@@ -331,6 +422,11 @@ def evaluate_state(payload: dict) -> dict:
             "open_meld_count": sum(1 for m in state.my_melds if m.is_open),
         }
     }
+    # キャッシュに書き込み（LRU: 古いものを削除）
+    if len(_eval_cache) >= _EVAL_CACHE_MAX:
+        _eval_cache.pop(next(iter(_eval_cache)))
+    _eval_cache[cache_key] = result
+    return result
 
 
 def _normalize_hand_red_five(hand):
@@ -408,7 +504,36 @@ def evaluate_meld(payload: dict) -> dict:
         else:
             continue
 
+        # Why: should_call_meld() のオタ風ポン禁止・序盤チー禁止などの
+        # 鳴き禁止条件をここで適用し、不適切な鳴きを除外する。
+        # (AI のスコア比較では捕捉できない、ルールベースの判断)
+        # Note: should_call_meld は tiles を文字列 ('3z') で受け取る仕様
         from core.game_state import Meld
+        try:
+            check_ev = Evaluator(state, params=params)
+            # tiles が数値 ID の場合は文字列に変換
+            meld_tile_strs = [str(t) if not isinstance(t, str) else t for t in tiles]
+            can_meld = check_ev.should_call_meld(meld_type, meld_tile_strs, froms[0] if froms else state.my_seat)
+            if not can_meld:
+                # 鳴き禁止の具体的な理由を特定
+                forbidden_reason = _get_meld_forbidden_reason(check_ev, meld_type, meld_tile_strs, froms[0] if froms else state.my_seat, state, params)
+                # 鳴き禁止条件に該当: UI に表示するため flagged として返す (推奨からは除外)
+                results.append({
+                    "type": ctype,
+                    "label": cand.get("label", ctype),
+                    "tiles": tiles,
+                    "best_discard": None,
+                    "best_score": -99999,
+                    "best_eval": None,
+                    "shanten": 99,
+                    "forbidden": True,
+                    "forbidden_reason": forbidden_reason,
+                    "reason": f"❌ {forbidden_reason}",
+                })
+                continue
+        except Exception:
+            pass  # 判定エラー時はスキップせず続行
+
         if ctype == "kakan":
             # 加槓: 既存のポンを槓に変更（新しい副露を追加しない）
             kakan_tile = list(tiles)[0] if tiles else None
@@ -498,6 +623,78 @@ def evaluate_meld(payload: dict) -> dict:
         "recommended": best["type"] if best else None,
     }
 
+
+def _get_meld_forbidden_reason(evaluator, type_: int, tiles: list, from_seat: int, state, params) -> str:
+    """鳴き禁止の具体的な理由を返す"""
+    from str_converter import is_honor, tile_to_id
+
+    if type_ == 1:  # ポン
+        target_id = tile_to_id(tiles[0])
+        if is_honor(target_id):
+            seat_wind = 27 + ((state.my_seat - state.ju) % 4)
+            round_wind = 27 + (state.chang % 4)
+            if 27 <= target_id <= 30:  # 風牌
+                if target_id != seat_wind and target_id != round_wind:
+                    return f"オタ風ポン禁止 ({['東', '南', '西', '北'][target_id - 27]} は{['東', '南', '西', '北'][seat_wind - 27]}家の自風・{['東', '南', '西', '北'][round_wind - 27]}場の場風ではない)"
+            # 三元牌 (白發中) はポンが許可されるはず
+            if 31 <= target_id <= 33:
+                return f"三元牌 ({['白', '發', '中'][target_id - 31]}) のポンは本来許可されます"
+        # 序盤チー禁止 (type 0 の場合のみ)
+    if type_ == 0:  # チー
+        early_disable = params.get('MELD_EARLY_TURN_DISABLE', 0)
+        current_turn_meld = (state.tsumo_count - 1) // 4 + 1
+        if early_disable > 0 and current_turn_meld <= early_disable:
+            return f"序盤チー禁止 (現在{current_turn_meld}巡目 ≤ {early_disable}巡目までチー封印)"
+
+    # 役満狙い (門前限定役満) チェック
+    try:
+        from core.yakuman_evaluator import YakumanEvaluator
+        ye = YakumanEvaluator(state)
+        if ye.should_seal_melds():
+            results = ye.evaluate_all()
+            yname_map = {
+                'kokushi': '国士無双', 'suuankou': '四暗刻', 'chuuren': '九蓮宝燈',
+            }
+            best = None
+            for name, r in results.items():
+                if r.is_possible and r.shanten <= 2 and name in yname_map:
+                    if best is None or r.progress > best[1].progress:
+                        best = (name, r)
+            if best is not None:
+                yname = yname_map[best[0]]
+                return f"{yname} {best[1].shanten}向聴のため副露封印"
+            return "役満狙い (門前限定) のため副露封印"
+    except Exception:
+        pass
+
+    # 副露封印モード (MeldSealTracker)
+    try:
+        sealed = evaluator.meld_seal.evaluate(state.my_hand, state.my_melds,
+                                              state.my_seat, state.chang,
+                                              state.ju, params)
+        if sealed:
+            return "副露封印モード (役満狙い等で門前維持中)"
+    except Exception:
+        pass
+
+    # 防御姿勢
+    mode = evaluator.strategy.get_strategy_mode()
+    if mode in ("完全撤退", "撤退準備"):
+        return f"防御姿勢 ({mode}) のため副露禁止"
+    if mode == "スリム化":
+        return f"{mode}のため副露封印"
+
+    # 2向聴以上 + 期待飜数低
+    open_meld_count = sum(1 for m in state.my_melds if m.is_open)
+    from core.strategy_manager import ShantenCalculator
+    hand_counts = state.my_hand_counts()
+    before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count) if open_meld_count > 0 else ShantenCalculator.calculate_closed_effective(hand_counts)
+    if before_shanten >= 2:
+        return f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 < 2 のため推奨度低"
+
+    return "鳴き禁止条件に該当する (具体的な理由は判定中)"
+
+
 def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=None) -> str:
     if best_eval is None and ctype not in ("kakan", "ankan"):
         return ""
@@ -551,7 +748,37 @@ def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=N
             from core.strategy_manager import StrategyManager
             sm = StrategyManager(old_state, params={})
             if not sm.is_meld_open_allowed():
-                lines.append("門前限定役満を狙っているため副露を封印します。")
+                # 副露禁止の実際の理由を特定
+                try:
+                    from core.yakuman_evaluator import YakumanEvaluator
+                    ye = YakumanEvaluator(old_state)
+                    if ye.should_seal_melds():
+                        # どの役満候補が最良か
+                        results = ye.evaluate_all()
+                        yname_map = {
+                            'kokushi': '国士無双', 'suuankou': '四暗刻', 'chuuren': '九蓮宝燈',
+                            'daisuushii': '大四喜', 'shousuushii': '小四喜',
+                            'ryuuiisou': '緑一色', 'suukantsu': '四槓子',
+                            'daisangen': '大三元', 'tsuuiisou': '字一色',
+                            'chinroutou': '清老頭', 'kokushi13': '国士無双13面',
+                        }
+                        best = None
+                        for name, r in results.items():
+                            if r.is_possible and r.shanten <= 2:
+                                if best is None or r.progress > best[1].progress:
+                                    best = (name, r)
+                        if best is not None and best[0] in ('kokushi', 'suuankou', 'chuuren'):
+                            yname = yname_map.get(best[0], best[0])
+                            lines.append(f"{yname} {best[1].shanten}向聴の進行が見込めるため、副露を封印します。")
+                        else:
+                            # 開露可能な役満の場合や評価不能
+                            lines.append("役満手の可能性が高まっているため、副露を封印します。")
+                    else:
+                        mode = sm.get_strategy_mode()
+                        lines.append(f"{mode}のため、副露を控えます。")
+                except Exception:
+                    mode = sm.get_strategy_mode()
+                    lines.append(f"{mode}のため、副露を控えます。")
             elif open_meld_count == 0:
                 lines.append("門前を維持します。")
             else:
@@ -680,7 +907,7 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
         ukeire = 0
 
     keiten_bonus = int(evaluator._get_keiten_bonus(tile))
-    safety_desc = _safety_description(defense, evaluator)
+    safety_desc = _safety_description(defense, evaluator, tile)
     attack_desc = _attack_description(shanten, ukeire)
     try:
         hvb = int(evaluator.attack._hand_value_bonus(tile))
@@ -724,29 +951,136 @@ def _build_evaluation_entry(evaluator: 'Evaluator', tile: str) -> dict:
     }
 
 
-def _safety_description(defense: float, evaluator: 'Evaluator') -> str:
+def _safety_description(defense: float, evaluator: 'Evaluator', tile: str = "") -> str:
     p = evaluator.params
     from evaluator import SCORE_GENBUTSU, SCORE_SUJI, SCORE_WALL_SUJI, SCORE_NO_CHANCE, SCORE_ONE_CHANCE, SCORE_HONOR
+    from str_converter import is_honor, tile_to_id
     score_genbutsu = p.get('SCORE_GENBUTSU', SCORE_GENBUTSU)
     score_wall = p.get('SCORE_WALL_SUJI', SCORE_WALL_SUJI)
     score_no_chance = p.get('SCORE_NO_CHANCE', SCORE_NO_CHANCE)
     score_suji = p.get('SCORE_SUJI', SCORE_SUJI)
     score_one_chance = p.get('SCORE_ONE_CHANCE', SCORE_ONE_CHANCE)
     score_honor = p.get('SCORE_HONOR', SCORE_HONOR)
-    if defense >= score_genbutsu:
-        return "現物 (安全度: 極高)"
-    if defense >= 750:
-        return "壁端 (安全度: 非常高)"
-    if defense >= score_no_chance:
-        return "ノーチャンス (安全度: 高)"
-    if defense >= score_suji:
-        return "スジ (安全度: 高)"
-    if defense >= score_wall:
-        return "壁スジ (安全度: 中)"
-    if defense >= score_one_chance:
+
+    # Why: スコア数値だけで分岐すると実際の安全理由が反映されないため、
+    # 条件で判定する (現物/字牌/生牌/スジ/ノーチャンス/壁端/壁スジ/ワンチャンス/危険)。
+    # 各判定は実際の牌の状態で分岐する。
+    # 優先順位は安全度の高い順 (現物 → 壁端 → 字牌(非常高) → ノーチャンス/スジ → 字牌(高)
+    #   → 壁スジ → ワンチャンス → 字牌(中) → 生牌 → 準安全 → 無筋)。
+
+    tile_id = tile_to_id(tile) if tile else None
+    is_honor_tile = (tile_id is not None and is_honor(tile_id))
+
+    # 生牌判定: 場に1枚も見えていない牌 (他家可視枚数 = 0)
+    # 字牌でも数牌でも、生牌 = 危険牌
+    is_shinpai = False
+    all_visible = None
+    if tile_id is not None:
+        all_visible = evaluator.state.all_visible_counts()
+        my_hand_counts = evaluator.state.my_hand_counts()
+        public_visible = all_visible[tile_id] - my_hand_counts[tile_id]
+        is_shinpai = (public_visible == 0)
+
+    # 1. 現物: 他家の河にある (最高安全度)
+    if tile_id is not None and not is_shinpai:
+        for s in range(4):
+            if s == evaluator.state.my_seat:
+                continue
+            for t in evaluator.state.river[s]:
+                if tile_to_id(t) == tile_id:
+                    return "現物 (安全度: 極高)"
+
+    # 2. 壁端: 壁端安全牌 (数牌のみ、字牌には適用されない)
+    if tile_id is not None and not is_shinpai and not is_honor_tile:
+        try:
+            wall_edge_ids = evaluator.defense._kabe_edge_safe_ids()
+            if tile_id in wall_edge_ids:
+                return "壁端 (安全度: 非常高)"
+        except Exception:
+            pass
+
+    # 3. 字牌 (総可視枚数 4): 非常高 (他家持てない)
+    if is_honor_tile and all_visible is not None:
+        if all_visible[tile_id] >= 4:
+            return "字牌 (安全度: 非常高)"
+
+    # 4. ノーチャンス: 数牌のみ
+    if tile_id is not None and not is_shinpai and not is_honor_tile:
+        try:
+            no_chance_ids = evaluator.defense._no_chance_ids()
+            if tile_id in no_chance_ids:
+                return "ノーチャンス (安全度: 高)"
+        except Exception:
+            pass
+
+    # 5. スジ: 数牌のみ (他家河に同じスート ±3 の牌)
+    if tile_id is not None and not is_shinpai and not is_honor_tile:
+        for s in range(4):
+            if s == evaluator.state.my_seat:
+                continue
+            for t in evaluator.state.river[s]:
+                try:
+                    did = tile_to_id(t)
+                except Exception:
+                    continue
+                if is_honor(did):
+                    continue
+                if (tile_id // 9) == (did // 9):
+                    diff = abs((tile_id % 9) - (did % 9))
+                    if diff == 3 and (tile_id % 9) in (0, 1, 3, 4, 6, 7) and (did % 9) in (0, 1, 3, 4, 6, 7):
+                        return "スジ (安全度: 高)"
+
+    # 6. 字牌 (総可視枚数 3): 高 (他家最大1枚、単騎のみ)
+    if is_honor_tile and all_visible is not None:
+        if all_visible[tile_id] >= 3:
+            return "字牌 (安全度: 高)"
+
+    # 7. 壁スジ: 数牌のみ
+    if tile_id is not None and not is_shinpai and not is_honor_tile:
+        try:
+            wall_suji_ids = evaluator.defense._wall_suji_ids()
+            if tile_id in wall_suji_ids:
+                return "壁スジ (安全度: 中)"
+        except Exception:
+            pass
+
+    # 8. ワンチャンス: 数牌のみ
+    if defense >= score_one_chance and tile_id is not None and not is_shinpai and not is_honor_tile:
         return "ワンチャンス (安全度: 中)"
-    if defense >= score_honor:
-        return "字牌/生牌 (安全度: 中)"
+
+    # 9. 字牌: (手牌内枚数, 河・場の枚数) のマトリクスで安全度判定
+    # Why: 残り枚数 (4 - 手牌 - 河) と相手視点で安全度ラインが決まる。
+    # 優先順: 絶対安全 → 超安全 → 状況2択 (スジライン) → 明確な危険 (ワンチャンスライン) → 最も危険
+    if is_honor_tile and all_visible is not None:
+        hand_count = evaluator.state.my_hand_counts()[tile_id]
+        public_count = all_visible[tile_id] - hand_count
+        remaining = 4 - hand_count - public_count
+        # 絶対安全 (放銃0%): 残り0枚、自分が最後の1枚
+        if remaining == 0:
+            return "字牌 絶対安全 (安全度: 極高)"
+        # 超安全 (ほぼ鉄安): 残り1枚、単騎のみ
+        if remaining == 1 and public_count == 2 and hand_count == 1:
+            return "字牌 超安全 (安全度: 非常高)"
+        # 状況2択 (スジライン): 残り1枚、シャボ or 生牌単騎狙い
+        if remaining == 1 and public_count == 1 and hand_count == 2:
+            return "字牌 状況2択・シャボ (安全度: 中)"
+        if remaining == 1 and public_count == 0 and hand_count == 3:
+            return "字牌 状況2択・生牌単騎 (安全度: 中低)"
+        # 明確な危険 (ワンチャンスライン): 残り2枚、1枚枯れ
+        if remaining == 2 and public_count == 1 and hand_count == 1:
+            return "字牌 明確な危険 (安全度: 低)"
+        # 最も危険: 残り2枚、生牌 (無筋の么九牌と同等)
+        if remaining == 2 and public_count == 0 and hand_count == 2:
+            return "字牌 最も危険 (安全度: 危険)"
+        # 残り1枚: 残り1枚 (1, 0) ケース (生牌で残り1枚)
+        if remaining == 1 and public_count == 0 and hand_count == 1:
+            return "字牌 生牌・残り1枚 (安全度: 危険)"
+
+    # 10. 生牌判定 (数牌で場に1枚も見えていない = 危険牌)
+    if is_shinpai:
+        return "生牌 (危険)"
+
+    # 11. その他
     if defense > 0:
         return f"準安全 (守備点: {defense:.0f})"
     if defense == 0:
@@ -773,10 +1107,18 @@ def _attack_description(shanten: int, ukeire: int) -> str:
     return f"{shanten}向聴 (有効牌: {ukeire}枚)"
 
 
-HONOR_NAMES = {'1z':'東','2z':'南','3z':'西','4z':'北','5z':'白','6z':'發','7z':'中'}
+TILE_NAMES = {
+    '1m': '1萬', '2m': '2萬', '3m': '3萬', '4m': '4萬', '5m': '5萬', '6m': '6萬', '7m': '7萬', '8m': '8萬', '9m': '9萬',
+    '0m': '赤5萬',
+    '1p': '1筒', '2p': '2筒', '3p': '3筒', '4p': '4筒', '5p': '5筒', '6p': '6筒', '7p': '7筒', '8p': '8筒', '9p': '9筒',
+    '0p': '赤5筒',
+    '1s': '1索', '2s': '2索', '3s': '3索', '4s': '4索', '5s': '5索', '6s': '6索', '7s': '7索', '8s': '8索', '9s': '9索',
+    '0s': '赤5索',
+    '1z': '東', '2z': '南', '3z': '西', '4z': '北', '5z': '白', '6z': '發', '7z': '中'
+}
 
 def _fmt_tile(t):
-    return HONOR_NAMES.get(t, t)
+    return TILE_NAMES.get(t, t)
 
 def _build_decision_reason(entry: dict, strategy_details: dict,
                             evaluator: 'Evaluator', is_best: bool = False) -> str:
@@ -1013,7 +1355,8 @@ class PacketHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content.encode('utf-8'))
             except Exception as e:
-                self.send_error(500, f"Error reading index.html: {e}")
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"Error reading index.html: {err_msg}")
 
         elif path == '/simulator':
             # シミュレーター画面のHTMLを返す
@@ -1024,24 +1367,39 @@ class PacketHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self._set_cors_headers()
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
                 self.end_headers()
                 self.wfile.write(content.encode('utf-8'))
             except Exception as e:
-                self.send_error(500, f"Error reading simulator.html: {e}")
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"Error reading simulator.html: {err_msg}")
 
         elif path == '/majsoul_hook.user.js':
             # Tampermonkey自動インポート用のユーザースクリプトを返す
             try:
-                filepath = os.path.join(os.path.dirname(__file__), 'majsoul_hook.js')
+                # Why: PyInstaller ビルド時、__file__ は _MEIPASS 配下の temp 展開ディレクトリを指す。
+                # dev 実行時は元の .py の場所を指す。両方に対応する。
+                base_dir = os.path.dirname(__file__)
+                if not os.path.exists(os.path.join(base_dir, 'majsoul_hook.js')):
+                    # PyInstaller ビルド時: _internal 内に同梱される
+                    base_dir = os.path.join(_FW_ROOT, '_internal')
+                filepath = os.path.join(base_dir, 'majsoul_hook.js')
                 with open(filepath, 'r', encoding='utf-8') as f:
                     content = f.read()
                 self.send_response(200)
                 self._set_cors_headers()
-                self.send_header('Content-Type', 'application/javascript; charset=utf-8')
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                # Why: ブラウザのキャッシュで古い版が表示されるのを防ぐため no-cache ヘッダを追加
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
                 self.end_headers()
                 self.wfile.write(content.encode('utf-8'))
             except Exception as e:
-                self.send_error(500, f"Error reading majsoul_hook.js: {e}")
+                # Why: send_error のメッセージに日本語エラーメッセージを含めて latin-1 で送信すると
+                # UnicodeEncodeError になるため、ASCII 文字のみで表現する。
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"Error reading majsoul_hook.js: {err_msg}")
 
         elif path == '/api/records':
             # 保存されている trimmed 牌譜一覧をスキャンして返す
@@ -1076,11 +1434,33 @@ class PacketHandler(BaseHTTPRequestHandler):
                                 'score': scores_map.get(seat, 25000)
                             })
 
+                        # AI 総合評価 (S~C) と事前計算表示データのキャッシュ読み込み
+                        eval_filepath = os.path.join(_FW_ROOT, 'data', f'record_{uuid}_eval.json')
+                        evaluations = None
+                        actions_map = None
+                        if os.path.exists(eval_filepath):
+                            try:
+                                with open(eval_filepath, 'r', encoding='utf-8') as f:
+                                    eval_data = json.load(f)
+                                # 新構造 (grades/actions) と旧構造 (フラット) の両方に対応
+                                if isinstance(eval_data, dict) and 'grades' in eval_data:
+                                    evaluations = eval_data.get('grades', {})
+                                    actions_map = eval_data.get('actions', {})
+                                else:
+                                    # 旧構造: フラットな {seat: {grade, ...}}
+                                    evaluations = eval_data
+                                    actions_map = {}
+                            except Exception:
+                                evaluations = None
+                                actions_map = None
+
                         records.append({
                             'uuid': uuid,
                             'startTime': start_time,
                             'category': category,
-                            'players': players
+                            'players': players,
+                            'evaluations': evaluations,
+                            'actions': actions_map,
                         })
                     except Exception as fe:
                         print(f"[Warning] 牌譜一覧API用ファイルの読み込みに失敗しました ({filepath}): {fe}")
@@ -1094,7 +1474,8 @@ class PacketHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps(records, ensure_ascii=False).encode('utf-8'))
             except Exception as e:
-                self.send_error(500, f"API Error: {e}")
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"API Error: {err_msg}")
 
         elif path == '/api/record':
             uuid = query.get('uuid', [None])[0]
@@ -1117,13 +1498,54 @@ class PacketHandler(BaseHTTPRequestHandler):
                     majsoul = self._convert_mjson_to_majsoul(content, uuid)
                     content = json.dumps(majsoul, ensure_ascii=False)
 
+                # Why: 事前計算データは /api/eval-actions 経由の軽量エンドポイントで取得する
+                #      ようにしたため、/api/record レスポンスは牌譜データのみを返す。
                 self.send_response(200)
                 self._set_cors_headers()
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(content.encode('utf-8'))
             except Exception as e:
-                self.send_error(500, f"API Error: {e}")
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"API Error: {err_msg}")
+        elif path == '/api/eval-actions':
+            # Why: 牌譜再生時の表示高速化のため、record_evaluator が保存した事前計算データを
+            #      軽量エンドポイントで配信。forwarder.py の重い評価処理を介さない。
+            uuid = query.get('uuid', [None])[0]
+            if not uuid:
+                self.send_response(400)
+                self._set_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status":"error","message":"Missing uuid"}')
+                return
+            eval_filepath = os.path.join(_FW_ROOT, 'data', f'record_{uuid}_eval.json')
+            actions_map = {}
+            grades_map = {}
+            if os.path.exists(eval_filepath):
+                try:
+                    with open(eval_filepath, 'r', encoding='utf-8') as f:
+                        eval_data = json.load(f)
+                    if isinstance(eval_data, dict):
+                        if 'actions' in eval_data:
+                            actions_map = eval_data.get('actions') or {}
+                            grades_map = eval_data.get('grades') or {}
+                        else:
+                            # 旧構造: フラットな {seat: {grade, ...}} 形式
+                            grades_map = eval_data
+                except Exception:
+                    pass
+            payload = json.dumps({
+                'status': 'ok',
+                'available': bool(actions_map),
+                'actions': actions_map,
+                'grades': grades_map,
+            }, ensure_ascii=False)
+            self.send_response(200)
+            self._set_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(payload.encode('utf-8'))
         else:
             self.send_response(404)
             self.end_headers()
@@ -1553,19 +1975,33 @@ class PacketHandler(BaseHTTPRequestHandler):
         if self.path == '/packet':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
-            
-            try:
-                payload = json.loads(post_data.decode('utf-8'))
-                from_client = payload.get('from_client', False)
-                base64_data = payload.get('data', '')
 
-                raw_bytes = base64.b64decode(base64_data)
+            # Why: テストパケットは長さが可変なので、先頭バイトで識別。
+            payload = json.loads(post_data.decode('utf-8'))
+            from_client = payload.get('from_client', False)
+            base64_data = payload.get('data', '')
+            raw_bytes = base64.b64decode(base64_data)
+
+            # Why: Majsoul の heartbeat (7 byte) と Tampermonkey テストパケットは
+            # 牌譜データではないのでログから除外。ログを埋め尽くさないため。
+            if not from_client and len(raw_bytes) < 32:
+                # heartbeat を 200 OK で応答だけ返して捨てる
+                self.send_response(200)
+                self._set_cors_headers()
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status": "heartbeat_skipped"}')
+                return
+
+            # 大きなパケットだけログ出力
+            print(f"\n[PACKET RX] /packet received, Content-Length={content_length}, from_client={from_client}, raw_len={len(raw_bytes)}", flush=True)
+            try:
                 flow_msg = FlowMsgMock(raw_bytes, from_client)
                 
                 try:
                     result = liqi_parser.parse(flow_msg)
 
-                    direction = "➡ [CLIENT -> SERVER]" if from_client else "⬅ [SERVER -> CLIENT]"
+                    direction = "[C->S]" if from_client else "[S->C]"
                     print(f"\n{direction} (ID: {result.get('id')})")
                     print(f"Method: {result.get('method')}")
                     print(f"Data: {json.dumps(result.get('data'), ensure_ascii=False, indent=2)}")
@@ -1583,30 +2019,21 @@ class PacketHandler(BaseHTTPRequestHandler):
 
                     if result.get('method') == '.lq.Lobby.fetchGameRecord' and ('Res' in msg_type_str or '3' in msg_type_str):
                         save_game_record(result.get('data'))
+                    # 牌譜データを含む他のメソッドもフォールバック
+                    elif 'GameRecord' in method_name and 'Res' in msg_type_str:
+                        save_game_record(result.get('data'))
 
                 except AssertionError:
-                    print(f"[Warning] パケットの到着順序が前後したか、初期パケットが欠落したため解析をスキップしました (Length: {len(raw_bytes)} bytes)")
-                    
-                    # 【フォールバック】アサーションエラーで解析がスキップされたが、巨大パケット（牌譜データ）であると推測される場合
-                    # ハードコードされた数値 5000 は、最小限の牌譜詳細データサイズを想定したしきい値です。
-                    if len(raw_bytes) > 5000 and not from_client:
-                        try:
-                            from liqi import fromProtobuf, MsgType
-                            msg_type = MsgType(raw_bytes[0])
-                            if msg_type == MsgType.Res or raw_bytes[0] == 3:
-                                msg_block = fromProtobuf(raw_bytes[3:])
-                                if len(msg_block) >= 2 and msg_block[1]['type'] == 'string':
-                                    pb_bytes = msg_block[1]['data']
-                                    res_record = pb.ResGameRecord()
-                                    res_record.ParseFromString(pb_bytes)
-                                    res_dict = MessageToDict(res_record)
-                                    print("[Info] [Fallback] 巨大パケットから牌譜データ (ResGameRecord) の強制デコードを試みます。")
-                                    save_game_record(res_dict)
-                        except Exception as fe:
-                            print(f"[Warning] 牌譜の強制デコード（フォールバック）に失敗しました: {fe}")
+                    print(f"[Warning] Packet decode failed (out-of-order or missing init). Length: {len(raw_bytes)} bytes")
+
+                    # フォールバック: 牌譜データを含む可能性のあるレスポンスを強制デコード
+                    # Why: 初期パケットが欠落していても牌譜レスポンス (Type 3 / Res) 単体で
+                    # デコードできる場合がある。牌譜データは通常 1000 バイト以上。
+                    if not from_client and len(raw_bytes) > 1000:
+                        _try_decode_record_fallback(raw_bytes)
 
                 except Exception as parse_error:
-                    print(f"[Warning] パケット解析中にエラーが発生しました: {parse_error}")
+                    print(f"[Warning] Packet parse error: {parse_error}")
 
                 self.send_response(200)
                 self._set_cors_headers()
@@ -1626,49 +2053,11 @@ class PacketHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-def _open_browser_when_ready(url, check_interval=0.2, max_wait=10.0):
-    """
-    @title サーバー準備完了後にブラウザを開く
-    @description サーバーが応答可能になるまで待機し、ブラウザで指定 URL を開きます。
-    @param {str} url - 開く URL
-    @param {float} check_interval - チェック間隔 (秒)
-    @param {float} max_wait - 最大待機時間 (秒)
-    """
-    import urllib.request
-    import time
-    import webbrowser
-    import traceback
-
-    start = time.time()
-    server_ready = False
-    while time.time() - start < max_wait:
-        try:
-            with urllib.request.urlopen(url, timeout=1) as resp:
-                if resp.status == 200:
-                    server_ready = True
-                    break
-        except Exception:
-            time.sleep(check_interval)
-    # サーバーが応答可能になってからブラウザを開く
-    if server_ready:
-        try:
-            webbrowser.open(url)
-        except Exception as e:
-            print(f"[browser] Failed to open: {e}")
-            traceback.print_exc()
-    else:
-        # タイムアウトしても開く (サーバーが起動していれば表示されるはず)
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-
-
 def run(server_class=ThreadingHTTPServer, handler_class=PacketHandler, port=8080):
     """
     @title サーバー起動関数
     @description HTTPサーバーを指定されたポートで待機起動します。/api/restart POSTを受けると完全なプロセス再起動を行います。
-    @param {type} server_class - ThreadingHTTPServer クラス (デフォルト: マルチスレッド)
+    @param {type} server_class - HTTPServer クラス (シングルスレッド)
     @param {type} handler_class - 処理用のハンドラークラス
     @param {int} port - サーバー待機ポート (デフォルト: 8080)
     """
@@ -1686,15 +2075,16 @@ def run(server_class=ThreadingHTTPServer, handler_class=PacketHandler, port=8080
     # Why: 初回起動時にブラウザを自動で開く。
     # ただし /api/restart による再起動では開かない (ユーザーは既に開いているため)。
     # 再起動かどうかは環境変数 COACH_RESTARTED で判別。
+    # Why: スレッド化は socket 競合や race condition を引き起こすため廃止。
+    # 代わりに serve_forever の直前でブラウザを開く。
     if os.environ.get('COACH_RESTARTED') != '1':
         url = f"http://localhost:{port}/"
-        t = threading.Thread(
-            target=_open_browser_when_ready,
-            args=(url,),
-            daemon=True,
-        )
-        t.start()
-        print(f"Browser opening thread started", flush=True)
+        # ブラウザは別プロセスで起動 (webbrowser.open はノンブロッキング)
+        try:
+            webbrowser.open(url)
+            print(f"Browser opened: {url}", flush=True)
+        except Exception as e:
+            print(f"[Warning] Failed to open browser: {e}", flush=True)
 
     print(f"Calling serve_forever...", flush=True)
     try:
