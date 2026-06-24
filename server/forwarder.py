@@ -2018,8 +2018,12 @@ def run(server_class=ThreadingHTTPServer, handler_class=PacketHandler, port=8080
     @param {type} handler_class - 処理用のハンドラークラス
     @param {int} port - サーバー待機ポート (デフォルト: 8080)
     """
-    server_address = ('', port)
-    print(f"Creating server on port {port}...", flush=True)
+    # Why: セキュリティ対策: ローカル実行専用のため bind を 127.0.0.1 のみに限定。
+    # LAN 内の他デバイスや外部からのアクセスを防ぎ、牌譜や評価データが
+    # 平文でネットワークを流れることを避ける。localhost 経由 (ブラウザ、
+    # Tampermonkey ユーザースクリプト) では引き続き利用可能。
+    server_address = ('127.0.0.1', port)
+    print(f"Creating server on {server_address[0]}:{port}...", flush=True)
     # Why: ソケットオプション SO_REUSEADDR を有効化。
     # PyInstaller で exe 化した再起動時に、旧プロセスのソケットが TIME_WAIT 状態でも
     # 新プロセスが同じポートにバインドできるようにする。
