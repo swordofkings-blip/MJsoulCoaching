@@ -4473,10 +4473,17 @@ class Evaluator:
         return self._last_def_penalty
 
     def should_call_meld(self, type_: int, tiles: List[str], from_seat: int) -> bool:
+        # Why: 各 return False には具体的な理由を self.last_meld_reason にセットする。
+        # 牌譜の事前計算 (record_evaluator.py) や UI 表示で「なぜ鳴けないか」を
+        # 正確に伝えられるようにする。フォールバック (\"具体的な理由は判定中\") を撲滅する。
+        self.last_meld_reason: Optional[str] = None
+
         if not self.strategy.is_meld_open_allowed():
+            self.last_meld_reason = "副露開放モードが無効 (鳴けない局面)"
             return False
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
         if open_meld_count >= 4:
+            self.last_meld_reason = f"既に副露 {open_meld_count} 組あり、これ以上鳴けません"
             return False
 
         # 鳴いた後の仮想手牌・仮想副露を構築
@@ -4509,6 +4516,7 @@ class Evaluator:
         early_disable = self.params.get('MELD_EARLY_TURN_DISABLE', 0)
         current_turn_meld = (self.state.tsumo_count - 1) // 4 + 1
         if early_disable > 0 and current_turn_meld <= early_disable and type_ == 0:
+            self.last_meld_reason = f"序盤チー禁止 (現在{current_turn_meld}巡目 ≤ {early_disable}巡目までチー封印)"
             return False
 
         # オタ風ポン: 通常は禁止 (0 翻確定) だが染め手・四喜和狙いなら許可。
@@ -4537,10 +4545,12 @@ class Evaluator:
                     if wind_count >= shusuushi_th:
                         pass
                     else:
+                        self.last_meld_reason = f"オタ風ポン禁止 ({['東', '南', '西', '北'][target_id - 27]} は自風・場風ではなく、染め手/四喜和狙いの条件も満たさず)"
                         return False
 
         bias = self._yaku_meld_bias(type_, tiles, hand_after, melds_after)
         if bias is False:
+            self.last_meld_reason = "役バイアスにより鳴き否定 (この手牌構成では副露メリットなし)"
             return False
         bias_accept = (bias is True)
 
@@ -4559,6 +4569,11 @@ class Evaluator:
             after_counts[target] = max(0, after_counts[target] - 3)
         after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
         if after_shanten >= before_shanten:
+            type_name = {0: 'チー', 1: 'ポン', 2: '大明槓'}.get(type_, '副露')
+            if after_shanten > before_shanten:
+                self.last_meld_reason = f"{type_name}後にシャンテン数が悪化 ({before_shanten}向聴 → {after_shanten}向聴) するため推奨せず"
+            else:
+                self.last_meld_reason = f"{type_name}してもシャンテン数が改善せず ({before_shanten}向聴) 価値が低いため推奨せず"
             return False
 
         turn = (self.state.tsumo_count - 1) // 4 + 1
@@ -4568,9 +4583,11 @@ class Evaluator:
             if after_shanten <= 0:
                 # 形式テンパイ: 12-15巡かつ必要性がある場合のみ許可
                 if turn < 12 or turn > 15:
+                    self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) で形式テンパイだが {turn}巡目で12-15巡外のため副露禁止"
                     return False
                 rank = self.state.my_score_rank()
                 if rank < 2:
+                    self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) で形式テンパイだが順位 {rank+1}位で必要性なし"
                     return False
                 # 副露後に安全な捨て牌があるか
                 consumed = set()
@@ -4587,7 +4604,9 @@ class Evaluator:
                         opp_discards.add(tile_to_id(t))
                 if any(tid in opp_discards for tid in remain):
                     return True
+                self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) で形式テンパイだが副露後の安牌なし"
                 return False
+            self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) のためテンパイ未満は副露禁止"
             return False
         is_closed = open_meld_count == 0
 
@@ -4613,8 +4632,10 @@ class Evaluator:
         cond_push = def_cfg.get('conditional_push_min', 0.7)
         if not is_yakuhai_meld and expected_han < 2:
             if def_penalty >= abs_th:
+                self.last_meld_reason = f"防御ペナルティ過大 (def_penalty={def_penalty:.0f} ≥ {abs_th}) かつ低打点 ({expected_han:.1f}飜) のため副露禁止"
                 return False
             if def_penalty >= cond_th and push < cond_push:
+                self.last_meld_reason = f"防御ペナルティ中 ({def_penalty:.0f} ≥ {cond_th}) かつ押し不足 (push={push:.2f} < {cond_push}) かつ低打点 ({expected_han:.1f}飜) のため副露禁止"
                 return False
 
         # 副露に使う牌を手牌から除いた残り
@@ -4657,10 +4678,12 @@ class Evaluator:
                               (rank == 0) or (rank == 3) or \
                               (opp_riichi_count == 0 and push > 0.6)
             if not is_yakuhai_meld and not is_high_value and not speed_priority:
+                self.last_meld_reason = f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 {expected_han:.1f}飜 < 2、速度優先条件も満たさず副露禁止"
                 return False
             if safe_count < 1 and opp_riichi_count == 0:
                 pass
             elif safe_count < 2:
+                self.last_meld_reason = f"2向聴以上 ({before_shanten}向聴) で安牌不足 (safe_count={safe_count} < 2) のため副露禁止"
                 return False
 
         # なぜこのようにするか：他家リーチがいる、または他家脅威に対して押し引きスコアが低く（push < 0.5）、
@@ -4669,6 +4692,7 @@ class Evaluator:
         opp_reach = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
         if (opp_reach >= 1 or push < 0.5) and expected_han < 2 and not is_yakuhai_meld:
             if safe_count == 0:
+                self.last_meld_reason = f"他家リーチ {opp_reach}本 または押し弱 (push={push:.2f}) かつ低打点 ({expected_han:.1f}飜)、安牌ゼロのため副露禁止"
                 return False
 
         turn = (self.state.tsumo_count - 1) // 4 + 1
@@ -4682,6 +4706,7 @@ class Evaluator:
             # 封印中: テンパイのみ許可（役牌すらポンしない）
             if after_shanten <= 0 and expected_han >= 1:
                 return True
+            self.last_meld_reason = f"副露封印モード (役満狙い等) で {('テンパイ未満' if after_shanten > 0 else '期待飜数不足')}) のため副露禁止"
             return False
 
         # 役牌ポン（封印解除時のみ: 守備力変わらないので鳴く）
@@ -4694,6 +4719,7 @@ class Evaluator:
 
         # 0飜開局でも速度優先なら許容
         if expected_han < 1 and not (rank == 0 or rank == 3 or current_turn >= 10):
+            self.last_meld_reason = f"0飜未満 ({expected_han:.1f}飜) かつ速度優先条件 (親ラス/10巡目以降) も満たさず副露禁止"
             return False
 
         # 役バイアスで鳴きが肯定されており、最低限の役とシャンテン進行、安全性が確認できたなら鳴く
@@ -4710,6 +4736,7 @@ class Evaluator:
 
         # 強い門前一向聴（両面x両面＋高打点）は鳴かない
         if is_closed and before_shanten <= 1 and expected_han >= 2 and turn < 6:
+            self.last_meld_reason = f"強い門前 {before_shanten}向聴 (期待{expected_han:.1f}飜) のため序盤 ({turn}巡) は門前維持"
             return False
 
         # 終盤制限の緩和: 押し引きと巡目に応じて適用
@@ -4718,6 +4745,7 @@ class Evaluator:
                 return True
             if self.state.my_score_rank() == 3 and self.state.left_tile_count <= 20:
                 return True
+            self.last_meld_reason = f"終盤 ({turn}巡) 押し弱 (push={push:.2f}) だがラス手前 ({self.state.left_tileCount}枚残) でもないため副露禁止"
             return False
 
         # --- 鳴きEV統合（門前維持 vs 副露の比較） ---
@@ -4755,7 +4783,11 @@ class Evaluator:
         if gap <= meld_gap_min:
             return True
         elif gap >= meld_gap_max:
+            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max}) で鳴き推奨度低"
             return False
         else:
-            return speed_bonus > gap
+            if speed_bonus > gap:
+                return True
+            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利で速度ボーナス {speed_bonus:.0f}でも不足"
+            return False
 

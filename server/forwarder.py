@@ -633,74 +633,17 @@ def evaluate_meld(payload: dict) -> dict:
 
 
 def _get_meld_forbidden_reason(evaluator, type_: int, tiles: list, from_seat: int, state, params) -> str:
-    """鳴き禁止の具体的な理由を返す"""
-    from str_converter import is_honor, tile_to_id
-
-    if type_ == 1:  # ポン
-        target_id = tile_to_id(tiles[0])
-        if is_honor(target_id):
-            seat_wind = 27 + ((state.my_seat - state.ju) % 4)
-            round_wind = 27 + (state.chang % 4)
-            if 27 <= target_id <= 30:  # 風牌
-                if target_id != seat_wind and target_id != round_wind:
-                    return f"オタ風ポン禁止 ({['東', '南', '西', '北'][target_id - 27]} は{['東', '南', '西', '北'][seat_wind - 27]}家の自風・{['東', '南', '西', '北'][round_wind - 27]}場の場風ではない)"
-            # 三元牌 (白發中) はポンが許可されるはず
-            if 31 <= target_id <= 33:
-                return f"三元牌 ({['白', '發', '中'][target_id - 31]}) のポンは本来許可されます"
-        # 序盤チー禁止 (type 0 の場合のみ)
-    if type_ == 0:  # チー
-        early_disable = params.get('MELD_EARLY_TURN_DISABLE', 0)
-        current_turn_meld = (state.tsumo_count - 1) // 4 + 1
-        if early_disable > 0 and current_turn_meld <= early_disable:
-            return f"序盤チー禁止 (現在{current_turn_meld}巡目 ≤ {early_disable}巡目までチー封印)"
-
-    # 役満狙い (門前限定役満) チェック
-    try:
-        from core.yakuman_evaluator import YakumanEvaluator
-        ye = YakumanEvaluator(state)
-        if ye.should_seal_melds():
-            results = ye.evaluate_all()
-            yname_map = {
-                'kokushi': '国士無双', 'suuankou': '四暗刻', 'chuuren': '九蓮宝燈',
-            }
-            best = None
-            for name, r in results.items():
-                if r.is_possible and r.shanten <= 2 and name in yname_map:
-                    if best is None or r.progress > best[1].progress:
-                        best = (name, r)
-            if best is not None:
-                yname = yname_map[best[0]]
-                return f"{yname} {best[1].shanten}向聴のため副露封印"
-            return "役満狙い (門前限定) のため副露封印"
-    except Exception:
-        pass
-
-    # 副露封印モード (MeldSealTracker)
-    try:
-        sealed = evaluator.meld_seal.evaluate(state.my_hand, state.my_melds,
-                                              state.my_seat, state.chang,
-                                              state.ju, params)
-        if sealed:
-            return "副露封印モード (役満狙い等で門前維持中)"
-    except Exception:
-        pass
-
-    # 防御姿勢
-    mode = evaluator.strategy.get_strategy_mode()
-    if mode in ("完全撤退", "撤退準備"):
-        return f"防御姿勢 ({mode}) のため副露禁止"
-    if mode == "スリム化":
-        return f"{mode}のため副露封印"
-
-    # 2向聴以上 + 期待飜数低
-    open_meld_count = sum(1 for m in state.my_melds if m.is_open)
-    from core.strategy_manager import ShantenCalculator
-    hand_counts = state.my_hand_counts()
-    before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count) if open_meld_count > 0 else ShantenCalculator.calculate_closed_effective(hand_counts)
-    if before_shanten >= 2:
-        return f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 < 2 のため推奨度低"
-
-    return "鳴き禁止条件に該当する (具体的な理由は判定中)"
+    """
+    @title 鳴き禁止の具体的理由を返す
+    @description Evaluator.should_call_meld() が False を返した理由をそのまま返す。
+    牌譜の事前計算 (record_evaluator.py) で同一の判定を行い eval.json に保存する。
+    """
+    # Why: should_call_meld() 内で各 return False 直前に self.last_meld_reason に
+    # 具体的な理由をセットしている。複雑な判定ロジックを再実装せず、その値をそのまま使う。
+    reason = getattr(evaluator, 'last_meld_reason', None)
+    if reason:
+        return reason
+    return "鳴き条件を満たさない (理由を特定できません)"
 
 
 def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=None) -> str:
