@@ -633,11 +633,7 @@ def evaluate_meld(payload: dict) -> dict:
 
 
 def _get_meld_forbidden_reason(evaluator, type_: int, tiles: list, from_seat: int, state, params) -> str:
-    """
-    @title 鳴き禁止の具体的理由を返す
-    @description should_call_meld() が False を返した具体的な理由を判定する。
-    牌譜の事前計算 (record_evaluator.py) で同一の判定を行い eval.json に保存する。
-    """
+    """鳴き禁止の具体的な理由を返す"""
     from str_converter import is_honor, tile_to_id
 
     if type_ == 1:  # ポン
@@ -651,26 +647,12 @@ def _get_meld_forbidden_reason(evaluator, type_: int, tiles: list, from_seat: in
             # 三元牌 (白發中) はポンが許可されるはず
             if 31 <= target_id <= 33:
                 return f"三元牌 ({['白', '發', '中'][target_id - 31]}) のポンは本来許可されます"
+        # 序盤チー禁止 (type 0 の場合のみ)
     if type_ == 0:  # チー
         early_disable = params.get('MELD_EARLY_TURN_DISABLE', 0)
         current_turn_meld = (state.tsumo_count - 1) // 4 + 1
         if early_disable > 0 and current_turn_meld <= early_disable:
             return f"序盤チー禁止 (現在{current_turn_meld}巡目 ≤ {early_disable}巡目までチー封印)"
-
-    # 大明槓: should_daiminkan の判定
-    if type_ == 2:
-        try:
-            if not evaluator.should_daiminkan(tiles, from_seat):
-                # should_daiminkan の中身は複雑なため、ここでは代表理由を返す
-                from_seat_name = ['東', '南', '西', '北'][from_seat] if 0 <= from_seat < 4 else f"席{from_seat}"
-                return f"大明槓不成立 ({from_seat_name}家の捨牌で槓する条件を満たさず)"
-        except Exception:
-            pass
-
-    # 副露数上限
-    open_meld_count = sum(1 for m in state.my_melds if m.is_open)
-    if open_meld_count >= 4:
-        return f"既に副露 {open_meld_count} 組あり、これ以上鳴けません"
 
     # 役満狙い (門前限定役満) チェック
     try:
@@ -710,45 +692,15 @@ def _get_meld_forbidden_reason(evaluator, type_: int, tiles: list, from_seat: in
     if mode == "スリム化":
         return f"{mode}のため副露封印"
 
-    # シャンテン数の改善チェック (should_call_meld の主要条件)
-    # Why: 鳴いてもシャンテン数が改善しない、または悪化する場合は鳴かない。
-    # これが should_call_meld の最も多い False 理由。
-    try:
-        from core.strategy_manager import ShantenCalculator
-        hand_counts = state.my_hand_counts()
-        before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count) if open_meld_count > 0 else ShantenCalculator.calculate_closed_effective(hand_counts)
-
-        after_counts = list(hand_counts)
-        if type_ == 1:
-            target = tile_to_id(tiles[0])
-            after_counts[target] = max(0, after_counts[target] - 2)
-        elif type_ == 0:
-            for t in tiles[1:]:
-                tid = tile_to_id(t)
-                after_counts[tid] = max(0, after_counts[tid] - 1)
-        elif type_ == 2:
-            target = tile_to_id(tiles[0])
-            after_counts[target] = max(0, after_counts[target] - 3)
-        after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
-
-        if after_shanten > before_shanten:
-            type_name = {0: 'チー', 1: 'ポン', 2: '大明槓'}.get(type_, '副露')
-            return f"{type_name}後にシャンテン数が悪化 ({before_shanten}向聴 → {after_shanten}向聴) するため推奨せず"
-        if after_shanten == before_shanten:
-            type_name = {0: 'チー', 1: 'ポン', 2: '大明槓'}.get(type_, '副露')
-            return f"{type_name}してもシャンテン数が改善せず ({before_shanten}向聴) 価値が低いため推奨せず"
-    except Exception:
-        pass
-
     # 2向聴以上 + 期待飜数低
-    try:
-        before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count) if open_meld_count > 0 else ShantenCalculator.calculate_closed_effective(hand_counts)
-        if before_shanten >= 2:
-            return f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 < 2 のため推奨度低"
-    except Exception:
-        pass
+    open_meld_count = sum(1 for m in state.my_melds if m.is_open)
+    from core.strategy_manager import ShantenCalculator
+    hand_counts = state.my_hand_counts()
+    before_shanten = ShantenCalculator.calculate_open(hand_counts, open_meld_count) if open_meld_count > 0 else ShantenCalculator.calculate_closed_effective(hand_counts)
+    if before_shanten >= 2:
+        return f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 < 2 のため推奨度低"
 
-    return "鳴き条件を満たさない (具体理由は手牌構成依存)"
+    return "鳴き禁止条件に該当する (具体的な理由は判定中)"
 
 
 def _build_meld_reason(ctype: str, best_eval: dict, old_state, new_state, cand=None) -> str:
