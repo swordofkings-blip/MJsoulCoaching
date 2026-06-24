@@ -2343,9 +2343,10 @@
                 // Why: forwarder.py の重い評価処理を介さず、eval.json を直接返す軽量エンドポイントを
                 //      使うことで「次巡」連打時のラグをゼロに近づける。
                 //      eval.json が無い牌譜（ライブ/未評価）はこの後 /api/evaluate にフォールバック。
+                //      actions には evaluate_state() と同じ構造 (recommended/near_tiles/
+                //      evaluations/strategy_details/should_riichi/kyushu_kyuhai/sufutsusenru 等) が入る。
                 window.__precomputedActions = {};
                 window.__precomputedMeldDecisions = {};
-                window.__precomputedSpecialDecisions = {};
                 try {
                     const evalResp = await fetch(`/api/eval-actions?uuid=${uuid}`);
                     if (evalResp.ok) {
@@ -2353,7 +2354,6 @@
                         if (evalJson) {
                             window.__precomputedActions = evalJson.actions || {};
                             window.__precomputedMeldDecisions = evalJson.precomputed_meld_decisions || {};
-                            window.__precomputedSpecialDecisions = evalJson.precomputed_special_decisions || {};
                         }
                     }
                 } catch (e) {
@@ -3693,9 +3693,9 @@ ${riversStr}
             if (actionIdx === undefined) return false;
             const pre = window.__precomputedActions[String(actionIdx)];
             if (!pre || !pre.recommended) return false;
-            // Why: 特殊判断 (立直/九種九牌/四風子連打/暗槓) も事前計算データがあれば
-            //      サーバ問い合わせなしで表示する。eval.json に同梱されているため。
-            const preSpecial = window.__precomputedSpecialDecisions && window.__precomputedSpecialDecisions[String(actionIdx)];
+            // Why: 特殊判断 (立直/九種九牌/四風子連打/暗槓) は precomputed_actions に
+            //      同梱されているため、eval.json から直接読み出すだけで表示できる。
+            //      forwarder.py の evaluate_state と同じフィールド構成。
             const data = {
                 status: 'ok',
                 recommended: pre.recommended,
@@ -3703,12 +3703,11 @@ ${riversStr}
                 push_score: pre.push_score || 0,
                 strategy_details: pre.strategy_details || {},
                 evaluations: pre.evaluations || [],
-                should_riichi: preSpecial ? preSpecial.should_riichi : null,
-                riichi_reason: preSpecial ? preSpecial.riichi_reason : '',
-                kyushu_kyuhai: preSpecial ? preSpecial.kyushu_kyuhai : null,
-                sufutsusenru: preSpecial ? preSpecial.sufutsusenru : null,
-                ankan_candidates: preSpecial ? preSpecial.ankan_candidates : [],
-                kakan_candidates: preSpecial ? preSpecial.kakan_candidates : [],
+                should_riichi: pre.should_riichi !== undefined ? pre.should_riichi : null,
+                riichi_reason: pre.riichi_reason || '',
+                kyushu_kyuhai: pre.kyushu_kyuhai || null,
+                sufutsusenru: pre.sufutsusenru || null,
+                summary: pre.summary || null,
             };
             renderBotCoachUI(data);
             renderReasonForTile(pre.reason || `「${pre.recommended}」推奨`);
