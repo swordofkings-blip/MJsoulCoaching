@@ -1586,21 +1586,24 @@ class AttackEvaluator:
             total += remaining
             if is_honor(tid):
                 n_bad += remaining
-            elif is_tenpai:
-                off = tid % 9
-                base = (tid // 9) * 9
-                has_l = off > 0 and new_counts[base + off - 1] >= 1
-                has_r = off < 8 and new_counts[base + off + 1] >= 1
-                if has_l and has_r:
-                    n_good += remaining
-                else:
-                    n_bad += remaining
             else:
                 off = tid % 9
                 base = (tid // 9) * 9
-                has_l = off > 0 and new_counts[base + off - 1] > 0
-                has_r = off < 8 and new_counts[base + off + 1] > 0
-                if has_l and has_r:
+                # Why: 両面 (両面の待ち) の正しい判定:
+                #   wait t が両面 = t が既存の 2 牌連続 (t-2,t-1) または (t+1,t+2) を完成させる
+                #   例: 手牌 2345 で 4m 待ち → 3m4m (右に 2 連続) があるので両面
+                #   旧コードの `has_l AND has_r` はカンチャン条件なので誤判定していた
+                #   - 1m 待ち (off=0): has_l 不可能、has_r1 = (2m,3m) 両方必要
+                #   - 9m 待ち (off=8): has_r 不可能、has_l1 = (7m,8m) 両方必要
+                #   - 2m 待ち (off=1): t-2=0m なしなので has_l1 不可、has_r1 = (3m,4m)
+                #   - 8m 待ち (off=7): t+2=0m なしなので has_r1 不可、has_l1 = (6m,7m)
+                has_l_pair = (off >= 2
+                              and new_counts[base + off - 1] >= 1
+                              and new_counts[base + off - 2] >= 1)
+                has_r_pair = (off <= 6
+                              and new_counts[base + off + 1] >= 1
+                              and new_counts[base + off + 2] >= 1)
+                if has_l_pair or has_r_pair:
                     n_good += remaining
                 else:
                     n_bad += remaining
