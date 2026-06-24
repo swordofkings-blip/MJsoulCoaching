@@ -485,7 +485,10 @@ class RecordReplayer:
                 meld_candidates = self._build_meld_candidates_for_seat(
                     other_seat, discard_tile, discard_seat
                 )
-                if not meld_candidates:
+                # Why: skip のみ (副露候補なし) の場合は evaluate_meld を呼ばない。
+                # skip だけの評価は self.precomputed_displays (打牌者の評価) と
+                # 内容が重複するため省略して、eval.json サイズと処理時間を削減する。
+                if not meld_candidates or all(c.get('type') == 'skip' for c in meld_candidates):
                     continue
                 other_payload['meld_candidates'] = meld_candidates
                 meld_result = evaluate_meld(other_payload)

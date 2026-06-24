@@ -283,8 +283,12 @@ def _schedule_record_evaluation(uuid: str, trimmed_filename: str):
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
 
-_eval_cache = {}
-_EVAL_CACHE_MAX = 64
+from collections import OrderedDict
+_eval_cache = OrderedDict()
+# Why: 牌譜の事前計算 (record_evaluator.py) では各アクションごとに異なる局面を評価するため、
+# 64 件ではキャッシュがすぐに追い出される。2048 件に拡大してヒット率を上げる。
+# 牌譜 1 件あたり 200-500 アクション程度なので、その大半をカバーできる。
+_EVAL_CACHE_MAX = 2048
 
 def _eval_cache_key(payload: dict) -> str:
     # 評価結果に影響する主要フィールドだけハッシュ化
@@ -314,8 +318,10 @@ def evaluate_state(payload: dict) -> dict:
     """
     # Why: 同一局面の連続評価を省略して「次巡」連打時のサーバー負荷を削減。
     # params は結果に影響しないのでキーから除外（config 変更時のみ無効化される）。
+    # LRU: アクセスされたエントリを最後に移動して、古いものから削除する。
     cache_key = _eval_cache_key(payload)
     if cache_key in _eval_cache:
+        _eval_cache.move_to_end(cache_key)
         return _eval_cache[cache_key]
     state = _restore_game_state(payload)
     params = payload.get("params", None)
@@ -423,8 +429,10 @@ def evaluate_state(payload: dict) -> dict:
         }
     }
     # キャッシュに書き込み（LRU: 古いものを削除）
+    # Why: OrderedDict + move_to_end で LRU 風に動作。牌譜の事前計算で
+    # 似た局面が連続して評価される場合にヒット率が上がる。
     if len(_eval_cache) >= _EVAL_CACHE_MAX:
-        _eval_cache.pop(next(iter(_eval_cache)))
+        _eval_cache.popitem(last=False)
     _eval_cache[cache_key] = result
     return result
 
