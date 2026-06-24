@@ -3674,6 +3674,7 @@ class Evaluator:
         mode = self.strategy.get_strategy_mode()
         # Why: 「完全撤退」「撤退準備」「スリム化」の守備的/様子見フェーズでは、手牌数減少による防衛力低下および他家打点上昇のリスクを避けるため、大明カンを禁止します。
         if mode in ("完全撤退", "撤退準備", "スリム化"):
+            self.last_meld_reason = f"防御姿勢 ({mode}) のため大明槓禁止"
             return False
         kan_cfg = self.params.get('yaku_strategy', {}).get('kan', {})
         daiminkan_min_turn = kan_cfg.get('daiminkan_min_turn', 15)
@@ -3694,13 +3695,17 @@ class Evaluator:
         if emergency:
             if shanten == 0 and not has_opponent_reach:
                 return True
+            self.last_meld_reason = f"緊急回避モードで {'他家リーチあり' if has_opponent_reach else 'テンパイ未満'}) のため大明槓禁止"
             return False
 
         if has_opponent_reach:
+            self.last_meld_reason = "他家リーチがあるため大明槓禁止"
             return False
         if t_max >= daiminkan_max_threat:
+            self.last_meld_reason = f"他家脅威度高 ({t_max:.2f} ≥ {daiminkan_max_threat}) のため大明槓禁止"
             return False
         if turn < daiminkan_min_turn:
+            self.last_meld_reason = f"序盤 ({turn}巡 < {daiminkan_min_turn}巡) のため大明槓禁止"
             return False
 
         after_counts = list(hand_counts)
@@ -3709,6 +3714,7 @@ class Evaluator:
         after_shanten = ShantenCalculator.calculate_open(after_counts, open_meld_count + 1)
         if after_shanten == 0:
             return True
+        self.last_meld_reason = f"大明槓後にテンパイせず ({shanten}向聴 → {after_shanten}向聴) 推奨度低"
         return False
 
     def _wait_tiles_for_tenpai(self) -> List[int]:
