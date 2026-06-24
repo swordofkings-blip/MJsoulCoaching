@@ -3710,7 +3710,13 @@ ${riversStr}
                 summary: pre.summary || null,
             };
             renderBotCoachUI(data);
-            renderReasonForTile(pre.reason || `「${pre.recommended}」推奨`);
+            // Why: 推奨理由は evaluations[0].reason (= 最良候補の理由) に格納されている。
+            //      evaluate_state() の _build_decision_reason() で生成される。
+            const recommendedEval = (pre.evaluations || []).find(e => e.tile === pre.recommended);
+            const reasonText = recommendedEval && recommendedEval.reason
+                ? recommendedEval.reason
+                : (pre.reason || `「${pre.recommended}」推奨`);
+            renderReasonForTile(reasonText);
             window.__lastCoachRecommended = data.recommended;
             window.__lastCoachNear = pre.near_tiles;
             highlightRecommendedTile(data.recommended, pre.near_tiles);
