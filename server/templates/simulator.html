@@ -2344,12 +2344,16 @@
                 //      使うことで「次巡」連打時のラグをゼロに近づける。
                 //      eval.json が無い牌譜（ライブ/未評価）はこの後 /api/evaluate にフォールバック。
                 window.__precomputedActions = {};
+                window.__precomputedMeldDecisions = {};
+                window.__precomputedSpecialDecisions = {};
                 try {
                     const evalResp = await fetch(`/api/eval-actions?uuid=${uuid}`);
                     if (evalResp.ok) {
                         const evalJson = await evalResp.json();
-                        if (evalJson && evalJson.available) {
+                        if (evalJson) {
                             window.__precomputedActions = evalJson.actions || {};
+                            window.__precomputedMeldDecisions = evalJson.precomputed_meld_decisions || {};
+                            window.__precomputedSpecialDecisions = evalJson.precomputed_special_decisions || {};
                         }
                     }
                 } catch (e) {
@@ -2421,12 +2425,14 @@
                 // シミュレーターは rawActionsList のインデックスでステップ管理するため、
                 // 両者のマッピングを事前計算して高速ルックアップできるようにする。
                 window.__rawIdxToActionIdx = {};
+                window.__actionIdxToRawIdx = {};
                 {
                     let ai = 0;
                     for (let ri = 0; ri < rawActionsList.length; ri++) {
                         while (ai < allActions.length && allActions[ai] !== rawActionsList[ri]) ai++;
                         if (ai < allActions.length) {
                             window.__rawIdxToActionIdx[ri] = ai;
+                            window.__actionIdxToRawIdx[ai] = ri;
                             ai++;
                         }
                     }
@@ -3687,6 +3693,9 @@ ${riversStr}
             if (actionIdx === undefined) return false;
             const pre = window.__precomputedActions[String(actionIdx)];
             if (!pre || !pre.recommended) return false;
+            // Why: 特殊判断 (立直/九種九牌/四風子連打/暗槓) も事前計算データがあれば
+            //      サーバ問い合わせなしで表示する。eval.json に同梱されているため。
+            const preSpecial = window.__precomputedSpecialDecisions && window.__precomputedSpecialDecisions[String(actionIdx)];
             const data = {
                 status: 'ok',
                 recommended: pre.recommended,
@@ -3694,12 +3703,18 @@ ${riversStr}
                 push_score: pre.push_score || 0,
                 strategy_details: pre.strategy_details || {},
                 evaluations: pre.evaluations || [],
+                should_riichi: preSpecial ? preSpecial.should_riichi : null,
+                riichi_reason: preSpecial ? preSpecial.riichi_reason : '',
+                kyushu_kyuhai: preSpecial ? preSpecial.kyushu_kyuhai : null,
+                sufutsusenru: preSpecial ? preSpecial.sufutsusenru : null,
+                ankan_candidates: preSpecial ? preSpecial.ankan_candidates : [],
+                kakan_candidates: preSpecial ? preSpecial.kakan_candidates : [],
             };
             renderBotCoachUI(data);
             renderReasonForTile(pre.reason || `「${pre.recommended}」推奨`);
             window.__lastCoachRecommended = data.recommended;
-            window.__lastCoachNear = data.near_tiles;
-            highlightRecommendedTile(data.recommended, data.near_tiles);
+            window.__lastCoachNear = pre.near_tiles;
+            highlightRecommendedTile(data.recommended, pre.near_tiles);
             return true;
         }
         function requestBotCoachEvaluation() {
@@ -3963,6 +3978,35 @@ ${riversStr}
             mp.dataset.active = "1";
             mp.classList.add('is-loading');
             mp.classList.add('is-visible');
+
+            // Why: eval.json に事前計算された副露判断があれば、forwarder.py への
+            //      ネットワーク往復をゼロにして即座に表示する。牌譜再生時の
+            //      副露パネルの表示を高速化する。
+            try {
+                const mySeat = perspectiveSeat;
+                const cri = timelineSteps[currentActionIndex];
+                if (cri !== undefined && window.__rawIdxToActionIdx) {
+                    const actionIdx = window.__rawIdxToActionIdx[cri];
+                    const preMeld = window.__precomputedMeldDecisions && window.__precomputedMeldDecisions[String(actionIdx)];
+                    if (preMeld && preMeld[String(mySeat)] && preMeld[String(mySeat)].candidates && preMeld[String(mySeat)].candidates.length) {
+                        const seatData = preMeld[String(mySeat)];
+                        // recommended を best_score 最大の候補から算出
+                        const validCands = seatData.candidates.filter(c => !c.forbidden);
+                        let recommendedType = null;
+                        if (validCands.length) {
+                            const best = validCands.reduce((a, b) => (a.best_score || -Infinity) > (b.best_score || -Infinity) ? a : b);
+                            recommendedType = best.type;
+                        }
+                        const data = { status: 'ok', recommended: recommendedType, candidates: seatData.candidates };
+                        mp.classList.remove('is-loading');
+                        _render_meld_eval(data, statusText, mp);
+                        return;
+                    }
+                }
+            } catch (e) {
+                // precomputed 取得失敗時は API フォールバック
+            }
+
             // Why: 連打で古い手牌のレスポンスが後から到着するバグを防ぐため、
             //      AbortController + シーケンス番号で最新リクエストの結果のみ反映する。
             if (_meldEvalAbort) {
@@ -3980,86 +4024,94 @@ ${riversStr}
                 if (mySeq !== _meldEvalSeq) return;
                 mp.classList.remove('is-loading');
                 if (data.status !== 'ok' || !data.candidates) { mp.classList.remove('is-visible'); return; }
-
-                const best = data.recommended;
-                let rec = best ? data.candidates.find(c => c.type === best) : null;
-
-                const statusEl = document.getElementById('botCoachMeldStatus');
-                const reasonEl = document.getElementById('botCoachMeldReasonText');
-                const evalEl = document.getElementById('botCoachMeldEvalList');
-                const badgeEl = document.getElementById('botCoachMeldRecommendBadge');
-
-                rec = rec || data.candidates[0];
-                statusEl.innerHTML = statusText;
-
-                if (rec) {
-                    badgeEl.style.display = 'inline-flex';
-                    badgeEl.innerHTML = '★ 推奨: ' + rec.label;
-                } else {
-                    badgeEl.style.display = 'none';
-                }
-
-                if (rec && rec.reason) {
-                    reasonEl.style.display = 'block';
-                    reasonEl.innerText = rec.reason;
-                } else {
-                    reasonEl.style.display = 'none';
-                }
-
-                let evalHtml = '';
-                const maxScore = Math.max(1, ...data.candidates.map(c => typeof c.best_score === 'number' ? Math.abs(c.best_score) : 0));
-                data.candidates.forEach(c => {
-                    const isBest = c.type === best;
-                    const isSkip = c.type === 'skip';
-                    const isForbidden = c.forbidden === true;
-                    const sc = typeof c.best_score === 'number' ? c.best_score : 0;
-                    const sh = c.shanten !== undefined ? c.shanten : 99;
-                    // 禁止状態の行は表示領域を確保するため最低値を設定
-                    const displayScore = isForbidden ? Math.min(-500, sc) : sc;
-                    const pct = Math.max(0, Math.min(100, (Math.abs(displayScore) / maxScore) * 100));
-
-                    let shantenText, shantenClass = '';
-                    if (sh <= -1) { shantenText = '和了'; shantenClass = 'is-huura'; }
-                    else if (sh === 0) { shantenText = '聴牌'; shantenClass = 'is-tenpai'; }
-                    else if (isForbidden) { shantenText = '禁止'; shantenClass = 'is-forbidden'; }
-                    else { shantenText = sh + '向聴'; }
-
-                    let iconClass, iconText;
-                    if (c.type === 'pon') { iconClass = 'icon-pon'; iconText = 'ポン'; }
-                    else if (c.type === 'chi') { iconClass = 'icon-chi'; iconText = 'チー'; }
-                    else if (c.type === 'daiminkan') { iconClass = 'icon-kan'; iconText = '明槓'; }
-                    else if (c.type === 'ankan') { iconClass = 'icon-kan'; iconText = '暗槓'; }
-                    else if (c.type === 'kakan') { iconClass = 'icon-kan'; iconText = '加槓'; }
-                    else { iconClass = 'icon-skip'; iconText = 'パス'; }
-
-                    let rowClass = 'bot-coach-meld-eval-row';
-                    if (isBest) rowClass += ' is-recommended';
-                    if (isSkip) rowClass += ' is-skip';
-                    if (isForbidden) rowClass += ' is-forbidden';
-
-                    evalHtml += '<div class="' + rowClass + '" ' + (c.forbidden_reason ? 'title="' + c.forbidden_reason + '"' : '') + '>';
-                    evalHtml += '<div class="bot-coach-meld-eval-label">';
-                    evalHtml += '<div class="bot-coach-meld-eval-type">';
-                    evalHtml += '<div class="bot-coach-meld-type-icon ' + iconClass + '">' + iconText + '</div>';
-                    evalHtml += '<span>' + (isBest ? '★ ' : '') + convertTilesInString(c.label) + '</span>';
-                    evalHtml += '</div>';
-                    if (c.sub_label) {
-                        evalHtml += '<div class="bot-coach-meld-eval-sub">' + convertTilesInString(c.sub_label) + '</div>';
-                    } else if (c.forbidden_reason) {
-                        evalHtml += '<div class="bot-coach-meld-eval-sub" style="color:#ef4444;">🚫 ' + c.forbidden_reason + '</div>';
-                    }
-                    evalHtml += '</div>';
-                    evalHtml += '<div class="bot-coach-meld-eval-bar-wrap">';
-                    evalHtml += '<div class="bot-coach-meld-eval-bar"><div class="bot-coach-meld-eval-bar-fill" style="width:' + pct.toFixed(0) + '%;"></div></div>';
-                    evalHtml += '</div>';
-                    evalHtml += '<div class="bot-coach-meld-eval-score-box">';
-                    evalHtml += '<div class="bot-coach-meld-eval-score">' + (isForbidden ? '−' : '') + Math.abs(displayScore).toFixed(0) + '</div>';
-                    evalHtml += '<div class="bot-coach-meld-eval-shanten ' + shantenClass + '">' + shantenText + '</div>';
-                    evalHtml += '</div>';
-                    evalHtml += '</div>';
-                });
-                evalEl.innerHTML = evalHtml;
+                _render_meld_eval(data, statusText, mp);
             }).catch(function () { mp.classList.remove('is-loading'); mp.classList.remove('is-visible'); });
+        }
+
+        /**
+         * @title 副露判断の描画
+         * @description 副露候補データを受け取り、パネルに描画する。
+         *              /api/evaluate-meld レスポンスおよび precomputed データの両方を扱える。
+         */
+        function _render_meld_eval(data, statusText, mp) {
+            const best = data.recommended;
+            let rec = best ? data.candidates.find(c => c.type === best) : null;
+
+            const statusEl = document.getElementById('botCoachMeldStatus');
+            const reasonEl = document.getElementById('botCoachMeldReasonText');
+            const evalEl = document.getElementById('botCoachMeldEvalList');
+            const badgeEl = document.getElementById('botCoachMeldRecommendBadge');
+
+            rec = rec || data.candidates[0];
+            statusEl.innerHTML = statusText;
+
+            if (rec) {
+                badgeEl.style.display = 'inline-flex';
+                badgeEl.innerHTML = '★ 推奨: ' + rec.label;
+            } else {
+                badgeEl.style.display = 'none';
+            }
+
+            if (rec && rec.reason) {
+                reasonEl.style.display = 'block';
+                reasonEl.innerText = rec.reason;
+            } else {
+                reasonEl.style.display = 'none';
+            }
+
+            let evalHtml = '';
+            const maxScore = Math.max(1, ...data.candidates.map(c => typeof c.best_score === 'number' ? Math.abs(c.best_score) : 0));
+            data.candidates.forEach(c => {
+                const isBest = c.type === best;
+                const isSkip = c.type === 'skip';
+                const isForbidden = c.forbidden === true;
+                const sc = typeof c.best_score === 'number' ? c.best_score : 0;
+                const sh = c.shanten !== undefined ? c.shanten : 99;
+                // 禁止状態の行は表示領域を確保するため最低値を設定
+                const displayScore = isForbidden ? Math.min(-500, sc) : sc;
+                const pct = Math.max(0, Math.min(100, (Math.abs(displayScore) / maxScore) * 100));
+
+                let shantenText, shantenClass = '';
+                if (sh <= -1) { shantenText = '和了'; shantenClass = 'is-huura'; }
+                else if (sh === 0) { shantenText = '聴牌'; shantenClass = 'is-tenpai'; }
+                else if (isForbidden) { shantenText = '禁止'; shantenClass = 'is-forbidden'; }
+                else { shantenText = sh + '向聴'; }
+
+                let iconClass, iconText;
+                if (c.type === 'pon') { iconClass = 'icon-pon'; iconText = 'ポン'; }
+                else if (c.type === 'chi') { iconClass = 'icon-chi'; iconText = 'チー'; }
+                else if (c.type === 'daiminkan') { iconClass = 'icon-kan'; iconText = '明槓'; }
+                else if (c.type === 'ankan') { iconClass = 'icon-kan'; iconText = '暗槓'; }
+                else if (c.type === 'kakan') { iconClass = 'icon-kan'; iconText = '加槓'; }
+                else { iconClass = 'icon-skip'; iconText = 'パス'; }
+
+                let rowClass = 'bot-coach-meld-eval-row';
+                if (isBest) rowClass += ' is-recommended';
+                if (isSkip) rowClass += ' is-skip';
+                if (isForbidden) rowClass += ' is-forbidden';
+
+                evalHtml += '<div class="' + rowClass + '" ' + (c.forbidden_reason ? 'title="' + c.forbidden_reason + '"' : '') + '>';
+                evalHtml += '<div class="bot-coach-meld-eval-label">';
+                evalHtml += '<div class="bot-coach-meld-eval-type">';
+                evalHtml += '<div class="bot-coach-meld-type-icon ' + iconClass + '">' + iconText + '</div>';
+                evalHtml += '<span>' + (isBest ? '★ ' : '') + convertTilesInString(c.label) + '</span>';
+                evalHtml += '</div>';
+                if (c.sub_label) {
+                    evalHtml += '<div class="bot-coach-meld-eval-sub">' + convertTilesInString(c.sub_label) + '</div>';
+                } else if (c.forbidden_reason) {
+                    evalHtml += '<div class="bot-coach-meld-eval-sub" style="color:#ef4444;">🚫 ' + c.forbidden_reason + '</div>';
+                }
+                evalHtml += '</div>';
+                evalHtml += '<div class="bot-coach-meld-eval-bar-wrap">';
+                evalHtml += '<div class="bot-coach-meld-eval-bar"><div class="bot-coach-meld-eval-bar-fill" style="width:' + pct.toFixed(0) + '%;"></div></div>';
+                evalHtml += '</div>';
+                evalHtml += '<div class="bot-coach-meld-eval-score-box">';
+                evalHtml += '<div class="bot-coach-meld-eval-score">' + (isForbidden ? '−' : '') + Math.abs(displayScore).toFixed(0) + '</div>';
+                evalHtml += '<div class="bot-coach-meld-eval-shanten ' + shantenClass + '">' + shantenText + '</div>';
+                evalHtml += '</div>';
+                evalHtml += '</div>';
+            });
+            evalEl.innerHTML = evalHtml;
         }
     </script>
 </body>

@@ -1522,6 +1522,8 @@ class PacketHandler(BaseHTTPRequestHandler):
             eval_filepath = os.path.join(_FW_ROOT, 'data', f'record_{uuid}_eval.json')
             actions_map = {}
             grades_map = {}
+            meld_map = {}
+            special_map = {}
             if os.path.exists(eval_filepath):
                 try:
                     with open(eval_filepath, 'r', encoding='utf-8') as f:
@@ -1530,6 +1532,12 @@ class PacketHandler(BaseHTTPRequestHandler):
                         if 'actions' in eval_data:
                             actions_map = eval_data.get('actions') or {}
                             grades_map = eval_data.get('grades') or {}
+                            # Why: シミュレーターが forwarder.py の重い /api/evaluate-meld や
+                            # 内部 _build_kyushu_kyuhai_data 等を呼ばないように、
+                            # 副露判断と特殊判断 (立直/九種九牌/四風子連打/暗槓) も
+                            # eval.json から直接配信する。
+                            meld_map = eval_data.get('precomputed_meld_decisions') or {}
+                            special_map = eval_data.get('precomputed_special_decisions') or {}
                         else:
                             # 旧構造: フラットな {seat: {grade, ...}} 形式
                             grades_map = eval_data
@@ -1540,6 +1548,8 @@ class PacketHandler(BaseHTTPRequestHandler):
                 'available': bool(actions_map),
                 'actions': actions_map,
                 'grades': grades_map,
+                'precomputed_meld_decisions': meld_map,
+                'precomputed_special_decisions': special_map,
             }, ensure_ascii=False)
             self.send_response(200)
             self._set_cors_headers()
