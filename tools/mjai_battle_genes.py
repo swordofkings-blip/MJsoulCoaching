@@ -221,20 +221,17 @@ def run_one_game_gene(game_idx: int, max_workers: int, start_seed: int, gene_pat
 
 
 def _parse_final_scores(log_text: str) -> dict:
+    """Why: mjai-server のログは "game N: Akochan:score OurAI-0:score ..." 形式で
+    最終スコアを出力する。mjai_battle.py と同じパース方法を使う。
+    """
+    import re
     scores = {}
-    for line in log_text.splitlines():
-        if 'final_scores' in line.lower() or 'no_winner' in line.lower():
-            continue
-        # Look for score patterns like "player X score: Y" or JSON with scores
-        import re
-        matches = re.findall(r'"(?:scores|score)"\s*:\s*\[([\d,\s]+)\]', line)
-        for m in matches:
-            score_list = [int(s.strip()) for s in m.split(',') if s.strip()]
-            if len(score_list) == 4:
-                for i, name in enumerate(['OurAI-0', 'OurAI-1', 'OurAI-2', 'Akochan']):
-                    if i < len(score_list):
-                        scores[name] = score_list[i]
-                return scores
+    match = re.search(r"game \d+:\s*(.+)", log_text)
+    if match:
+        parts = match.group(1).strip().split()
+        for part in parts:
+            name, score_str = part.rsplit(':', 1)
+            scores[name] = int(score_str)
     return scores
 
 
