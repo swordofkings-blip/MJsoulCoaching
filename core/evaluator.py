@@ -3964,21 +3964,85 @@ class Evaluator:
 
     def _get_position_modifier(self, rank: int) -> dict:
         """
-        @title 順位ベース戦術調整値の取得
-        @description オーラス戦の順位による戦術調整値を返す。
-        - トップ (rank=0): ダマテン寄り、立直は明確な差がある時のみ
-        - ラス (rank=3): 立直寄り、オリない
-        - 2位/3位: 標準 (EV 比較そのまま)
+        @title 順位+ギャップベース戦術調整値の取得
+        @description オーラス戦の順位と上下との点差ギャップから戦術スタンスと
+        各種調整値を返す。スタンスは 'defensive' / 'aggressive' / 'balanced'。
+        - 1位 (rank=0): 常に defensive (ダマテン寄り)
+        - 2位 (rank=1):
+          - 1位と差が近い (< POSITION_CLOSE_THRESHOLD): aggressive (1位チャレンジ)
+          - 3位と差が近い: defensive (現状維持)
+          - それ以外: balanced (1位と大体同じ守備的)
+        - 3位 (rank=2):
+          - 2位と差が近い: aggressive (2位チャレンジ)
+          - 4位と差が近い: defensive (4位に振り込まない)
+          - それ以外: balanced
+        - 4位 (rank=3): 常に aggressive (オリない)
         @param {int} rank - 自分の順位 (0=トップ, 3=ラス)
-        @returns {dict} 各種調整値
+        @returns {dict} stance / riichi_threshold / meld_gap_mult / attack_mult / etc.
         """
+        my_score = self.state.scores[self.state.my_seat]
+        sorted_scores = sorted(self.state.scores, reverse=True)
+        score_above = sorted_scores[rank - 1] if rank > 0 else None
+        score_below = sorted_scores[rank + 1] if rank < 3 else None
+        gap_above = (score_above - my_score) if score_above is not None else 99999
+        gap_below = (my_score - score_below) if score_below is not None else 99999
+
+        close_threshold = self.params.get('POSITION_CLOSE_THRESHOLD', 5000)
+
+        # スタンス決定
+        # Why: ユーザの要望に基づく順位戦略
+        #   - 1位: 常に defensive (現状維持)
+        #   - 2位: デフォルト defensive (1位と大体一緒)、1位と差が近い時だけ aggressive
+        #   - 3位: デフォルト defensive (4位に振り込まない)、2位と差が近い時だけ aggressive
+        #   - 4位: 常に aggressive (オリない)
+        if rank == 0:
+            stance = 'defensive'
+        elif rank == 3:
+            stance = 'aggressive'
+        elif rank == 1:
+            # 2位: 1位と差が近い → aggressive、それ以外 → defensive
+            if gap_above < close_threshold:
+                stance = 'aggressive'
+            else:
+                stance = 'defensive'
+        elif rank == 2:
+            # 3位: 2位と差が近い → aggressive、4位と差が近い → defensive
+            if gap_above < close_threshold and gap_below >= close_threshold:
+                stance = 'aggressive'  # 上が届く
+            elif gap_below < close_threshold:
+                stance = 'defensive'   # 4位に振り込まれる
+            else:
+                stance = 'defensive'   # デフォルト defensive (4位に振り込まない)
+        else:
+            stance = 'balanced'
+
+        # スタンス別の調整値
+        params_by_stance = {
+            'defensive': {
+                'riichi_threshold': self.params.get('POSITION_DEFENSIVE_RIICHI_THRESHOLD', 0.3),
+                'meld_gap_mult': self.params.get('POSITION_DEFENSIVE_MELD_GAP_MULT', 0.7),
+                'attack_mult': self.params.get('POSITION_DEFENSIVE_ATTACK_MULT', 0.6),
+            },
+            'aggressive': {
+                'riichi_threshold': self.params.get('POSITION_AGGRESSIVE_RIICHI_THRESHOLD', -0.3),
+                'meld_gap_mult': self.params.get('POSITION_AGGRESSIVE_MELD_GAP_MULT', 1.5),
+                'attack_mult': self.params.get('POSITION_AGGRESSIVE_ATTACK_MULT', 1.3),
+            },
+            'balanced': {
+                'riichi_threshold': self.params.get('POSITION_BALANCED_RIICHI_THRESHOLD', 0.2),
+                'meld_gap_mult': self.params.get('POSITION_BALANCED_MELD_GAP_MULT', 0.8),
+                'attack_mult': self.params.get('POSITION_BALANCED_ATTACK_MULT', 0.8),
+            },
+        }
+        params = params_by_stance[stance]
         return {
-            'top_riichi_threshold': self.params.get('POSITION_TOP_RIICHI_THRESHOLD', 0.3),
-            'last_damaten_threshold': self.params.get('POSITION_LAST_DAMATEN_THRESHOLD', 0.3),
-            'top_meld_aggression': self.params.get('POSITION_TOP_MELD_AGGRESSION', 0.5),
-            'last_meld_aggression': self.params.get('POSITION_LAST_MELD_AGGRESSION', 1.5),
-            'top_defense_priority': self.params.get('POSITION_TOP_DEFENSE_PRIORITY', 1.5),
-            'last_defense_priority': self.params.get('POSITION_LAST_DEFENSE_PRIORITY', 0.5),
+            'stance': stance,
+            'rank': rank,
+            'gap_above': gap_above,
+            'gap_below': gap_below,
+            'riichi_threshold': params['riichi_threshold'],
+            'meld_gap_mult': params['meld_gap_mult'],
+            'attack_mult': params['attack_mult'],
         }
 
     def get_riichi_decision_details(self) -> dict:
@@ -4069,29 +4133,31 @@ class Evaluator:
         should_riichi = riichi_ev > damaten_ev
 
         # Why: オーラス戦の戦術調整
-        #   - トップ (rank=0): テンパってもダマテン推奨。立直は他家への警戒を呼ぶため、
-        #     ダマテンの方が他家の手出しによるアガリを誘える。
-        #     ただし、明確に立直有利 (差が大きい) なら立直推奨。
-        #   - ラス (rank=3): オリない。立直がやや不利でも積極的に立直して攻める。
-        #   - 2位/3位: 標準 (EV 比較そのまま)
+        #   スタンス (defensive/aggressive/balanced) に応じて立直判断の閾値を変える。
+        #   - defensive: ダマテン寄り (立直は明確な差がある時のみ)
+        #   - aggressive: 立直寄り (ダマテン有利でも立直推進)
+        #   - balanced: 標準 (EV 比較そのまま)
         position_mod = self._get_position_modifier(rank)
+        riichi_threshold = position_mod['riichi_threshold']
         diff = riichi_ev - damaten_ev
-        if rank == 0:
-            # トップ: ダマテン寄り。差が +0.3 以上なら立直、そうでなければダマテン
-            if diff < position_mod['top_riichi_threshold']:
-                should_riichi = False
-        elif rank == 3:
-            # ラス: 立直寄り。差が -0.3 (ダマテン有利) より大きければ立直
-            if diff > -position_mod['last_damaten_threshold']:
-                should_riichi = True
+        if diff < riichi_threshold:
+            should_riichi = False
+        elif diff > -riichi_threshold:
+            # 閾値が負 (aggressive): ダマテン有利でも立直する
+            should_riichi = True
 
         final_diff = abs(riichi_ev - damaten_ev)
         tag = "立直推奨" if should_riichi else "ダマテン推奨"
+        stance = position_mod['stance']
         position_note = ""
-        if rank == 0 and not should_riichi and riichi_ev > damaten_ev:
-            position_note = f"\n※ トップ目のため EV 差 {diff:.2f} ではダマテン維持 (要 {position_mod['top_riichi_threshold']:.2f} 以上の差で立直)"
-        elif rank == 3 and should_riichi and damaten_ev > riichi_ev:
-            position_note = f"\n※ ラス目のため EV 差 {diff:.2f} でも立直推進 (ダマテン優位 {-position_mod['last_damaten_threshold']:.2f} までは立直)"
+        if stance in ('defensive', 'balanced') and not should_riichi and riichi_ev > damaten_ev and rank == 0:
+            position_note = f"\n※ トップ (守備) のため EV 差 {diff:.2f} ではダマテン維持 (要 {riichi_threshold:.2f} 以上の差で立直)"
+        elif stance == 'aggressive' and should_riichi and damaten_ev > riichi_ev and rank == 3:
+            position_note = f"\n※ ラス (攻撃) のため EV 差 {diff:.2f} でも立直推進 (ダマテン優位 {-riichi_threshold:.2f} までは立直)"
+        elif stance == 'aggressive' and rank in (1, 2):
+            position_note = f"\n※ {rank+1}位で上が届く (gap_above={position_mod['gap_above']}) ため立直寄り"
+        elif stance == 'defensive' and rank in (1, 2):
+            position_note = f"\n※ {rank+1}位で下に振り込まれる (gap_below={position_mod['gap_below']}) ためダマテン寄り"
         reason_text = (
             f"【{tag}】リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}（差 {diff:.2f}）\n"
             f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）{position_note}"
@@ -4818,26 +4884,21 @@ class Evaluator:
         meld_gap_max = self.params.get('MELD_GAP_MAX', 2000)
 
         # Why: オーラス戦の戦術調整
-        #   - ラス (rank=3): オリない方針なので、鳴き EV 判定を甘くする
-        #     (gap が meld_gap_max を超えていても、スコア差が縮まなければ鳴く)
-        #   - トップ (rank=0): 守備的方針なので、鳴き EV 判定を厳しくする
+        #   スタンス (defensive/aggressive/balanced) に応じて鳴き EV 判定の閾値を変える。
+        #   - defensive: 鳴き抑制 (gap_mult 0.7 で gate を厳しく)
+        #   - aggressive: 鳴き積極 (gap_mult 1.5 で gate を甘く)
+        #   - balanced: 標準 (gap_mult 0.8)
         rank = self.state.my_score_rank()
-        if rank == 3:
-            # ラス: meld_gap_max を 1.5 倍に緩和 (鳴き積極)
-            meld_gap_max_eff = int(meld_gap_max * self.params.get('POSITION_LAST_MELD_GAP_MULT', 1.5))
-        elif rank == 0:
-            # トップ: meld_gap_max を 0.7 倍に厳格化 (鳴き抑制)
-            meld_gap_max_eff = int(meld_gap_max * self.params.get('POSITION_TOP_MELD_GAP_MULT', 0.7))
-        else:
-            meld_gap_max_eff = meld_gap_max
+        position_mod = self._get_position_modifier(rank)
+        meld_gap_max_eff = int(meld_gap_max * position_mod['meld_gap_mult'])
 
         if gap <= meld_gap_min:
             return True
         elif gap >= meld_gap_max_eff:
-            if rank == 3 and gap < meld_gap_max:
-                # ラス: 基準値内なら鳴く積極 (順位調整により gate を甘くしている)
+            if position_mod['stance'] == 'aggressive' and gap < meld_gap_max:
+                # aggressive: 基準値内なら鳴く積極
                 return True
-            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max_eff}) で鳴き推奨度低"
+            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max_eff}={position_mod['stance']}調整) で鳴き推奨度低"
             return False
         else:
             if speed_bonus > gap:
