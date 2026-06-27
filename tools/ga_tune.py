@@ -190,13 +190,15 @@ def evaluate_population(population: List[dict], seeds: int, max_workers: int, st
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--generations', type=int, default=20)
-    parser.add_argument('--seeds', type=int, default=3)
+    parser.add_argument('--seeds', type=int, default=1)
     parser.add_argument('--max-minutes', type=int, default=280)
     parser.add_argument('--max-workers', type=int, default=3)
     parser.add_argument('--start-seed', type=int, default=1)
     parser.add_argument('--mutation-rate', type=float, default=0.3)
     parser.add_argument('--population-size', type=int, default=3)
     parser.add_argument('--elite-count', type=int, default=1)
+    parser.add_argument('--resume', action='store_true', help='Resume from previous run')
+    parser.add_argument('--history-file', type=str, default=os.path.join(LOG_DIR, 'ga_history.json'))
     args = parser.parse_args()
 
     start_time = time.time()
@@ -239,6 +241,29 @@ def main():
     print('=' * 60)
 
     seed_offset = args.start_seed
+
+    # Why: ロードされた best_gene をエリートの初期値とする
+    # (1 世代目ですぐに上書きされるが、第 1 世代で全個体がロードされた best_gene より
+    # 悪い場合にも gene_best.json を保持できる)
+    all_time_best_gene = best_gene
+    all_time_best_score = -999.0  # 初期値、最初の本評価で必ず更新される
+
+    # Why: resume モードでは前回の続きから開始
+    # (population は best_gene から再生成するので実体は同じ)
+    history = []
+    if args.resume and os.path.exists(args.history_file):
+        try:
+            with open(args.history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+            if history:
+                last_gen = history[-1]['generation']
+                seed_offset = args.start_seed + (last_gen + 1) * args.seeds
+                # 履歴から全世代ベストを復元
+                all_time_best_score = max(r[2] for h in history for r in h.get('results', []))
+                print(f'Resumed from gen {last_gen + 1}, seed_offset={seed_offset}, all_time_best={all_time_best_score:+.1f} pt')
+        except Exception as e:
+            print(f'Warning: could not load history: {e}')
+
     for gen in range(args.generations):
         elapsed = time.time() - start_time
         if elapsed > args.max_minutes * 60:
@@ -252,14 +277,25 @@ def main():
         scores = evaluate_population(population, args.seeds, args.max_workers, seed_offset)
         t_eval = time.time() - t1
 
-        # 各個体の Gyoku pt
-        results = []
-        for i, gene in enumerate(population):
-            name = f'OurAI-{i}'
-            score = scores.get(name, -999.0)
-            results.append((i, name, score, gene))
+    # 各個体の Gyoku pt
+    results = []
+    for i, gene in enumerate(population):
+        name = f'OurAI-{i}'
+        score = scores.get(name, -999.0)
+        results.append((i, name, score, gene))
 
         results.sort(key=lambda x: -x[2])  # 降順
+
+        # Why: 現世代ベストと全世代ベストを比較。全世代ベストのみ保存する。
+        # 1 世代内 (4 局) はサンプルが小さく、エリートが真に改善しているとは限らない。
+        # 1 世代で最良の遺伝子を保存してしまうと、ノイズで過学習してしまう。
+        current_best_score = results[0][2]
+        if current_best_score > all_time_best_score:
+            all_time_best_score = current_best_score
+            all_time_best_gene = population[results[0][0]]
+            # 全世代ベストを保存
+            save_gene(all_time_best_gene, best_gene_path)
+            print(f'  All-time best updated: {all_time_best_score:+.1f} pt (gene idx {results[0][0]})')
 
         print(f'  Evaluation: {t_eval/60:.1f} min')
         for i, (idx, name, score, _) in enumerate(results):
@@ -273,22 +309,17 @@ def main():
             'best_gene_idx': results[0][0],
         })
 
-        # エリート保存
-        elite_gene = population[results[0][0]]
-        save_gene(elite_gene, best_gene_path)
-        print(f'  Saved best gene to {best_gene_path}')
-
         # 次世代を生成
         if gen < args.generations - 1:
-            new_population = [elite_gene]  # エリート
+            new_population = [all_time_best_gene]  # エリート (全世代ベスト)
             # 残りを突然変異で生成
             while len(new_population) < args.population_size:
                 # エリートから突然変異、またはエリート + 2番目から交叉
                 if random.random() < 0.5:
-                    new_population.append(mutate_gene(elite_gene, mutation_rate=args.mutation_rate))
+                    new_population.append(mutate_gene(all_time_best_gene, mutation_rate=args.mutation_rate))
                 else:
-                    parent1 = elite_gene
-                    parent2 = population[results[1][0]] if len(results) > 1 else elite_gene
+                    parent1 = all_time_best_gene
+                    parent2 = population[results[1][0]] if len(results) > 1 else all_time_best_gene
                     child = crossover_gene(parent1, parent2)
                     # 交叉した子にも突然変異
                     child = mutate_gene(child, mutation_rate=args.mutation_rate * 0.5)
@@ -307,8 +338,8 @@ def main():
     print(f'Total time: {(time.time() - start_time) / 60:.1f} min')
     print(f'Generations: {len(history)}')
     print(f'Best gene saved to: {best_gene_path}')
-    print(f'Final elite gene:')
-    print(json.dumps(elite_gene, ensure_ascii=False, indent=2))
+    print(f'Final all-time best gene (score {all_time_best_score:+.1f} pt):')
+    print(json.dumps(all_time_best_gene, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':
