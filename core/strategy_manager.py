@@ -1264,39 +1264,8 @@ class StrategyManager:
         base_attack = self.compute_base_attack()
         max_threat = self.compute_opponent_threat_with_reach_boost()
 
-        # Why: オーラス戦の順位+ギャップによる戦術調整
-        #   - トップ (rank=0): 常に defensive (攻撃度 0.6 倍)
-        #   - ラス (rank=3): 常に aggressive (攻撃度 1.3 倍)
-        #   - 2位/3位: 上下とのギャップで stance が決まる
-        #     - 上が届く (gap_above < POSITION_CLOSE_THRESHOLD): aggressive (1.0 倍)
-        #     - 下に振り込まれる (gap_below < close_threshold): defensive (0.6 倍)
-        #     - 両方近い/遠い: balanced (0.8 倍)
-        my_rank = self.state.my_score_rank()
-        my_score = self.state.scores[self.state.my_seat]
-        sorted_scores = sorted(self.state.scores, reverse=True)
-        score_above = sorted_scores[my_rank - 1] if my_rank > 0 else None
-        score_below = sorted_scores[my_rank + 1] if my_rank < 3 else None
-        gap_above = (score_above - my_score) if score_above is not None else 99999
-        gap_below = (my_score - score_below) if score_below is not None else 99999
-        close_threshold = self.params.get('POSITION_CLOSE_THRESHOLD', 5000)
-        close_above = gap_above < close_threshold
-        close_below = gap_below < close_threshold
-
-        if my_rank == 0:
-            # トップ: 常に defensive
-            base_attack *= self.params.get('POSITION_DEFENSIVE_ATTACK_MULT', 0.6)
-        elif my_rank == 3:
-            # ラス: 常に aggressive (ただし既存の 4位特殊処理は is_zenchi_mode() で処理済み)
-            base_attack *= self.params.get('POSITION_AGGRESSIVE_ATTACK_MULT', 1.3)
-        elif close_above and not close_below:
-            # 2位 or 3位 で上が届く: aggressive
-            base_attack *= self.params.get('POSITION_BALANCED_ATTACK_MULT', 1.0) * 1.1
-        elif close_below and not close_above:
-            # 下に振り込まれる: defensive
-            base_attack *= self.params.get('POSITION_DEFENSIVE_ATTACK_MULT', 0.6)
-        else:
-            # 両方近い or 遠い: balanced
-            base_attack *= self.params.get('POSITION_BALANCED_ATTACK_MULT', 0.8)
+        # Why (revert): 位置戦略を全て削除。gene_0 と相性が悪い。
+        # 4位 + リーチ時の特殊処理 (is_zenchi_mode / 人間例外) はそのまま有効。
 
         # ファジィ推論: X軸 = 脅威度(リーチ時0.70+), Y軸 = 攻撃度
         mode, _ = self.fuzzy_engine.evaluate_strategy(base_attack, max_threat)

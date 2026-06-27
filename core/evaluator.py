@@ -1584,15 +1584,19 @@ class AttackEvaluator:
             if remaining <= 0:
                 continue
             total += remaining
-        # Why: 良形 = 自分の視点で残り枚数合計が 6 枚以上の待ち。
-        # 両面 (2 枚待ち) は最大 8 枚、カンチャン/単騎/ペンチャン (1 枚待ち) は最大 4 枚なので、
-        # 実質「良形 = 両面でかつ受け入れ枚数が多い」になる。
-        if total >= 6:
-            n_good = total
-            n_bad = 0
-        else:
-            n_good = 0
-            n_bad = total
+            if is_honor(tid):
+                n_bad += remaining
+            else:
+                off = tid % 9
+                base = (tid // 9) * 9
+                # Why: 旧来の 両面 (両隣が両方手牌) 判定に戻す。
+                # ukeire >= 6 だと両面以外でも良形扱いになって選択が変わるため、gene_0 と相性が悪い。
+                has_l = off > 0 and new_counts[base + off - 1] >= 1
+                has_r = off < 8 and new_counts[base + off + 1] >= 1
+                if has_l and has_r:
+                    n_good += remaining
+                else:
+                    n_bad += remaining
         return {'total': total, 'good': n_good, 'bad': n_bad}
 
     def _count_pairs(self, counts=None) -> int:
@@ -4133,31 +4137,13 @@ class Evaluator:
         should_riichi = riichi_ev > damaten_ev
 
         # Why: オーラス戦の戦術調整
-        #   スタンス (defensive/aggressive/balanced) に応じて立直判断の閾値を変える。
-        #   - defensive: ダマテン寄り (立直は明確な差がある時のみ)
-        #   - aggressive: 立直寄り (ダマテン有利でも立直推進)
-        #   - balanced: 標準 (EV 比較そのまま)
-        position_mod = self._get_position_modifier(rank)
-        riichi_threshold = position_mod['riichi_threshold']
+        # Why (revert): 位置戦略による立直判断の閾値調整を削除。
+        # 元の EV 比較 (riichi_ev > damaten_ev) のみに戻す。
         diff = riichi_ev - damaten_ev
-        if diff < riichi_threshold:
-            should_riichi = False
-        elif diff > -riichi_threshold:
-            # 閾値が負 (aggressive): ダマテン有利でも立直する
-            should_riichi = True
 
         final_diff = abs(riichi_ev - damaten_ev)
         tag = "立直推奨" if should_riichi else "ダマテン推奨"
-        stance = position_mod['stance']
         position_note = ""
-        if stance in ('defensive', 'balanced') and not should_riichi and riichi_ev > damaten_ev and rank == 0:
-            position_note = f"\n※ トップ (守備) のため EV 差 {diff:.2f} ではダマテン維持 (要 {riichi_threshold:.2f} 以上の差で立直)"
-        elif stance == 'aggressive' and should_riichi and damaten_ev > riichi_ev and rank == 3:
-            position_note = f"\n※ ラス (攻撃) のため EV 差 {diff:.2f} でも立直推進 (ダマテン優位 {-riichi_threshold:.2f} までは立直)"
-        elif stance == 'aggressive' and rank in (1, 2):
-            position_note = f"\n※ {rank+1}位で上が届く (gap_above={position_mod['gap_above']}) ため立直寄り"
-        elif stance == 'defensive' and rank in (1, 2):
-            position_note = f"\n※ {rank+1}位で下に振り込まれる (gap_below={position_mod['gap_below']}) ためダマテン寄り"
         reason_text = (
             f"【{tag}】リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}（差 {diff:.2f}）\n"
             f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）{position_note}"
@@ -4886,19 +4872,12 @@ class Evaluator:
         # Why: オーラス戦の戦術調整
         #   スタンス (defensive/aggressive/balanced) に応じて鳴き EV 判定の閾値を変える。
         #   - defensive: 鳴き抑制 (gap_mult 0.7 で gate を厳しく)
-        #   - aggressive: 鳴き積極 (gap_mult 1.5 で gate を甘く)
-        #   - balanced: 標準 (gap_mult 0.8)
-        rank = self.state.my_score_rank()
-        position_mod = self._get_position_modifier(rank)
-        meld_gap_max_eff = int(meld_gap_max * position_mod['meld_gap_mult'])
-
+        # Why (revert): 位置戦略による鳴き EV 調整を削除。
+        # 元の固定 MELD_GAP_MAX を使う。
         if gap <= meld_gap_min:
             return True
-        elif gap >= meld_gap_max_eff:
-            if position_mod['stance'] == 'aggressive' and gap < meld_gap_max:
-                # aggressive: 基準値内なら鳴く積極
-                return True
-            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max_eff}={position_mod['stance']}調整) で鳴き推奨度低"
+        elif gap >= meld_gap_max:
+            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max}) で鳴き推奨度低"
             return False
         else:
             if speed_bonus > gap:
