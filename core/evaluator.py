@@ -3962,6 +3962,25 @@ class Evaluator:
         # 最大翻数は ドラ + 役牌 程度
         return dora_count + yakuhai_han
 
+    def _get_position_modifier(self, rank: int) -> dict:
+        """
+        @title 順位ベース戦術調整値の取得
+        @description オーラス戦の順位による戦術調整値を返す。
+        - トップ (rank=0): ダマテン寄り、立直は明確な差がある時のみ
+        - ラス (rank=3): 立直寄り、オリない
+        - 2位/3位: 標準 (EV 比較そのまま)
+        @param {int} rank - 自分の順位 (0=トップ, 3=ラス)
+        @returns {dict} 各種調整値
+        """
+        return {
+            'top_riichi_threshold': self.params.get('POSITION_TOP_RIICHI_THRESHOLD', 0.3),
+            'last_damaten_threshold': self.params.get('POSITION_LAST_DAMATEN_THRESHOLD', 0.3),
+            'top_meld_aggression': self.params.get('POSITION_TOP_MELD_AGGRESSION', 0.5),
+            'last_meld_aggression': self.params.get('POSITION_LAST_MELD_AGGRESSION', 1.5),
+            'top_defense_priority': self.params.get('POSITION_TOP_DEFENSE_PRIORITY', 1.5),
+            'last_defense_priority': self.params.get('POSITION_LAST_DEFENSE_PRIORITY', 0.5),
+        }
+
     def get_riichi_decision_details(self) -> dict:
         """
         @title 立直判断の根拠詳細化
@@ -4049,11 +4068,33 @@ class Evaluator:
         riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
         should_riichi = riichi_ev > damaten_ev
 
-        diff = abs(riichi_ev - damaten_ev)
+        # Why: オーラス戦の戦術調整
+        #   - トップ (rank=0): テンパってもダマテン推奨。立直は他家への警戒を呼ぶため、
+        #     ダマテンの方が他家の手出しによるアガリを誘える。
+        #     ただし、明確に立直有利 (差が大きい) なら立直推奨。
+        #   - ラス (rank=3): オリない。立直がやや不利でも積極的に立直して攻める。
+        #   - 2位/3位: 標準 (EV 比較そのまま)
+        position_mod = self._get_position_modifier(rank)
+        diff = riichi_ev - damaten_ev
+        if rank == 0:
+            # トップ: ダマテン寄り。差が +0.3 以上なら立直、そうでなければダマテン
+            if diff < position_mod['top_riichi_threshold']:
+                should_riichi = False
+        elif rank == 3:
+            # ラス: 立直寄り。差が -0.3 (ダマテン有利) より大きければ立直
+            if diff > -position_mod['last_damaten_threshold']:
+                should_riichi = True
+
+        final_diff = abs(riichi_ev - damaten_ev)
         tag = "立直推奨" if should_riichi else "ダマテン推奨"
+        position_note = ""
+        if rank == 0 and not should_riichi and riichi_ev > damaten_ev:
+            position_note = f"\n※ トップ目のため EV 差 {diff:.2f} ではダマテン維持 (要 {position_mod['top_riichi_threshold']:.2f} 以上の差で立直)"
+        elif rank == 3 and should_riichi and damaten_ev > riichi_ev:
+            position_note = f"\n※ ラス目のため EV 差 {diff:.2f} でも立直推進 (ダマテン優位 {-position_mod['last_damaten_threshold']:.2f} までは立直)"
         reason_text = (
             f"【{tag}】リーチEV={riichi_ev:+.2f} / ダマテンEV={damaten_ev:+.2f}（差 {diff:.2f}）\n"
-            f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）"
+            f"（{han}翻 / 有効牌 {wait_total}枚 / ドラ {dora} / 巡目 {turn}）{position_note}"
         )
 
         return {
@@ -4775,10 +4816,28 @@ class Evaluator:
         gap = closed_score - (open_score + open_win_rate_bonus)
         meld_gap_min = self.params.get('MELD_GAP_MIN', 300)
         meld_gap_max = self.params.get('MELD_GAP_MAX', 2000)
+
+        # Why: オーラス戦の戦術調整
+        #   - ラス (rank=3): オリない方針なので、鳴き EV 判定を甘くする
+        #     (gap が meld_gap_max を超えていても、スコア差が縮まなければ鳴く)
+        #   - トップ (rank=0): 守備的方針なので、鳴き EV 判定を厳しくする
+        rank = self.state.my_score_rank()
+        if rank == 3:
+            # ラス: meld_gap_max を 1.5 倍に緩和 (鳴き積極)
+            meld_gap_max_eff = int(meld_gap_max * self.params.get('POSITION_LAST_MELD_GAP_MULT', 1.5))
+        elif rank == 0:
+            # トップ: meld_gap_max を 0.7 倍に厳格化 (鳴き抑制)
+            meld_gap_max_eff = int(meld_gap_max * self.params.get('POSITION_TOP_MELD_GAP_MULT', 0.7))
+        else:
+            meld_gap_max_eff = meld_gap_max
+
         if gap <= meld_gap_min:
             return True
-        elif gap >= meld_gap_max:
-            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max}) で鳴き推奨度低"
+        elif gap >= meld_gap_max_eff:
+            if rank == 3 and gap < meld_gap_max:
+                # ラス: 基準値内なら鳴く積極 (順位調整により gate を甘くしている)
+                return True
+            self.last_meld_reason = f"EV判定: 門前維持が {gap:.0f}点有利 (≥ {meld_gap_max_eff}) で鳴き推奨度低"
             return False
         else:
             if speed_bonus > gap:
