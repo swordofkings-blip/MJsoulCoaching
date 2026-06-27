@@ -4847,7 +4847,7 @@ class Evaluator:
                 return True
             if self.state.my_score_rank() == 3 and self.state.left_tile_count <= 20:
                 return True
-            self.last_meld_reason = f"終盤 ({turn}巡) 押し弱 (push={push:.2f}) だがラス手前 ({self.state.left_tileCount}枚残) でもないため副露禁止"
+            self.last_meld_reason = f"終盤 ({turn}巡) 押し弱 (push={push:.2f}) だがラス手前 ({self.state.left_tile_count}枚残) でもないため副露禁止"
             return False
 
         # --- 鳴きEV統合（門前維持 vs 副露の比較） ---
