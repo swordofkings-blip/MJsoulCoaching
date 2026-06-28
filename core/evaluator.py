@@ -96,10 +96,248 @@ class MeldSealTracker:
 
 
 class DefenseEvaluator:
+    # Why: 電将 (Dennou Mahjong) パターン理論
+    # 牌の待ちを以下のパターンに分解:
+    #   - リャンメン上サイド (RYANMEN_UPPER): t+1, t+2 があれば t は上サイド両面
+    #   - リャンメン下サイド (RYANMEN_LOWER): t-1, t-2 があれば t は下サイド両面
+    #   - カンチャン (KANCHAN): t-1, t+1 があれば t はカンチャン
+    #   - ペンチャン (PENCHAN): 端牌 (1, 9) で隣接牌あり
+    #   - シャボ (SHANPON): 同じ牌が手牌に 2 枚 (待ち)
+    #   - 単騎 (TANKI): 同じ牌が手牌に 1 枚 (待ち)
+    # 優先度: リャンメン > シャボ > 単騎 > カンチャン > ペンチャン
+    PATTERN_WEIGHTS = {
+        'ryanmen_upper': 1.0,
+        'ryanmen_lower': 1.0,
+        'shanpon': 0.8,
+        'tanki': 0.6,
+        'kanchan': 0.4,
+        'penchan': 0.3,
+    }
+
     def __init__(self, state: GameState, params: dict = None):
         self.state = state
         self.params = params or {}
         self.evaluator = None
+
+    def _count_pattern_danger(self, tile: str, opponent_seat: int = -1) -> dict:
+        """
+        @title 電将パターン理論による牌の危険度算出
+        @description 牌 t が相手 (opponent_seat, 省略時は最大脅威者) の
+                    和了牌だった場合に成立する待ちパターンを列挙し、
+                    それぞれの重み付き合計 (パターン危険度) を返す。
+                    危険度が高い = その牌が当たり牌になりやすい。
+        @param {str} tile - 評価対象の牌 (例: '1p', '5z')
+        @param {int} opponent_seat - 対象相手 (-1 で最大脅威者)
+        @returns {dict} {'patterns': set, 'danger': float, 'visible': int, 'remaining': int}
+        """
+        from str_converter import tile_to_id
+        tile_id = tile_to_id(tile)
+        patterns = set()
+
+        # 字牌: 単騎/シャボ のみ
+        if 27 <= tile_id <= 33:
+            patterns.add('tanki')
+            patterns.add('shanpon')
+        else:
+            # 数牌: スート・オフセット
+            suit = tile_id // 9
+            off = tile_id % 9
+            base = suit * 9
+            visible = self.state.all_visible_counts()
+
+            # ペンチャン (端牌 1m/9m/1p/9p/1s/9s + 隣接)
+            if off == 0:
+                # 1: 12 が手牌なら 1 は単騎 or 123 両面
+                patterns.add('tanki')
+                patterns.add('shanpon')
+            elif off == 8:
+                # 9: 89 が手牌なら 9 は単騎 or 789 両面
+                patterns.add('tanki')
+                patterns.add('shanpon')
+            else:
+                # 中張牌 2-8
+                # リャンメン上サイド (t, t+1, t+2)
+                if off + 2 < 9:
+                    # t+1, t+2 が見えない枚数 >= 1 なら可能
+                    if (4 - visible[base + off + 1]) >= 1 and (4 - visible[base + off + 2]) >= 1:
+                        patterns.add('ryanmen_upper')
+                # リャンメン下サイド (t-2, t-1, t)
+                if off >= 2:
+                    if (4 - visible[base + off - 1]) >= 1 and (4 - visible[base + off - 2]) >= 1:
+                        patterns.add('ryanmen_lower')
+                # カンチャン (t-1, t, t+1)
+                if off >= 1 and off + 1 < 9:
+                    if (4 - visible[base + off - 1]) >= 1 and (4 - visible[base + off + 1]) >= 1:
+                        patterns.add('kanchan')
+                # 単騎/シャボ (どんな牌でもあり得る)
+                patterns.add('tanki')
+                patterns.add('shanpon')
+
+                # 456 特別処理: 両面が両側にある
+                # 例: 5p の場合、456 (4p,5p,6p) なら 両面 36 or 78 が待ち → 5p は危険
+                # 3 枚が連続 (456, 345, 567 など) なら両面が両側に来る可能性
+                if off in (3, 4, 5):  # 4, 5, 6
+                    # 上下に連続する 3 枚が「見えない」なら両面が両側に来る可能性
+                    upper_three = (off - 2, off - 1, off)  # 下 3 枚
+                    lower_three = (off, off + 1, off + 2)  # 上 3 枚
+                    # 例: off=4 (5p), upper=2,3,4 (3p,4p,5p), lower=4,5,6 (5p,6p,7p)
+                    if off >= 2 and off + 2 < 9:
+                        # 5p (off=4) → 3p4p5p or 5p6p7p が手牌なら両面両側
+                        lower_ok = sum((4 - visible[base + i]) for i in (off - 2, off - 1, off)) >= 3
+                        upper_ok = sum((4 - visible[base + i]) for i in (off, off + 1, off + 2)) >= 3
+                        if lower_ok and upper_ok:
+                            # 456 などは特に危険
+                            patterns.add('ryanmen_upper')  # 重複カウント (上側両面)
+                            patterns.add('ryanmen_lower')  # 重複カウント (下側両面)
+
+            visible_count = visible[tile_id]
+            remaining = max(0, 4 - visible_count)
+        visible_count = self.state.all_visible_counts()[tile_id]
+        remaining = max(0, 4 - visible_count)
+
+        # 基本危険度: パターン数の重み付き合計
+        danger = sum(self.PATTERN_WEIGHTS.get(p, 0) for p in patterns)
+
+        # 視認度による調整
+        # 0 枚見え = 最大危険、4 枚見え = 0 危険
+        if visible_count >= 4:
+            # 現物 (全枚見える): 絶対安全
+            return {
+                'patterns': {'genbutsu'},
+                'danger': 0.0,
+                'visible': visible_count,
+                'remaining': 0,
+            }
+        elif visible_count == 3:
+            # 残り 1 枚: 単騎のみ (もしパターンに単騎があれば)
+            danger *= 0.2
+        elif visible_count == 2:
+            # 残り 2 枚: 単騎/シャボは可能
+            danger *= 0.4
+        elif visible_count == 1:
+            # 残り 3 枚
+            danger *= 0.7
+
+        # 役牌生牌ペナルティ
+        if 27 <= tile_id <= 33 and visible_count == 0:
+            # 役牌で生牌 (全く見えてない) は危険 (字牌役待ち)
+            danger *= 1.3
+
+        # ドラ表示牌
+        try:
+            for d in self.state.actual_doras:
+                if tile_to_id(d) == tile_id:
+                    danger *= 1.5
+        except Exception:
+            pass
+
+        return {
+            'patterns': patterns,
+            'danger': danger,
+            'visible': visible_count,
+            'remaining': remaining,
+        }
+
+    def _estimate_opponent_yaku(self) -> dict:
+        """
+        @title 相手の狙っている役を推定
+        @description 相手の捨牌・副露・ドラ表示牌から、向こうが狙っていそうな役を推定。
+                    役が確定している = 高い確率で待っている
+                    役が可能性がある = 普通の確率
+        @returns {dict} {'toitoi': bool, 'chanta': bool, 'honitsu': bool, 'chinitsu': bool, 'kokushi': bool}
+        """
+        result = {'toitoi': False, 'chanta': False, 'honitsu': False, 'chinitsu': False, 'kokushi': False}
+        for s in range(4):
+            if s == self.state.my_seat:
+                continue
+            melds = [m for m in self.state.melds[s] if m.is_open]
+            # 対々和: 副露 3-4 組すべてが 刻子 (かん/ポン/暗槓)
+            if len(melds) >= 3:
+                all_koutsu = all(m.type in (2, 3) or (m.type == 1 and len(m.tiles) == 3) for m in melds)
+                if all_koutsu:
+                    result['toitoi'] = True
+            # 混全帯幺九: 副露に 123, 789, 111 など (幺九牌) が多く、字牌が少ない
+            if len(melds) >= 2:
+                yaochu_count = 0
+                honor_count = 0
+                for m in melds:
+                    for t in m.tiles:
+                        tid = tile_to_id(t)
+                        if 27 <= tid <= 33:
+                            honor_count += 1
+                        elif tid % 9 in (0, 8) or tid < 9 or tid >= 18:
+                            yaochu_count += 1
+                if yaochu_count >= 4 and honor_count == 0:
+                    result['chanta'] = True
+            # 混一色: 副露が一色 + 字牌
+            if len(melds) >= 2:
+                suits = set()
+                has_honor = False
+                for m in melds:
+                    for t in m.tiles:
+                        tid = tile_to_id(t)
+                        if tid >= 27:
+                            has_honor = True
+                        else:
+                            suits.add(tid // 9)
+                if len(suits) == 1 and has_honor:
+                    result['honitsu'] = True
+                if len(suits) == 1 and not has_honor and len(melds) >= 3:
+                    result['chinitsu'] = True
+        return result
+
+    def pattern_theory_safety_score(self, tile: str) -> int:
+        """
+        @title 電将パターン理論による安全度スコア
+        @description 牌 t を切ることの安全度を、パターン理論で計算。
+                    低い danger = 切りやすい = スコア高い。
+        @param {str} tile - 評価対象の牌
+        @returns {int} スコア (高いほど安全)
+        """
+        info = self._count_pattern_danger(tile)
+        danger = info['danger']
+        visible_count = info['visible']
+        remaining = info['remaining']
+
+        # danger (0-3 程度) → スコア (高いほど安全)
+        # danger 0 → 1000, danger 3 → 0
+        base_score = max(0, int(1000 * (1.0 - danger / 3.0)))
+
+        # 視認数による絶対安全ボーナス
+        if remaining == 0:
+            # 絶対安全 (現物): 1000
+            base_score = 1000
+        elif visible_count == 3:
+            # 残り 1 枚: 超安全
+            base_score = max(base_score, 800)
+        elif visible_count == 2 and remaining == 2:
+            # 残り 2 枚 (単騎/シャボのみ): 中程度
+            base_score = min(base_score, 500)
+
+        # 相手の役が確定している場合の追加ペナルティ
+        yaku_est = self._estimate_opponent_yaku()
+        if yaku_est['toitoi']:
+            # 対々和: シャボ/単騎 が特に危険
+            if 'shanpon' in info['patterns'] or 'tanki' in info['patterns']:
+                base_score = int(base_score * 0.7)
+        if yaku_est['honitsu'] or yaku_est['chinitsu']:
+            # 混一色/清一色: 特定スートの牌を危険視
+            suit = tile_to_id(tile) // 9
+            # 染めスート = 副露の中で一番多いスート
+            suit_count = {'m': 0, 'p': 0, 's': 0}
+            for s in range(4):
+                if s == self.state.my_seat:
+                    continue
+                for m in [mm for mm in self.state.melds[s] if mm.is_open]:
+                    for t in m.tiles:
+                        tid = tile_to_id(t)
+                        if tid < 27:
+                            suit_count[['m', 'p', 's'][tid // 9]] += 1
+            target_suit = max(suit_count, key=suit_count.get)
+            if ['m', 'p', 's'][suit] == target_suit:
+                base_score = int(base_score * 0.6)
+
+        return base_score
 
     def _player_stats_for_seat(self, seat: int) -> dict:
         if not self.state.player_stats:
@@ -646,7 +884,14 @@ class DefenseEvaluator:
             elif impact < 0:
                 meld_score_adjust += impact
                 self.record_detail(tile, f"中盤手出し危険 ({impact})")
-            return meld_score_adjust
+
+            # Why: 電将パターン理論による安全度スコアを基本にして、既存の
+            # ペナルティ/ボーナスを加算する。パターン数が少ない牌 = 安全。
+            pattern_score = self.pattern_theory_safety_score(tile)
+            self.record_detail(tile, f"パターン理論安全度 (基本 {pattern_score})")
+            # パターンスコアを基準に調整 (パターン理論 + 既存補正)
+            final = max(0, min(1000, pattern_score + meld_score_adjust))
+            return final
 
         # ============================================================
         # リーチ者がいる場合（電脳麻将危険度評価モデルの適用）
