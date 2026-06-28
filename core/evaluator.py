@@ -4516,7 +4516,8 @@ class Evaluator:
         @returns True=リーチ推奨, False=ダマテン推奨, None=EV比較に委ねる
         """
         p = self.params
-        if self.state.is_any_opponent_reach():
+        th = lambda key, default: p.get(key, default)
+        if th('RIICHI_BLOCK_ON_OPP_REACH', True) and self.state.is_any_opponent_reach():
             return False
         if self.state.scores[self.state.my_seat] < 1000:
             return False
@@ -4562,58 +4563,63 @@ class Evaluator:
         # 閾値パラメータ(すべて GA 調整対象)
         th = lambda key, default: p.get(key, default)
 
+        # 特別ケース: ドラ2枚以上持ち+テンパイ → 立直必須 (高打点のため)
+        # Why: ドラ2枚はリーチで5翻以上確定。ダマテンで失う打点が大きいため最優先でリーチ。
+        dora2_min = th('RIICHI_DORA2_MIN', 2)
+        if dora >= dora2_min:
+            return True
+
+        # 特別ケース: ドラ1以上持ち+テンパイ → 立直必須
+        dora1_wait_min = th('RIICHI_DORA1_WAIT_MIN', 2)
+        if dora >= 1 and not is_4th and wait_total >= dora1_wait_min:
+            return True
+
         # 高打点: han_threshold_4 翻以上なら基本的にリーチ
         han_th4 = th('RIICHI_HAN_HIGH_THRESH', 4)
         if han >= han_th4:
-            # 終盤+悪形ならダマテンも検討
+            # 終盤+超悪形ならダマテンも検討
             late_turn_damaten = th('RIICHI_LATE_TURN_DAMATEN', 12)
-            late_wait_max = th('RIICHI_LATE_WAIT_MAX', 4)
-            very_late_turn = th('RIICHI_VERY_LATE_TURN', 13)
-            very_late_wait_max = th('RIICHI_VERY_LATE_WAIT_MAX', 6)
+            late_wait_max = th('RIICHI_LATE_WAIT_MAX', 2)
+            very_late_turn = th('RIICHI_VERY_LATE_TURN', 14)
+            very_late_wait_max = th('RIICHI_VERY_LATE_WAIT_MAX', 4)
             if turn >= very_late_turn and wait_total <= very_late_wait_max:
                 return False
             if turn >= late_turn_damaten and wait_total <= late_wait_max:
                 return False
             return True
 
-        # 特別ケース: ドラ1以上持ち+テンパイ → 立直必須
-        # Why: ドラのみ（1翻）は役として成立しないため、ダマテンでは上がれない。
-        #      立直することで初めて役が成立（立直+ドラ=2翻）するため、立直が唯一の和了手段。
-        if dora >= 1 and not is_4th and wait_total >= 2:
-            return True
-        if dora >= 2:
-            return True
-
         # 中打点: han_threshold_mid (デフォルト3) 翻
         han_th3 = th('RIICHI_HAN_MID_THRESH', 3)
         if han >= han_th3:
-            wait_good = th('RIICHI_WAIT_GOOD_THRESH', 7)
-            wait_min = th('RIICHI_WAIT_MIN_MID', 4)
+            wait_good = th('RIICHI_WAIT_GOOD_THRESH', 2)
+            wait_min = th('RIICHI_WAIT_MIN_MID', 2)
             dora_th = th('RIICHI_DORA_MID_THRESH', 1)
-            yakuhai_th = th('RIICHI_YAKUHAI_MID_THRESH', 3)
-            dora_double = th('RIICHI_DORA_DOUBLE_THRESH', 2)
+            yakuhai_th = th('RIICHI_YAKUHAI_MID_THRESH', 2)
+            dora_double = th('RIICHI_DORA_DOUBLE_THRESH', 1)
             turn_min = th('RIICHI_TURN_MIN_MID', 1)
-            turn_max = th('RIICHI_TURN_MAX_MID', 11)
+            turn_max = th('RIICHI_TURN_MAX_MID', 15)
+            mid_catchall_wait = th('RIICHI_MID_CATCHALL_WAIT', 2)
             if wait_total >= wait_good:
                 return True
             if wait_total >= wait_min and (dora >= dora_th or yakuhai >= yakuhai_th):
                 return True
             if dora >= dora_double and wait_total >= wait_min:
                 return True
-            if wait_total >= 3 and turn_min <= turn <= turn_max:
+            if wait_total >= mid_catchall_wait and turn_min <= turn <= turn_max:
                 return True
             return False
 
-        # 低打点: 厳しめ
-        wait_good_low = th('RIICHI_WAIT_GOOD_LOW', 7)
+        # 低打点: 厳しめ (緩め: 玉座の間スタッツに近づける)
+        wait_good_low = th('RIICHI_WAIT_GOOD_LOW', 2)
         turn_min_low = th('RIICHI_TURN_MIN_LOW', 1)
-        turn_max_low = th('RIICHI_TURN_MAX_LOW', 11)
-        wait_vlow = th('RIICHI_WAIT_VERY_LOW', 10)
+        turn_max_low = th('RIICHI_TURN_MAX_LOW', 15)
+        wait_vlow = th('RIICHI_WAIT_VERY_LOW', 5)
         ura_th = th('RIICHI_URA_THRESH', 1)
-        dora_low = th('RIICHI_DORA_LOW_THRESH', 2)
-        yakuhai_low = th('RIICHI_YAKUHAI_LOW_THRESH', 3)
-        last_wait = th('RIICHI_LAST_WAIT_LOW', 5)
+        dora_low = th('RIICHI_DORA_LOW_THRESH', 1)
+        yakuhai_low = th('RIICHI_YAKUHAI_LOW_THRESH', 2)
+        last_wait = th('RIICHI_LAST_WAIT_LOW', 2)
         last_turn = th('RIICHI_LAST_TURN', 10)
+        han2_turn_max_delta = th('RIICHI_HAN2_TURN_BONUS_MAX_DELTA', 3)
 
         if wait_total >= wait_good_low and turn_min_low <= turn <= turn_max_low:
             return True
@@ -4625,7 +4631,7 @@ class Evaluator:
             return True
         if is_4th and wait_total >= last_wait and turn >= last_turn:
             return True
-        if han == 2 and wait_total >= 3 and turn_min_low <= turn <= turn_max_low - 3:
+        if han >= 2 and wait_total >= 1 and turn_min_low <= turn <= turn_max_low - han2_turn_max_delta:
             return True
         return False
 
@@ -4655,6 +4661,24 @@ class Evaluator:
 
         riichi_ev, damaten_ev = self._compare_riichi_vs_damaten()
         return riichi_ev > damaten_ev
+
+    def _log_riichi_debug(self, suffix: str, mode: str) -> None:
+        """@title 立直デバッグログ (RIICHI_DEBUG=true のときだけ動作)"""
+        if not self.params.get('RIICHI_DEBUG', False):
+            return
+        try:
+            wait_t = self._wait_remaining_total()
+            turn = (self.state.tsumo_count - 1) // 4 + 1
+            shanten_count = ShantenCalculator.calculate_closed(self.state.my_hand_counts())
+            hand_str = '|'.join(self.state.my_hand)
+            dora = self._count_dora_in_hand()
+            yakuhai = self._count_yakuhai_in_hand()
+            han_est = self._estimate_riichi_han_actual() + 1
+            line = f'[RIICHI_DEBUG] {suffix} wait={wait_t} turn={turn} mode={mode} shanten={shanten_count} dora={dora} yakuhai={yakuhai} han={han_est} hand={hand_str}\n'
+            with open('logs/riichi_debug.txt', 'a', encoding='utf-8') as f:
+                f.write(line)
+        except Exception:
+            pass
 
     def should_kan(self) -> bool:
         hand_counts = self.state.my_hand_counts()
@@ -4915,11 +4939,14 @@ class Evaluator:
         if self.strategy.get_strategy_mode() in ("完全撤退", "撤退準備"):
             if after_shanten <= 0:
                 # 形式テンパイ: 12-15巡かつ必要性がある場合のみ許可
-                if turn < 12 or turn > 15:
-                    self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) で形式テンパイだが {turn}巡目で12-15巡外のため副露禁止"
+                def_turn_min = self.params.get('MELD_DEF_FORM_TENPAI_TURN_MIN', 12)
+                def_turn_max = self.params.get('MELD_DEF_FORM_TENPAI_TURN_MAX', 15)
+                if turn < def_turn_min or turn > def_turn_max:
+                    self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) で形式テンパイだが {turn}巡目で{def_turn_min}-{def_turn_max}巡外のため副露禁止"
                     return False
                 rank = self.state.my_score_rank()
-                if rank < 2:
+                def_rank_min = self.params.get('MELD_DEF_FORM_TENPAI_RANK_MIN', 2)
+                if rank < def_rank_min:
                     self.last_meld_reason = f"防御姿勢 ({self.strategy.get_strategy_mode()}) で形式テンパイだが順位 {rank+1}位で必要性なし"
                     return False
                 # 副露後に安全な捨て牌があるか
@@ -5005,25 +5032,28 @@ class Evaluator:
         # 満貫以上の大物手や、役牌ポンによる最低限の速度が担保されており、かつ安牌が十分（2枚以上）ある場合のみ鳴くように制限します。
         # 2 は2向聴の閾値、4 は満貫期待飜数の閾値、2 は安全牌が2枚以上必要という閾値です。
         if before_shanten >= 2:
-            is_high_value = expected_han >= self.params.get('MELD_HIGH_VALUE_THRESH', 2)
+            is_high_value = expected_han >= self.params.get('MELD_HIGH_VALUE_THRESH', 0.5)
             opp_riichi_count = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
-            speed_priority = (current_turn >= self.params.get('MELD_SPEED_TURN', 7)) or \
+            speed_priority = (current_turn >= self.params.get('MELD_SPEED_TURN', 5)) or \
                               (rank == 0) or (rank == 3) or \
-                              (opp_riichi_count == 0 and push > 0.6)
+                              (opp_riichi_count == 0 and push > 0.5)
             if not is_yakuhai_meld and not is_high_value and not speed_priority:
-                self.last_meld_reason = f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 {expected_han:.1f}飜 < 2、速度優先条件も満たさず副露禁止"
+                self.last_meld_reason = f"2向聴以上 ({before_shanten}向聴) で役牌ポン以外かつ期待飜数 {expected_han:.1f}飜 < {self.params.get('MELD_HIGH_VALUE_THRESH', 0.5)}、速度優先条件も満たさず副露禁止"
                 return False
+            # 安全牌要件を緩和: 玉座の間スタッツ (副露率 31-33%) に合わせて、安牌 0 枚でも他家リーチなしなら許可
             if safe_count < 1 and opp_riichi_count == 0:
                 pass
-            elif safe_count < 2:
-                self.last_meld_reason = f"2向聴以上 ({before_shanten}向聴) で安牌不足 (safe_count={safe_count} < 2) のため副露禁止"
+            elif safe_count < 1 and opp_riichi_count >= 1:
+                # 他家リーチありでも、安牌 0 でなければ許可
+                self.last_meld_reason = f"2向聴以上 ({before_shanten}向聴) ＋他家リーチ {opp_riichi_count}本 ＋安牌ゼロ (safe_count=0) のため副露禁止"
                 return False
 
-        # なぜこのようにするか：他家リーチがいる、または他家脅威に対して押し引きスコアが低く（push < 0.5）、
-        # かつアガリ打点が低い（2飜未満）場合、安牌が手牌に1枚もない（safe_count == 0）状態で鳴くのは極めて危険なため拒否します。
-        # 0.5 は押し引き判断の閾値、2 は期待飜数の閾値です。
+        # なぜこのようにするか：他家リーチがいる、または他家脅威に対して押し引きスコアが低く（push < 閾値）、
+        # かつアガリ打点が低い（飜数閾値未満）場合、安牌が手牌に1枚もない（safe_count == 0）状態で鳴くのは極めて危険なため拒否します。
         opp_reach = sum(1 for i in range(4) if i != self.state.my_seat and self.state.reach_states[i].is_reach)
-        if (opp_reach >= 1 or push < 0.5) and expected_han < 2 and not is_yakuhai_meld:
+        opp_reach_han_th = self.params.get('MELD_OPP_REACH_HAN_THRESH', 1.5)
+        opp_reach_push_th = self.params.get('MELD_OPP_REACH_PUSH_THRESH', 0.4)
+        if (opp_reach >= 1 or push < opp_reach_push_th) and expected_han < opp_reach_han_th and not is_yakuhai_meld:
             if safe_count == 0:
                 self.last_meld_reason = f"他家リーチ {opp_reach}本 または押し弱 (push={push:.2f}) かつ低打点 ({expected_han:.1f}飜)、安牌ゼロのため副露禁止"
                 return False
@@ -5051,8 +5081,9 @@ class Evaluator:
                 return True
 
         # 0飜開局でも速度優先なら許容
-        if expected_han < 1 and not (rank == 0 or rank == 3 or current_turn >= 10):
-            self.last_meld_reason = f"0飜未満 ({expected_han:.1f}飜) かつ速度優先条件 (親ラス/10巡目以降) も満たさず副露禁止"
+        zero_han_turn_th = self.params.get('MELD_ZERO_HAN_TURN_THRESH', 10)
+        if expected_han < 1 and not (rank == 0 or rank == 3 or current_turn >= zero_han_turn_th):
+            self.last_meld_reason = f"0飜未満 ({expected_han:.1f}飜) かつ速度優先条件 (親/ラス/{zero_han_turn_th}巡目以降) も満たさず副露禁止"
             return False
 
         # 役バイアスで鳴きが肯定されており、最低限の役とシャンテン進行、安全性が確認できたなら鳴く
@@ -5068,15 +5099,21 @@ class Evaluator:
             return True
 
         # 強い門前一向聴（両面x両面＋高打点）は鳴かない
-        if is_closed and before_shanten <= 1 and expected_han >= 2 and turn < 6:
+        closed_keep_shanten = self.params.get('MELD_CLOSED_KEEP_SHANTEN', 1)
+        closed_keep_han = self.params.get('MELD_CLOSED_KEEP_HAN_THRESH', 2)
+        closed_keep_turn = self.params.get('MELD_CLOSED_KEEP_TURN_MAX', 6)
+        if is_closed and before_shanten <= closed_keep_shanten and expected_han >= closed_keep_han and turn < closed_keep_turn:
             self.last_meld_reason = f"強い門前 {before_shanten}向聴 (期待{expected_han:.1f}飜) のため序盤 ({turn}巡) は門前維持"
             return False
 
         # 終盤制限の緩和: 押し引きと巡目に応じて適用
-        if turn >= 12 or push < 0.4:
+        late_turn_th = self.params.get('MELD_LATE_TURN_THRESH', 12)
+        late_push_th = self.params.get('MELD_LATE_PUSH_THRESH', 0.4)
+        late_rank3_left_max = self.params.get('MELD_LATE_RANK3_LEFT_MAX', 20)
+        if turn >= late_turn_th or push < late_push_th:
             if after_shanten <= 0:
                 return True
-            if self.state.my_score_rank() == 3 and self.state.left_tile_count <= 20:
+            if self.state.my_score_rank() == 3 and self.state.left_tile_count <= late_rank3_left_max:
                 return True
             self.last_meld_reason = f"終盤 ({turn}巡) 押し弱 (push={push:.2f}) だがラス手前 ({self.state.left_tile_count}枚残) でもないため副露禁止"
             return False
