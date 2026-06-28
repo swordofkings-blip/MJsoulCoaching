@@ -214,15 +214,31 @@ class TestDefense(unittest.TestCase):
     """@title 防御評価のテスト"""
 
     def test_genbutsu_is_safe(self):
-        """@title 現物は安全度 1000"""
-        # 9m を手牌に含めて、誰かが切った牌 → 現物
+        """@title リーチ者への現物は安全度 1000"""
+        # 現実的な構成: 自分が 9m を 1 枚持ち、リーチ者の河に 9m がある
         state = make_state(
             hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
             reach_states=[False, True, False, False],  # player 1 がリーチ
         )
-        state.river[1] = ['9m', '9m', '9m', '9m']  # 9m が 4 枚切れている → 現物
+        # リーチ者 (player 1) の河に 9m が 1 枚 → 現物
+        state.river[1] = ['9m']
         score = safety_score(state, '9m')
         self.assertEqual(score, 1000, f"リーチ者への現物は安全度 1000 (実際={score})")
+
+    def test_no_chance_is_safe(self):
+        """@title ノーチャンス (4 枚すべて見えている) は安全度 1000"""
+        # 4 枚すべてが場に見えている牌 (手牌には 1 枚、河に 3 枚)
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
+            reach_states=[False, True, False, False],
+        )
+        # リーチ者 + 自分以外の誰かの河に合計 3 枚の 9m
+        state.river[1] = ['9m']
+        state.river[2] = ['9m']
+        state.river[3] = ['9m']
+        # 自分の手牌 1 枚 + 河 3 枚 = 4 枚すべて見える
+        score = safety_score(state, '9m')
+        self.assertEqual(score, 1000, f"ノーチャンス牌は安全度 1000 (実際={score})")
 
     def test_yakuhai_safety(self):
         """@title 役牌の安全度"""

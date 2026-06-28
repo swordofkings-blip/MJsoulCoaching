@@ -19,7 +19,11 @@ def safety_score(state, tile: str) -> int:
     """
     @title 平沢麻雀パターンによる安全度スコア
     @description リーチ者への放銃リスクを 0-1000 で評価。
-                1000=現物 (絶対安全), 0=現時点で最も危険。
+                1000=絶対安全 (現物 or ノーチャンス), 0=現時点で最も危険。
+
+                絶対安全は 2 通り:
+                1. ノーチャンス: その牌の 4 枚すべてが既に見えている (手牌含む)
+                2. 現物 (フリテン現物): リーチ者の河にその牌がある
     """
     try:
         tile_id = tile_to_id(tile)
@@ -29,13 +33,14 @@ def safety_score(state, tile: str) -> int:
     visible = state.all_visible_counts()
     my_counts = state.my_hand_counts()
     my_count = my_counts[tile_id]
-    public_count = visible[tile_id] - my_count  # 相手視点での見えている枚数
 
-    # === 現物 (絶対安全) ===
-    if public_count >= 4 - my_count:
+    # === 1. ノーチャンス判定 (4 枚すべて既に見えている) ===
+    # 自分視点で見えている合計枚数 (手牌含む) が 4 枚 = ノーチャンス
+    if visible[tile_id] >= 4:
         return 1000
 
-    # === リーチ者を探す ===
+    # === 2. リーチ者の現物 (フリテン現物) 判定 ===
+    # リーチしている他家全員の河にその牌があるなら絶対安全
     reach_seats = []
     for s in range(4):
         if s == state.my_seat:
@@ -43,7 +48,25 @@ def safety_score(state, tile: str) -> int:
         if state.reach_states[s].is_reach:
             reach_seats.append(s)
 
+    if reach_seats:
+        is_genbutsu_all = True
+        for seat in reach_seats:
+            river_ids = set()
+            for t in state.river[seat]:
+                try:
+                    river_ids.add(tile_to_id(t))
+                except Exception:
+                    continue
+            if tile_id not in river_ids:
+                is_genbutsu_all = False
+                break
+        if is_genbutsu_all:
+            return 1000  # 全リーチ者の現物 = 絶対安全
+
+    # === 3. それ以外の危険度評価 ===
     if not reach_seats:
+        # リーチ者なし: 行列マトリクス or スジ判定
+        public_count = visible[tile_id] - my_count
         return _non_reach_safety(state, tile_id, my_count, public_count)
 
     # リーチ者あり: 待ち重みを計算
