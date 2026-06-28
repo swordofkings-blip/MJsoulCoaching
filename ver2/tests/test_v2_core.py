@@ -240,6 +240,47 @@ class TestDefense(unittest.TestCase):
         score = safety_score(state, '9m')
         self.assertEqual(score, 1000, f"ノーチャンス牌は安全度 1000 (実際={score})")
 
+    def test_no_chance_number_tile_is_safe(self):
+        """@title ノーチャンス (数牌 4 枚すべて見えている) は安全度 1000"""
+        # 数牌 (5m) で 4 枚見える → 誰の単騎/双碰/両面/ペンチャン/カンチャン待ちにもできない
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
+            reach_states=[False, True, False, False],
+        )
+        # 5m: 手牌 1 枚 + 河 (自分 + 非リーチ者 2) 3 枚 = 4 枚見える
+        state.river[0] = ['5m']  # 自分
+        state.river[2] = ['5m']
+        state.river[3] = ['5m']
+        score = safety_score(state, '5m')
+        self.assertEqual(score, 1000, f"ノーチャンス数牌は安全度 1000 (実際={score})")
+
+    def test_no_chance_honor_tile_is_safe(self):
+        """@title ノーチャンス (字牌 4 枚すべて見えている) は安全度 1000"""
+        # 字牌 (5z) で 4 枚見える
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5z'],
+            reach_states=[False, True, False, False],
+        )
+        # 5z: 手牌 1 枚 + 河 3 枚 = 4 枚見える
+        state.river[0] = ['5z']
+        state.river[2] = ['5z']
+        state.river[3] = ['5z']
+        score = safety_score(state, '5z')
+        self.assertEqual(score, 1000, f"ノーチャンス字牌は安全度 1000 (実際={score})")
+
+    def test_3_visible_not_genbutsu_is_not_safe(self):
+        """@title 3 枚見えてリーチ者河になければ安全度 1000 ではない"""
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
+            reach_states=[False, True, False, False],
+        )
+        # 5m: 手牌 1 枚 + 河 (自分 1 のみ) 2 枚 = 3 枚見える
+        # リーチ者 (player 1) の河に 5m はない → 現物ではない
+        state.river[0] = ['5m']
+        score = safety_score(state, '5m')
+        # 1 枚見えないので ロン可能性あり、1000 ではない
+        self.assertLess(score, 1000, f"3 枚見えで現物でない牌は 1000 未満 (実際={score})")
+
     def test_yakuhai_safety(self):
         """@title 役牌の安全度"""
         # 5z (白) を持つ
