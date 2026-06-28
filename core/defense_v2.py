@@ -98,7 +98,7 @@ def _tile_remaining_weights(state, reach_seats: List[int], visible: List[int], m
     @description リーチ者の待ちとして残りうる牌の重みを牌種ごとに算出。
                 重み = 待ちの形ごとの残り枚数。
     """
-    weights = [0.0] * 34
+    weights = [1.0] * 34  # 初期値 1.0 (現物のみ後で 0.0 に)
 
     # 現物 (フリテン含む) は重み 0
     for seat in reach_seats:
@@ -111,11 +111,10 @@ def _tile_remaining_weights(state, reach_seats: List[int], visible: List[int], m
         for tid in range(34):
             if tid in genbutsu:
                 weights[tid] = 0.0
-                continue
 
     for tid in range(34):
         if weights[tid] == 0.0:
-            continue
+            continue  # 現物はスキップ
 
         is_h = is_honor(tid)
         if is_h:

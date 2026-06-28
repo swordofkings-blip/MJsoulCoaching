@@ -79,8 +79,15 @@ class EvaluatorV2:
 
     def _normal_tuple(self, tile: str) -> Tuple:
         """
-        @title 通常/ATTACK/DEFEND/FOLD/URGENT_ATTACK タプル
-        @description 動的スイッチ: shanten_after <= 1 で DFS 経路に分岐
+        @title モード別タプル
+        @description 現在のモードに応じてタプルの優先順位を変える:
+                    - URGENT_ATTACK: 受入を最優先
+                    - ATTACK: 戦術ランクより受入優先
+                    - BALANCED: 戦術ランク優先
+                    - DEFEND: 安全度優先
+                    - FOLD: 安全度を最上位に
+
+        動的スイッチ: shanten_after <= 1 で DFS 経路に分岐
         """
         hand_counts = list(self.state.my_hand_counts())
         discard_id = tile_to_id(tile)
@@ -98,13 +105,41 @@ class EvaluatorV2:
         saf = safety_score(self.state, tile)
 
         if shanten_after <= 1:
-            # 1 向聴 or テンパイ: DFS 期待値で評価 (5 層)
+            # 1 向聴 or テンパイ: DFS 期待値で評価
             dfs = self._get_dfs(tile)
-            return (shanten_after, -dfs, rank, dora_loss, -saf)
+            mode = self.get_mode()
+            if mode == Mode.URGENT_ATTACK:
+                # URGENT: 受入最優先 (-dfs を上に)
+                return (shanten_after, -dfs, -dora_loss, rank, -saf)
+            elif mode == Mode.ATTACK:
+                return (shanten_after, -dfs, -dora_loss, rank, -saf)
+            elif mode == Mode.DEFEND:
+                # DEFEND: 安全度を上に
+                return (shanten_after, -saf, -dfs, rank, dora_loss)
+            elif mode == Mode.FOLD:
+                # FOLD: 安全度最優先
+                return (-saf, shanten_after, -dfs, rank, dora_loss)
+            else:
+                # BALANCED
+                return (shanten_after, -dfs, rank, dora_loss, -saf)
         else:
-            # 2 向聴以上: 良形/愚形に分解した受入 (6 層)
+            # 2 向聴以上: 良形/愚形に分解した受入
             good, bad = count_good_bad_ukeire(self.state, tile)
-            return (shanten_after, rank, -good, -bad, dora_loss, -saf)
+            mode = self.get_mode()
+            if mode == Mode.URGENT_ATTACK:
+                # URGENT: 受入を最優先
+                return (shanten_after, -good, -bad, -dora_loss, rank, -saf)
+            elif mode == Mode.ATTACK:
+                return (shanten_after, -good, -bad, -dora_loss, rank, -saf)
+            elif mode == Mode.DEFEND:
+                # DEFEND: 安全度優先
+                return (shanten_after, -saf, rank, -good, -bad, dora_loss)
+            elif mode == Mode.FOLD:
+                # FOLD: 安全度最優先
+                return (-saf, shanten_after, rank, -good, -bad, dora_loss)
+            else:
+                # BALANCED
+                return (shanten_after, rank, -good, -bad, dora_loss, -saf)
 
     def _get_dfs(self, tile: str) -> float:
         """@title DFS 期待値 (キャッシュ付き)"""

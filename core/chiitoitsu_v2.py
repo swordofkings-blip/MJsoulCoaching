@@ -75,8 +75,8 @@ def chiitoitsu_tuple(state, tile: str) -> Tuple:
                 else:
                     bad_ukeire += remaining
     ukeire = good_ukeire + bad_ukeire  # 合計
-    pair_quality = _tile_pair_quality(state, tile_id)
-    dora_loss = _dora_loss(state, tile_id)
+    pair_quality = _tile_pair_quality(state, discard_id)
+    dora_loss = _dora_loss(state, discard_id)
     from core.tactical_rank_v2 import tactical_discard_rank
     rank = tactical_discard_rank(state, tile)
     return (chiitoi_shanten, -ukeire, -pair_quality, rank, dora_loss)

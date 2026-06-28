@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import List
 
 from core.shanten_v2 import ShantenCalculatorV2
-from str_converter import tile_to_id, is_honor
+from str_converter import tile_to_id, id_to_tile, is_honor
 
 
 def run_1shanten_dfs(state, discard_tile: str) -> float:
@@ -158,16 +158,3 @@ def _is_ryanmen_wait(state, hand_counts, wait_id: int) -> bool:
     has_l = off > 0 and hand_counts[base + off - 1] >= 1
     has_r = off < 8 and hand_counts[base + off + 1] >= 1
     return has_l and has_r
-
-
-def id_to_tile(tile_id: int) -> str:
-    """@title tile_id から文字列"""
-    if tile_id < 0 or tile_id >= 34:
-        return ""
-    suits = ['m', 'p', 's']
-    if tile_id < 27:
-        suit = suits[tile_id // 9]
-        num = (tile_id % 9) + 1
-        return f"{num}{suit}"
-    honor_names = ['E', 'S', 'W', 'N', 'h', 'g', 'r']
-    return honor_names[tile_id - 27]

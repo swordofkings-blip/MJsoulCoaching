@@ -12,9 +12,13 @@ from str_converter import (
     tile_to_id,
     is_honor,
     is_terminal,
-    SANGEN_IDS,
-    KAZE_IDS,
+    HONOR_IDS,
 )
+
+# 三元牌: 白 (31), 發 (32), 中 (33)
+SANGEN_IDS = (31, 32, 33)
+# 風牌: 東 (27), 南 (28), 西 (29), 北 (30)
+KAZE_IDS = (27, 28, 29, 30)
 
 
 # 役満種類
@@ -75,25 +79,25 @@ def detect_yakumans(state) -> dict:
     if sangen_count >= 8:
         results['daisangen'] = {'possible': True, 'shanten': 0, 'progress': 0.8}
 
-    # 字一色
+    # 字一色: 14 枚すべてが字牌 もしくは ほぼ字牌で構成 (孤立牌なし)
     if open_meld_count == 0:
-        all_honor = all(
-            is_honor(tile_to_id(t))
-            for t in state.my_hand
-        )
-        if all_honor and len(state.my_hand) >= 14:
+        honor_count = sum(1 for t in state.my_hand if is_honor(tile_to_id(t)))
+        all_honor = (honor_count == len(state.my_hand))
+        # 字一色は「全ての牌が字牌」でなくても、孤立牌なし なら候補
+        if all_honor and len(state.my_hand) >= 13:
             results['tsuuiisou'] = {'possible': True, 'shanten': 0, 'progress': 0.7}
+        elif honor_count >= 10 and len(state.my_hand) >= 13:
+            # 進行中: 字牌 10 枚以上
+            results['tsuuiisou'] = {'possible': True, 'shanten': 2, 'progress': 0.4}
 
-    # 清老頭
-    all_terminal = all(
-        is_terminal(tile_to_id(t)) or is_honor(tile_to_id(t))
-        for t in state.my_hand
-    )
-    all_terminal_pure = all(
-        is_terminal(tile_to_id(t)) for t in state.my_hand
-    )
-    if all_terminal_pure and len(state.my_hand) >= 14:
+    # 清老頭: 14 枚すべてが老頭牌 (1, 9 のみ) もしくは ほぼ老頭牌で構成
+    terminal_count = sum(1 for t in state.my_hand if is_terminal(tile_to_id(t)))
+    all_terminal_pure = (terminal_count == len(state.my_hand))
+    if all_terminal_pure and len(state.my_hand) >= 13:
         results['chinroutou'] = {'possible': True, 'shanten': 0, 'progress': 0.7}
+    elif terminal_count >= 10 and len(state.my_hand) >= 13:
+        # 進行中: 老頭牌 10 枚以上
+        results['chinroutou'] = {'possible': True, 'shanten': 2, 'progress': 0.4}
 
     return results
 
@@ -155,7 +159,7 @@ def yakuman_tuple(state, tile: str, yakuman_type: str) -> Tuple:
     ukeire = good + bad
 
     # 役満別特殊ランク
-    yakuman_garbage = _yakuman_garbage_rank(state, tile_id, yakuman_type)
+    yakuman_garbage = _yakuman_garbage_rank(state, discard_id, yakuman_type)
     dora_loss = _dora_loss(state, discard_id)
     saf = safety_score(state, tile)
 
@@ -187,9 +191,13 @@ def _yakuman_garbage_rank(state, tile_id: int, yakuman_type: str) -> int:
         return 9 if is_terminal(tile_id) else 0
 
     if yakuman_type == 'ryuuiisou':
-        # 緑一色: 2345678 + 発 (字牌)
-        ryuu = [19, 20, 21, 22, 23, 24, 25, 23, 32]
-        return 9 if (is_honor(tile_id) or tile_id in ryuu) else 0
+        # 緑一色: 234568s + 6z (發) のみが使える
+        # 索子 ID: 18-26 (1s=18, 2s=19, ..., 9s=26)
+        # 緑牌: 2s(19), 3s(20), 4s(21), 6s(23), 8s(25) + 發(32)
+        ryuu_green = {19, 20, 21, 23, 25, 32}
+        if tile_id in ryuu_green:
+            return 9
+        return 0  # 緑牌以外は絶対切る
 
     if yakuman_type == 'suuankou':
         # 暗刻
