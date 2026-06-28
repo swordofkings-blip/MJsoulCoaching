@@ -27,9 +27,13 @@ from str_converter import (
     is_honor,
     is_red_five,
     is_terminal,
-    SANGEN_IDS,
-    KAZE_IDS,
+    HONOR_IDS,
 )
+
+# 三元牌: 白 (31), 發 (32), 中 (33)
+SANGEN_IDS = (31, 32, 33)
+# 風牌: 東 (27), 南 (28), 西 (29), 北 (30)
+KAZE_IDS = (27, 28, 29, 30)
 
 
 def tactical_discard_rank(state, tile: str) -> int:
