@@ -902,3 +902,67 @@ T_yakuman(t) = (
 9. 	ools/mjai_client_v2.py
 10. テスト + Akochan 対戦
 
+
+### 第6ラウンド議論 (2026-06-28) - AI レビュー指摘対応
+
+**指摘 1: 1 シャンテン DFS の居場所が消えている**
+- ver.1 では _run_1shanten_dfs が「良形+打点」の先読みを担っていた
+- ver.2 基本形ではこの機能が消えていた
+- **修正: 動的タプルスイッチで対応**
+  - shanten_after <= 1: 5 層タプル (向聴, -DFS, 戦術ランク, ドラ損失, -安全)
+  - shanten_after >= 2: 6 層タプル (向聴, 戦術ランク, -良形, -愚形, ドラ損失, -安全)
+- DFS 期待値の意味: 「切った後に良形×打点の期待値」大きいほど良い
+- **新ファイル**: core/dfs_v2.py に ver.1 の DFS を移植
+
+**指摘 2: GARBAGE_RANK は「辞書」ではなく「判定関数」として定義する**
+- 辞書だと「同じ牌に対してどのラベルを当てるか」で優先順位バグる
+- 例: 「1 枚切れのオタ風 = ドラ」 のような場合、辞書の key 引きだとバグる
+- **修正: 1 つの巨大な if-else 関数として実装**
+  - 	actical_discard_rank() は 1 つの関数で全て判定
+  - 各 if ブロックに麻雀セオリーのコメント (言語化)
+  - 上から順に評価されるので優先順位が明示
+
+**最終タプル設計 (動的)**:
+
+\\\python
+# 1 向聴/テンパイ (5 層)
+T_dfs(t) = (
+    shanten_after,      # ①
+    -dfs_score,          # ② ver.1 の最強武器、良形×打点
+    tactical_rank(t),   # ③ 0-99
+    dora_loss,           # ④
+    -safety(t),          # ⑤
+)
+
+# 2 向聴以上 (6 層)
+T_normal(t) = (
+    shanten_after,      # ①
+    tactical_rank(t),   # ② 0-99
+    -good_ukeire,       # ③ 両面・三面張
+    -bad_ukeire,        # ④ カンチャン・ペンチャン・単騎
+    dora_loss,          # ⑤
+    -safety(t),         # ⑥
+)
+\\\
+
+タプル長が違うので Python の辞書式比較で正しく動く:
+- 1 向聴 vs 2 向聴: ①shanten で判定 (前者勝ち)
+- 1 向聴同士: ②DFS で判定
+- 2 向聴同士: ②戦術ランクで判定
+
+**実装済みファイル** (Day 1-6):
+- \core/shanten_v2.py\ ?
+- \core/tactical_rank_v2.py\ ? (if-else 関数版に refactor)
+- \core/ukeire_v2.py\ ?
+- \core/defense_v2.py\ ?
+- \core/dfs_v2.py\ ? (ver.1 から移植)
+- \core/chiitoitsu_v2.py\ ?
+- \core/yakuman_v2.py\ ?
+- \core/strategy_v2.py\ ?
+- \core/evaluator_v2.py\ ? (DFS スイッチ追加)
+
+**次のステップ**:
+- \	ools/mjai_client_v2.py\ を作成
+- 1 人麻雀で動作確認
+- 4 人麻雀 (Akochan 対戦)
+
