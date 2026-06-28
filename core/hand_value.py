@@ -134,7 +134,21 @@ def estimate_han_advanced(hand: List[str], melds: List, doras: List[str],
 
 
 def estimate_win_score(han: int, fu: int, is_dealer: bool) -> int:
+    """
+    @title 和了打点推定 (完全版)
+    @description 符・飜数からロン打点 (他家から受け取る点) を推定。
+                公式: 基本点 = 符 × 2^(飜+2) (100 点未満切上げ)
+                ロン: 基本点 × 4, 親ロン: 基本点 × 6
+                ツモ (子): 基本点 × 2 (他家から) + 基本点 × 1 (自) = 基本点 × 4
+                ツモ (親): 基本点 × 2 (他家から) = 基本点 × 3
+                期待値 = (ロン × 0.5 + ツモ × 0.5) で近似
+    @param {int} han - 飜数
+    @param {int} fu - 符
+    @param {bool} is_dealer - 親か
+    @returns {int} 推定打点
+    """
     if han >= 5:
+        # 満貫以上
         if han >= 13:
             base = 32000
         elif han >= 11:
@@ -143,26 +157,22 @@ def estimate_win_score(han: int, fu: int, is_dealer: bool) -> int:
             base = 16000
         elif han >= 6:
             base = 12000
-        else:
+        else:  # 5 飜
             base = 8000
-        if is_dealer:
-            base = int(base * 1.5)
-        return base
-    table = {(20,1):1000,(20,1):1000,(25,1):1600,(30,1):1000,(40,1):1300,(50,1):1600,
-             (20,2):2000,(25,2):3200,(30,2):2000,(40,2):2600,(50,2):3200,
-             (20,3):3900,(25,3):6400,(30,3):3900,(40,3):5200,(50,3):6400,
-             (25,4):12000,(30,4):7700,(40,4):10400}
-    key = (fu, han)
-    if key in table:
-        base = table[key]
-        if is_dealer:
-            base = int(base * 1.5)
-        return base
+        # ロン打点
+        ron_score = int(base * 1.5) if is_dealer else base
+        return ron_score
+
+    # 基本点計算
     base = fu * 4 * (2 ** (han + 2))
-    base = ((base + 99) // 100) * 100
+    base = ((base + 99) // 100) * 100  # 100 点未満切上げ
+
+    # ロン打点
     if is_dealer:
-        base = int(base * 1.5)
-    return base
+        ron_score = int(base * 6)  # 親ロン: 基本点 × 6
+    else:
+        ron_score = base * 4  # 子ロン: 基本点 × 4
+    return ron_score
 
 
 def estimate_hand_value(hand: List[str], melds: List, doras: List[str],

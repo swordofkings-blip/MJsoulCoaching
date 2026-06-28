@@ -378,6 +378,9 @@ class StrategyManager:
         self._yakuman_attack_boost_cache = None
         self._push_score_cache = None
         self._strategy_mode_cache = None
+        self._deal_in_rate_cache = None
+        self._win_rate_cache = None
+        self._win_score_cache = None
 
     def compute_opponent_threat(self) -> float:
         """
@@ -812,6 +815,192 @@ class StrategyManager:
             if color_tiles >= 8:
                 return True
         return False
+
+    def estimate_deal_in_rate(self) -> float:
+        """
+        @title 放銃率推定
+        @description 自分の捨牌・ドラ表示牌・見えてる牌から、自分のツモ牌が
+                    他家の和了牌になる確率を推定する。
+                    1. 各牌の残り枚数を見る
+                    2. 自分の捨牌に含まれている牌 (字牌・中張牌) は安全度が高い
+                    3. 見えてない牌 (ノベリスク?) は危険度が高い
+                    4. 相手のリーチ状態は脅威度を上げる
+        @returns {float} 推定放銃率 (0.0〜1.0, 1 ツモあたりの確率)
+        """
+        if self._deal_in_rate_cache is not None:
+            return self._deal_in_rate_cache
+
+        from str_converter import tile_to_id
+        visible = self._get_visible_counts()
+        # 残り枚数
+        remaining = [max(0, 4 - visible[i]) for i in range(34)]
+        total_remaining = sum(remaining)
+        if total_remaining == 0:
+            self._deal_in_rate_cache = 0.0
+            return 0.0
+
+        # 各牌の危険度
+        # - 字牌 (id 27-33): 中程度
+        # - 端牌 (id 0, 8, 9, 17, 18, 26): 中
+        # - 中張牌 (id 1-7, 10-16, 19-25): 高
+        # さらに ドラ/裏ドラ 候補は超高
+        danger = [0.0] * 34
+        for i in range(34):
+            if visible[i] >= 4:
+                continue  # 0 枚残りなのでスキップ
+            base_danger = 0.10
+            if 27 <= i <= 33:
+                base_danger = 0.08  # 字牌
+            elif i % 9 == 0 or i % 9 == 8:
+                base_danger = 0.06  # 端牌
+            else:
+                base_danger = 0.12  # 中張牌
+
+            # ドラ表示牌ボーナス
+            try:
+                for d in self.state.actual_doras:
+                    if tile_to_id(d) == i:
+                        base_danger *= 1.5
+            except Exception:
+                pass
+            danger[i] = base_danger
+
+        # 自分と他家の合計危険度
+        total_danger = sum(danger[i] * remaining[i] for i in range(34) if remaining[i] > 0)
+        # 1 ツモあたりの放銃率 (概算): total_danger / total_remaining
+        base_deal_in = total_danger / max(1, total_remaining)
+        # リーチしている相手がいれば脅威UP
+        n_reach = sum(1 for s in range(4) if s != self.state.my_seat and self.state.reach_states[s].is_reach)
+        if n_reach >= 1:
+            # リーチ中は待ちが絞られているので放銃率UP
+            base_deal_in *= 1.5 + 0.3 * (n_reach - 1)
+        # 副露している相手が多いほど待ちが広いので放銃率UP
+        n_open = sum(1 for s in range(4) if s != self.state.my_seat for m in self.state.melds[s] if m.is_open)
+        if n_open >= 1:
+            base_deal_in *= 1.0 + 0.1 * n_open
+
+        # 巡目が浅い (序盤) なら放銃率低め
+        tsumo = (self.state.tsumo_count - 1) // 4 + 1
+        if tsumo <= 6:
+            base_deal_in *= 0.7
+        elif tsumo <= 12:
+            base_deal_in *= 1.0
+        else:
+            base_deal_in *= 1.2
+
+        # 自分の手牌の安全度 (字牌・端牌多めなら放銃率低め)
+        hand = self.state.my_hand
+        honor_count = sum(1 for t in hand if 27 <= tile_to_id(t) <= 33)
+        edge_count = sum(1 for t in hand if tile_to_id(t) % 9 in (0, 8))
+        if honor_count + edge_count >= 5:
+            base_deal_in *= 0.85
+
+        res = max(0.0, min(0.5, base_deal_in))  # 0.5 で頭打ち
+        self._deal_in_rate_cache = res
+        return res
+
+    def estimate_win_rate(self) -> float:
+        """
+        @title 和了率推定
+        @description 自分の受け入れ枚数・待ちの質・巡目から和了率を推定する。
+        @returns {float} 推定和了率 (0.0〜1.0, 残り巡目で和了する確率)
+        """
+        if self._win_rate_cache is not None:
+            return self._win_rate_cache
+
+        hand_counts = self.state.my_hand_counts()
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        shanten = ShantenCalculator.calculate_closed_effective(hand_counts) if open_meld_count == 0 else ShantenCalculator.calculate_open(hand_counts, open_meld_count)
+
+        if shanten <= 0:
+            # テンパイ: 残り巡目で和了する確率
+            wait_tiles = self._wait_tiles_for_tenpai() if hasattr(self, '_wait_tiles_for_tenpai') else None
+            if not wait_tiles:
+                # 受け入れ枚数を再計算
+                wait_tiles = []
+                visible = self._get_visible_counts()
+                for tid in range(34):
+                    if hand_counts[tid] >= 4:
+                        continue
+                    test = list(hand_counts)
+                    test[tid] += 1
+                    if open_meld_count == 0:
+                        ns = ShantenCalculator.calculate_closed_effective(test)
+                    else:
+                        ns = ShantenCalculator.calculate_open(test, open_meld_count)
+                    if ns >= 0:
+                        continue
+                    wait_tiles.append(tid)
+
+            visible = self._get_visible_counts()
+            total_remaining = sum(max(0, 4 - visible[t]) for t in wait_tiles)
+            left_tiles = max(1, self.state.left_tile_count)
+            # 1 ツモで和了確率
+            one_draw = total_remaining / (4 * 13)  # 概算: 残り牌に対する受け入れ
+            # 残り巡数 (1 局最大 18 巡 = 70 牌)
+            max_draws = max(0, left_tiles)
+            # 1 ツモで和了しない確率
+            not_win_one = max(0.0, 1.0 - one_draw)
+            res = 1.0 - (not_win_one ** max_draws)
+        else:
+            # 1 巡前に向聴数が下がる確率 (概算)
+            avg_improve = 1.0 / (shanten * 4 + 4)
+            tsumo = (self.state.tsumo_count - 1) // 4 + 1
+            left_tiles = max(0, self.state.left_tile_count)
+            # 数巡後にテンパイする確率
+            res = avg_improve * left_tiles / 14.0  # 概算
+
+        res = max(0.0, min(0.95, res))
+        self._win_rate_cache = res
+        return res
+
+    def estimate_win_score(self) -> int:
+        """
+        @title 和了打点推定
+        @description 自分の手牌の打点を推定 (符 + 飜数 × ベース)
+        @returns {int} 推定打点 (親ロン 3900-32000 程度)
+        """
+        if self._win_score_cache is not None:
+            return self._win_score_cache
+        try:
+            from hand_value import estimate_han_advanced, estimate_win_score
+            han = estimate_han_advanced(
+                self.state.my_hand, self.state.my_melds, self.state.doras,
+                is_open=any(m.is_open for m in self.state.my_melds),
+                has_reach=any(rs.is_reach for i, rs in enumerate(self.state.reach_states) if i == self.state.my_seat),
+                is_ippatsu=False, is_tsumo=False,
+                seat=self.state.my_seat, chang=self.state.chang, ju=self.state.ju
+            )
+            han = max(han, 1)
+            is_dealer = self.state.my_seat == 0
+            score = estimate_win_score(han, 30, is_dealer)
+        except Exception:
+            score = 8000  # デフォルト mangan
+        self._win_score_cache = score
+        return score
+
+    def calculate_push_fold_ev(self) -> Tuple[float, float, float]:
+        """
+        @title 押し/オリ EV 計算
+        @description 押す場合とオリる場合の EV を比較し、押し寄り度 (push_lean, -1.0〜+1.0) を返す。
+                    push_lean > 0 なら押す、< 0 ならオリる。
+                    push_ev: 押した場合の EV
+                    fold_ev: オリった場合の EV
+        @returns {Tuple[float, float, float]} (push_ev, fold_ev, push_lean)
+        """
+        win_rate = self.estimate_win_rate()
+        win_score = self.estimate_win_score()
+        deal_in_rate = self.estimate_deal_in_rate()
+        # 放銃時の失点 (他家による)
+        # ロンはロンされた点数、ツモはロン+α
+        loss_score = max(1000, win_score - 2000)  # 自分より少し低い
+
+        push_ev = win_rate * win_score - deal_in_rate * loss_score
+        # オリEV: 放銃を避けると、放銃確率分だけ得する
+        fold_ev = 0 - deal_in_rate * loss_score * 0.3  # 完全オリれば放銃率は下がるが残り
+        # 比較
+        push_lean = (push_ev - fold_ev) / max(1, win_score)
+        return push_ev, fold_ev, max(-1.0, min(1.0, push_lean))
 
     def compute_base_attack(self) -> float:
         """
