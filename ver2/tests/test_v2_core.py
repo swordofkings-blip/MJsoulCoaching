@@ -225,38 +225,9 @@ class TestDefense(unittest.TestCase):
         score = safety_score(state, '9m')
         self.assertEqual(score, 1000, f"リーチ者への現物は安全度 1000 (実際={score})")
 
-    def test_no_chance_is_safe(self):
-        """@title ノーチャンス (4 枚すべて見えている) は安全度 1000"""
-        # 4 枚すべてが場に見えている牌 (手牌には 1 枚、河に 3 枚)
-        state = make_state(
-            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
-            reach_states=[False, True, False, False],
-        )
-        # リーチ者 + 自分以外の誰かの河に合計 3 枚の 9m
-        state.river[1] = ['9m']
-        state.river[2] = ['9m']
-        state.river[3] = ['9m']
-        # 自分の手牌 1 枚 + 河 3 枚 = 4 枚すべて見える
-        score = safety_score(state, '9m')
-        self.assertEqual(score, 1000, f"ノーチャンス牌は安全度 1000 (実際={score})")
-
-    def test_no_chance_number_tile_is_safe(self):
-        """@title ノーチャンス (数牌 4 枚すべて見えている) は安全度 1000"""
-        # 数牌 (5m) で 4 枚見える → 誰の単騎/双碰/両面/ペンチャン/カンチャン待ちにもできない
-        state = make_state(
-            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
-            reach_states=[False, True, False, False],
-        )
-        # 5m: 手牌 1 枚 + 河 (自分 + 非リーチ者 2) 3 枚 = 4 枚見える
-        state.river[0] = ['5m']  # 自分
-        state.river[2] = ['5m']
-        state.river[3] = ['5m']
-        score = safety_score(state, '5m')
-        self.assertEqual(score, 1000, f"ノーチャンス数牌は安全度 1000 (実際={score})")
-
     def test_no_chance_honor_tile_is_safe(self):
         """@title ノーチャンス (字牌 4 枚すべて見えている) は安全度 1000"""
-        # 字牌 (5z) で 4 枚見える
+        # 字牌 (5z) で 4 枚見える → 単騎/双碰/国士無双以外ロンされない
         state = make_state(
             hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5z'],
             reach_states=[False, True, False, False],
@@ -267,6 +238,55 @@ class TestDefense(unittest.TestCase):
         state.river[3] = ['5z']
         score = safety_score(state, '5z')
         self.assertEqual(score, 1000, f"ノーチャンス字牌は安全度 1000 (実際={score})")
+
+    def test_no_chance_suit_tile_NOT_1000(self):
+        """@title ノーチャンス (数牌 4 枚見えている) でも 1000 ではない
+        4 枚見えても、両面/カンチャン/ペンチャン待ちでロンされ得る
+        """
+        # 5m: 手牌 1 枚 + 河 3 枚 = 4 枚見える
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5m'],
+            reach_states=[False, True, False, False],
+        )
+        # 4 枚見える
+        state.river[0] = ['5m']
+        state.river[2] = ['5m']
+        state.river[3] = ['5m']
+        score = safety_score(state, '5m')
+        # 1000 ではない (両面/カンチャン待ちでロンされ得る)
+        self.assertLess(score, 1000, f"4 枚見えの数牌は 1000 未満 (実際={score})")
+
+    def test_no_chance_5m_with_kanchan_wait(self):
+        """@title 5m 4 枚見えでも 4-6 カンチャン待ちでロンされ得る
+        立直者が 4m6m (カンチャン 5m 待ち) を持ってる場合
+        """
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5m'],
+            reach_states=[False, True, False, False],
+        )
+        # 4 枚見える
+        state.river[0] = ['5m']
+        state.river[2] = ['5m']
+        state.river[3] = ['5m']
+        score = safety_score(state, '5m')
+        # カンチャン (4-6) と両面 (3-4-5, 5-6-7) で ロンされ得る
+        self.assertLess(score, 1000, f"5m 4 枚見えでも安全ではない (実際={score})")
+
+    def test_no_chance_3m_penchan_safe(self):
+        """@title 3m 4 枚見え + ペンチャン待ち (1-2-3 順子, 3 待ち) について
+        3m は 1-2-3 順子の 3 待ちとして使われ得る
+        """
+        # 3m: 手牌 1 枚 + 河 3 枚 = 4 枚見える
+        state = make_state(
+            hand=['1m', '2m', '3m', '4m', '5m', '6m', '7m', '8m', '9m', '1p', '2p', '3p', '4p', '5p'],
+            reach_states=[False, True, False, False],
+        )
+        state.river[0] = ['3m']
+        state.river[2] = ['3m']
+        state.river[3] = ['3m']
+        score = safety_score(state, '3m')
+        # 3m は 1-2-3 順子の 3 待ち (penchan) としてロンされ得る
+        self.assertLess(score, 1000, f"3m 4 枚見えでも penchan 待ちで安全ではない (実際={score})")
 
     def test_3_visible_not_genbutsu_is_not_safe(self):
         """@title 3 枚見えてリーチ者河になければ安全度 1000 ではない"""
