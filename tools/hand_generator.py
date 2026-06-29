@@ -102,6 +102,76 @@ def generate_hand(n: int = 14, seed: Optional[int] = None,
     raise ValueError(f"制約を満たす手牌が {max_attempts} 試行で見つかりませんでした")
 
 
+def generate_with_fixed_sequences(
+    fixed_sequences: List[Tuple[str, ...]],
+    n: int = 14,
+    seed: Optional[int] = None,
+    must_include: Optional[List[str]] = None,
+    max_attempts: int = 10000,
+) -> List[str]:
+    """
+    @title 固定の牌シーケンスを含めて手牌生成
+    @description 例: fixed_sequences=[('1m','2m','3m'), ('4m','5m','6m'), ('7m','8m')]
+              → 123 順子 + 456 順子 + 78 塔子 確定 (= 1 通 1 向聴の骨格)
+              → 残り 5 枚 (雀頭 + 孤立) を ランダム生成
+
+    @param fixed_sequences: 固定したいシーケンス (順子/塔子/雀頭/刻子) のリスト
+    @param n: 総枚数
+    @param seed: 乱数シード
+    @param must_include: 追加で必須な牌
+    @param max_attempts: 最大試行回数
+    @returns 牌リスト
+    """
+    rng = random.Random(seed)
+
+    # 固定牌の枚数を計算
+    fixed_tiles = []
+    for seq in fixed_sequences:
+        for t in seq:
+            fixed_tiles.append(t)
+    n_fixed = len(fixed_tiles)
+    n_random = n - n_fixed
+
+    if n_random < 0:
+        raise ValueError(f"固定牌 ({n_fixed}) が総枚数 ({n}) を超えています")
+
+    # 追加必須牌
+    extra = must_include or []
+    n_extra = len(extra)
+    n_random -= n_extra
+    if n_random < 0:
+        raise ValueError(f"固定牌 + 必須牌 ({n_fixed + n_extra}) が総枚数 ({n}) を超えています")
+
+    for attempt in range(max_attempts):
+        # 固定牌を counts に配置
+        counts = [0] * 34
+        for t in fixed_tiles + extra:
+            try:
+                tid = tile_to_id(t)
+            except Exception:
+                continue
+            if counts[tid] < 4:
+                counts[tid] += 1
+            else:
+                break
+        else:
+            # 残りをランダム
+            for _ in range(n_random):
+                t = rng.randint(0, 33)
+                if counts[t] < 4:
+                    counts[t] += 1
+                else:
+                    break
+            else:
+                from str_converter import id_to_tile
+                hand = []
+                for i, c in enumerate(counts):
+                    for _ in range(c):
+                        hand.append(id_to_tile(i))
+                return hand
+    raise ValueError(f"固定シーケンスを含む手牌が {max_attempts} 試行で見つかりませんでした")
+
+
 def tile_to_id(tile: str) -> int:
     """@title tile ('1m') を id (0-33) に変換"""
     if tile.startswith('0'):
@@ -179,6 +249,8 @@ def main():
     p.add_argument('--no-display', action='store_true', help='プレビュー非表示')
     p.add_argument('--search', action='store_true', help='条件に合う手牌を自動探索')
     p.add_argument('--max-search', type=int, default=100000, help='最大探索数')
+    p.add_argument('--fixed-sequences', type=str, default=None,
+                   help='固定シーケンス (例: "1m,2m,3m|4m,5m,6m|7m,8m" で 1 通 1 向聴骨格)')
     args = p.parse_args()
 
     must_include = args.must_include.split(',') if args.must_include else None
@@ -204,6 +276,25 @@ def main():
                 print(f'--- 牌譜 {i+1} ---')
             if not args.no_display:
                 display_hand(hand)
+    elif args.fixed_sequences:
+        # 固定シーケンス モード: 1 通骨格などを含めて生成
+        fixed_seqs = []
+        for seq_str in args.fixed_sequences.split('|'):
+            fixed_seqs.append(tuple(seq_str.split(',')))
+        for i in range(args.count):
+            if not args.no_display and args.count > 1:
+                print(f'--- 牌譜 {i+1} ---')
+            try:
+                hand = generate_with_fixed_sequences(
+                    fixed_sequences=fixed_seqs,
+                    n=args.n,
+                    seed=seed + i,
+                    must_include=must_include,
+                )
+                if not args.no_display:
+                    display_hand(hand)
+            except ValueError as e:
+                print(f'  エラー: {e}')
     else:
         # 通常モード
         for i in range(args.count):
