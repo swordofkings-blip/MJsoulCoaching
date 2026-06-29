@@ -55,7 +55,7 @@ def safety_score(state, tile: str) -> int:
     for s in range(4):
         if s == state.my_seat:
             continue
-        if state.reach_states[s].is_reach:
+        if state.reach_states[s] is not None and state.reach_states[s].is_reach:
             reach_seats.append(s)
 
     if reach_seats:

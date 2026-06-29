@@ -48,7 +48,9 @@ def get_mode(state, current_turn: int, is_last_round: bool) -> Mode:
     is_tenpai = shanten <= 0
     n_reach = sum(
         1 for s in range(4)
-        if s != state.my_seat and state.reach_states[s].is_reach
+        if s != state.my_seat
+        and state.reach_states[s] is not None
+        and state.reach_states[s].is_reach
     )
 
     # 1. 国士無双
