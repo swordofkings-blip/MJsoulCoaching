@@ -64,6 +64,404 @@ def is_terminal(tile_id: int) -> bool:
 
 
 # ============================================================
+# 1.② リーチによる 打点上昇幅
+# ============================================================
+
+def calc_riichi_benefit(state, han: int) -> float:
+    """
+    @title リーチによる打点上昇幅
+    @description 1,000点 → 2,600点 (2.6倍) vs 8,000 → 8,000 (0倍) の 差
+    @param han: 推定翻数 (役 + ドラ)
+    @returns 利益度 (0-100, 高いほどリーチ価値あり)
+    """
+    # 基本点 (子): ハン数 → 基本点
+    base_points = {
+        1: 1000,
+        2: 2000,
+        3: 4000,  # 満貫
+        4: 8000,  # 跳満
+        5: 8000,  # 満貫
+        6: 12000, # 倍満
+        7: 12000,
+        8: 16000, # 三倍満
+        9: 16000,
+        10: 16000,
+        11: 24000, # 役満
+        12: 24000,
+        13: 32000, # 2 役満
+    }
+    bp = base_points.get(min(han, 13), 8000)
+    # リーチ (1 翻 + 立直棒 1000 点)
+    riichi_bp = base_points.get(min(han + 1, 13), 8000) + 1000
+    # 利益度
+    if bp == 0:
+        return 0
+    benefit = (riichi_bp - bp) / bp * 100
+    return benefit
+
+
+# ============================================================
+# 1.④ 手替わりの種類と有効枚数
+# ============================================================
+
+def calc_tenpai_change_potential(state) -> float:
+    """
+    @title 手替わり 種類と有効枚数 ポテンシャル
+    @description 1 巡 待つことで 両面 / 三色 / 一気通貫 などに 変化 する 牌 が 山に 何枚 残って いるか
+    @returns ポテンシャル値 (0-100, 高いほど 手替わり 期待 大)
+    """
+    # 簡略: 山 残り 数 によって 評価
+    if not hasattr(state, 'left_tile_count'):
+        return 0
+    if state.left_tile_count < 20:
+        return 0  # 山 枯渇 → 手替わり 期待 なし
+    # 山 多い ほど 期待 大 (最大 70 枚 = 100)
+    potential = min(100, state.left_tile_count * 1.5)
+    return potential
+
+
+# ============================================================
+# 1.⑤ 手替わり 打点爆発力
+# ============================================================
+
+def calc_score_explosion_potential(state, han: int) -> float:
+    """
+    @title 手替わり 打点爆発力
+    @description 平和 (1,000 点) → 満貫 (8,000 点) 化け する ポテンシャル
+    @returns 爆発力 (0-100, 高いほど 1 巡 で 化け する 可能性)
+    """
+    if han <= 1:
+        # 1 翻以下 → 爆発 ポテンシャル 高い (満貫まで化ける)
+        return 80
+    elif han <= 2:
+        return 50
+    elif han <= 3:
+        return 30
+    else:
+        return 10  # 既に高い
+
+
+# ============================================================
+# 1.⑥ 裏ドラ・赤ドラ 期待値
+# ============================================================
+
+def calc_ura_aka_expectation(state) -> float:
+    """
+    @title 裏ドラ・赤ドラ 期待値
+    @description 手牌に 暗刻 (アンコ) / 順子 多い → 裏ドラ / 赤ドラ 乗りやすい
+    @returns 期待値 (0-100, 高いほど 裏ドラ / 赤ドラ 乗りやすい)
+    """
+    exp = 0
+    # 暗刻 +20
+    for t in set(state.my_hand):
+        if state.my_hand.count(t) >= 3:
+            exp += 20
+    # 順子 +10 (重複カウント防止: 使用済み牌を 0 にする)
+    counts = {}
+    for t in state.my_hand:
+        if t[-1] in ('m', 'p', 's'):
+            try:
+                tid = tile_to_id(t)
+                suit = tid // 9
+                rank = tid % 9
+                counts.setdefault(suit, [0]*9)[rank] += 1
+            except Exception:
+                continue
+    for suit, ranks in counts.items():
+        # コピーで 操作
+        r = list(ranks)
+        for _ in range(4):  # 1 面子 につき 1 順子
+            found = False
+            for i in range(7):
+                if r[i] >= 1 and r[i+1] >= 1 and r[i+2] >= 1:
+                    r[i] -= 1
+                    r[i+1] -= 1
+                    r[i+2] -= 1
+                    exp += 10
+                    found = True
+                    break
+            if not found:
+                break
+    return min(100, exp)
+
+
+# ============================================================
+# 2.② 死に牌 数
+# ============================================================
+
+def count_dead_tiles(state, wait_tiles: List[str]) -> int:
+    """
+    @title 死に牌 数 (河 / ドラ表示牌 に すでに 見えている 待ち牌)
+    @param wait_tiles: 待ち牌 リスト
+    @returns 死に牌 総数
+    """
+    if not wait_tiles:
+        return 0
+    visible = {}
+    for t in wait_tiles:
+        visible[t] = 0
+    # 河
+    for s in range(4):
+        for t in state.river[s]:
+            if t in visible:
+                visible[t] += 1
+    # ドラ表示牌
+    if hasattr(state, 'doras') and state.doras:
+        for d in state.doras:
+            if d in visible:
+                visible[d] += 1
+    return sum(visible.values())
+
+
+# ============================================================
+# 2.③ 他家 出やすさ (スジ / 壁 / 字牌)
+# ============================================================
+
+def calc_pickup_ease(state, wait_tiles: List[str]) -> float:
+    """
+    @title 他家 出やすさ
+    @description 待ち牌 が 他家 から ツモ切られ やすいか
+                  字牌 (出やすい) > 数牌端牌 > 中央数牌 (出にくい)
+    @returns 出やすさ (0-100, 高いほど 出やすい)
+    """
+    if not wait_tiles:
+        return 50
+    ease_sum = 0
+    for t in wait_tiles:
+        try:
+            tid = tile_to_id(t)
+        except Exception:
+            continue
+        if tid >= 27:
+            # 字牌 = 出やすい (他家 オリ 際 ツモ切り)
+            ease_sum += 70
+        elif tid % 9 == 0 or tid % 9 == 8:
+            # 端牌 = やや出やすい
+            ease_sum += 50
+        else:
+            # 中央数牌 = 出にくい
+            ease_sum += 30
+    return ease_sum / len(wait_tiles)
+
+
+# ============================================================
+# 2.④ 待ち牌 が ドラ・赤ドラ
+# ============================================================
+
+def is_wait_dora_aka(state, wait_tiles: List[str]) -> bool:
+    """
+    @title 待ち牌 が ドラ・赤ドラ
+    @description 待ち牌 が ドラ表示牌 または 赤ドラ なら 他家 絶対 手放さない
+    @returns True = ドラ待ち (出にくい)
+    """
+    if not wait_tiles:
+        return False
+    for t in wait_tiles:
+        # 赤ドラ
+        if t in ('0m', '0p', '0s'):
+            return True
+        # ドラ
+        if hasattr(state, 'doras') and state.doras:
+            for d in state.doras:
+                if t == d:
+                    return True
+    return False
+
+
+# ============================================================
+# 3.② 残り ツモ 回数
+# ============================================================
+
+def remaining_tsumo_count(state) -> int:
+    """
+    @title 残り ツモ 回数
+    @description 自分 が 引ける 牌 の 残り 回数 (流局 まで)
+    @returns 残り ツモ 回数
+    """
+    if not hasattr(state, 'left_tile_count'):
+        return 0
+    return state.left_tile_count // 4 + 1
+
+
+# ============================================================
+# 3.③ ハイテイ チェック
+# ============================================================
+
+def is_near_haitei(state) -> bool:
+    """
+    @title ハイテイ (海底牌) 近い か
+    @description 残り 4 ツモ以内 = ハイテイ 近い
+    @returns True = ハイテイ 近い
+    """
+    if not hasattr(state, 'left_tile_count'):
+        return False
+    return state.left_tile_count <= 4
+
+
+# ============================================================
+# 4.② 高打点 仕掛け チェック
+# ============================================================
+
+def count_opp_high_danger(state) -> int:
+    """
+    @title 他家 高打点 仕掛け 数 (ドラポン / 染め手)
+    @description 他家 が ドラ を ポン している / 染め手 明らかな 数
+    @returns 高打点 仕掛け 数
+    """
+    count = 0
+    for s in range(4):
+        if s == state.my_seat:
+            continue
+        for meld in (state.melds[s] if hasattr(state, 'melds') and state.melds else []):
+            if meld.is_open:
+                # ドラ 表示牌 を 含んで いるか
+                for t in meld.tiles:
+                    if hasattr(state, 'doras') and state.doras and t in state.doras:
+                        count += 1
+                        break
+    return count
+
+
+# ============================================================
+# 4.③ リーチ宣言牌 危険度
+# ============================================================
+
+def is_declare_tile_dangerous(state, declare_tile: str) -> bool:
+    """
+    @title リーチ宣言牌 の 危険度
+    @description 宣言牌 が ロン牌 に なる リスク
+                  字牌 > 数牌端牌 > 中央数牌
+    @returns True = 危険
+    """
+    try:
+        tid = tile_to_id(declare_tile)
+    except Exception:
+        return False
+    if tid >= 27:
+        # 字牌 = やや危険 (他家 手牌に ある 可能性 高)
+        return True
+    elif tid % 9 == 0 or tid % 9 == 8:
+        # 端牌 = 中
+        return True
+    return False
+
+
+# ============================================================
+# 4.④ 他家 ベタ降り チェック
+# ============================================================
+
+def is_opp_full_fold(state) -> bool:
+    """
+    @title 他家 ベタ降り (全員 慎重)
+    @description 3 家 すべて リーチ していない + 河 が 少 ない = ベタ降り
+    @returns True = ベタ降り
+    """
+    reach_count = sum(1 for s in range(4)
+                      if s != state.my_seat
+                      and state.reach_states[s] is not None
+                      and state.reach_states[s].is_reach)
+    # リーチ 0 人 + 河 少 = ベタ降り
+    if reach_count == 0:
+        total_river = sum(len(state.river[s]) for s in range(4) if s != state.my_seat)
+        if total_river < 20:
+            return True
+    return False
+
+
+# ============================================================
+# 5.② オーラス / 局数 チェック
+# ============================================================
+
+def is_orasu(state) -> bool:
+    """
+    @title オーラス か
+    @description 南 4 局 (東風) / 南 8 局 (半荘) = オーラス
+    @returns True = オーラス
+    """
+    if not hasattr(state, 'chang') or not hasattr(state, 'ju'):
+        return False
+    # 東風: 南 4 局 = ju=3, chang=3
+    # 半荘: 南 8 局 = ju=3, chang=7
+    return (state.ju == 3 and state.chang >= 3)
+
+
+# ============================================================
+# 5.④ 供託リーチ棒 数
+# ============================================================
+
+def get_honba_count(state) -> int:
+    """
+    @title 供託 本場 (= 供託リーチ棒 数)
+    @returns 供託 本場
+    """
+    if hasattr(state, 'chang'):
+        return state.chang
+    return 0
+
+
+# ============================================================
+# 5.③ ターゲット 点差 チェック
+# ============================================================
+
+def calc_target_point_diff(state) -> int:
+    """
+    @title ターゲット (2位) と の 点差
+    @description 満貫 (8,000 点) ツモれば 捲れる / 直撃 必須 な 関係 か
+    @returns ターゲット との 点差
+    """
+    if not hasattr(state, 'scores') or not state.scores:
+        return 0
+    my_score = state.scores[state.my_seat]
+    others = [state.scores[s] for s in range(4) if s != state.my_seat]
+    if not others:
+        return 0
+    sorted_others = sorted(others, reverse=True)
+    higher = [s for s in sorted_others if s > my_score]
+    if higher:
+        return my_score - higher[0]  # 負 = ビハインド
+    return 0
+
+
+# ============================================================
+# 6.③ トビ (持ち点 ゼロ) チェック (雀魂ルール 準拠)
+# ============================================================
+
+def get_tobi_risk(state) -> Tuple[int, str]:
+    """
+    @title トビ リスク レベル (雀魂ルール: 0点になるまで使ってOK)
+    @description 雀魂ルールでは 0点になるまでリーチ棒等を使ってOK。
+                  ただし 0点 終了 リスク は ある。
+                  - 持ち点 >= 2,000点: リスク なし
+                  - 持ち点 1,000-2,000点: リスク 中 (1本 なら OK、 2本 連続 出す と 危険)
+                  - 持ち点 < 1,000点: リスク 大 (リーチ 棒 出す だけ で 0点 終了 リスク)
+                  - 持ち点 0: 既に トビ
+    @returns (risk_level 0-2, message)
+    """
+    if not hasattr(state, 'scores') or not state.scores:
+        return (0, "")
+    my_score = state.scores[state.my_seat]
+    if my_score == 0:
+        return (2, "既に トビ 終了 (持ち点 0)")
+    elif my_score < 1000:
+        return (2, f"トビ リスク 大 (持ち点 {my_score}, リーチ棒 1,000 で 0点 終了 リスク)")
+    elif my_score < 2000:
+        return (1, f"トビ リスク 中 (持ち点 {my_score}, リーチ 1本 OK だが 2本 連続 出す と 危険)")
+    else:
+        return (0, f"トビ リスク なし (持ち点 {my_score})")
+
+
+def get_riichi_sticks(state) -> int:
+    """
+    @title 場 の リーチ 棒 (= 供託 1000点棒) の 数
+    @description 立直 が かかる ごと に +1 本 (= 1,000 点)
+    @returns リーチ 棒 数
+    """
+    if not hasattr(state, 'reach_states'):
+        return 0
+    return sum(1 for rs in state.reach_states if rs is not None and rs.is_reach)
+
+
+# ============================================================
 # 危険牌 判定 (現物 / スジ / 河)
 # ============================================================
 
@@ -205,8 +603,36 @@ DEFAULT_RULES = {
 
 def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = None) -> Tuple[str, List[str]]:
     """
-    @title 押す/オリる の 構造的 ルール判定 (天鳳位 戦術思想)
+    @title 押す/オリる の 構造的 ルール判定 (天鳳位 戦術思想 25 項目)
     @returns ('push' | 'fold' | 'neutral', [reason_list])
+
+    ルール (1〜5 番目、 6 番目 = 採用ルール/特殊フラグ は 除く):
+      1. 手牌の打点・ポテンシャル (6項目)
+        ① 確定打点: 満貫以上 = 押す
+        ② リーチ打点上昇幅: 1,000→2,600 (2.6倍) = 大, 8,000→8,000 (0倍) = 小
+        ③ 役の有無: 役なし = オリ
+        ④ 手替わり有効枚数: 山残り多いほど押す
+        ⑤ 打点爆発力: 1翻以下 = 大
+        ⑥ 裏ドラ・赤ドラ期待値: 暗刻+20, 順子+10
+      2. 待ちの質と物理的条件 (5項目)
+        ① 待ちの形: 両面=押す, カンチャン/ペンチャン/単騎/シャボ=オリ
+        ② 死に牌数: 河/ドラ表示牌に既に見えている枚数
+        ③ 他家出やすさ: 字牌=出やすい(70), 端牌=中(50), 中央=出にくい(30)
+        ④ 待ちドラ: ドラ待ち = 出にくい
+      3. 巡目と時間軸 (3項目)
+        ① 巡目: 序盤=オリ, 終盤=押す
+        ② 残りツモ回数: 多いほど押す
+        ③ ハイテイ: 残り4ツモ以内 = ハイテイ近い
+      4. 他家の脅威度と動向 (4項目)
+        ① 先行リーチ: 1-2家=オリ
+        ② 高打点仕掛け: ドラポン=警戒
+        ③ リーチ宣言牌危険度: 字牌/端牌=危険
+        ④ 他家ベタ降り: 3家安全 = ダマ有利 (押す 寄り)
+      5. 点数状況と場況 (4項目)
+        ① 順位: トップ=オリ, ラス=押す, 親=押す
+        ② オーラス/局数: 南4局以降
+        ③ ターゲット点差: 満貫ツモで捲れる
+        ④ 供託リーチ棒: 1本=+10 価値増
     """
     if params is None:
         params = {}
@@ -214,15 +640,17 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
     rules.update(params)
 
     reasons = []
-    score = 0  # 正で push、負で fold
+    score = 0
 
-    # === 0. 前提: 役なし (0 シャンテン以外) の場合 ===
+    # === 0. 前提: 2シャンテン以上 = オリ ===
     if shanten >= 2:
-        # 2シャンテン以上 = 聴牌遠く、オリ
         reasons.append(f"{shanten}シャンテン (遠い)")
         return ('fold', reasons)
 
-    # === 1. 翻数による判定 ===
+    # 待ち牌 取得
+    wait_tiles = ukeire.get('tiles', []) if ukeire else []
+
+    # === 1. 確定打点 (1.①) ===
     han = get_effective_han(state)
     if han >= rules['PUSH_HIGH_HAN_THRESHOLD']:
         score += 200
@@ -235,69 +663,39 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         reasons.append(f"低打点 ({han}翻) オリ寄り")
     else:
         score -= 80
-        reasons.append(f"役なし (0翻) オリ")
+        reasons.append(f"役なし (1.③ 0翻) オリ")
 
-    # === 2. 順位 による判定 ===
-    if hasattr(state, 'scores') and state.scores:
-        my_score = state.scores[state.my_seat]
-        max_score = max(state.scores)
-        min_score = min(state.scores)
-        margin_top = my_score - max_score  # 0 = トップ
-        margin_last = my_score - min_score  # 0 = ラス
-
-        if margin_top == 0:
-            score -= 100
-            reasons.append("トップ目 オリ逃げ")
-        elif margin_last == 0:
-            score += 100
-            reasons.append("ラス目 押す")
-        elif margin_top > rules['PUSH_TOP_PLACE_MARGIN']:
-            score -= 50
-            reasons.append(f"トップリード ({margin_top:+d})")
-        elif margin_last < rules['PUSH_LAST_PLACE_MARGIN']:
-            score += 50
-            reasons.append(f"ラスビハインド ({margin_last:+d})")
-
-        # 親 加点
-        if rules['PUSH_DEALER_BONUS'] and hasattr(state, 'dealer_seat'):
-            if state.dealer_seat == state.my_seat:
-                score += 40
-                reasons.append("親番 連荘狙い")
-
-    # === 3. 巡目 による判定 ===
-    turn = (state.tsumo_count - 1) // 4 + 1 if state.tsumo_count > 0 else 1
-    if turn >= rules['PUSH_LATE_TURN']:
-        score += 60
-        reasons.append(f"終盤 ({turn}巡) 押す")
-    elif turn <= rules['PUSH_EARLY_TURN']:
-        score -= 60
-        reasons.append(f"序盤 ({turn}巡) オリ")
-
-    # === 4. 現物 判定 ===
-    safe_tiles = get_safe_tiles(state)
-    if len(safe_tiles) >= 8:
-        # 安全牌 8 種以上ある = オリ 余裕 → オリ寄り
-        score -= 40
-        reasons.append(f"安全牌 {len(safe_tiles)}種 オリ余裕")
-    elif len(safe_tiles) <= 2:
-        # 安全牌 2 種以下 = オリ 不可能 → 押す
+    # === 1.② リーチ打点上昇幅 ===
+    riichi_benefit = calc_riichi_benefit(state, han)
+    if riichi_benefit >= 100:  # 2 倍以上
         score += 80
-        reasons.append(f"安全牌 {len(safe_tiles)}種 オリ不可能 → 押す")
+        reasons.append(f"リーチ 打点上昇 大 ({riichi_benefit:.0f}%)")
+    elif riichi_benefit >= 30:
+        score += 40
+        reasons.append(f"リーチ 打点上昇 中 ({riichi_benefit:.0f}%)")
+    else:
+        score -= 30
+        reasons.append(f"リーチ 打点上昇 小 ({riichi_benefit:.0f}%)")
 
-    # === 5. リーチ者 状態 ===
-    opp_reach_count = sum(1 for s in range(4)
-                          if s != state.my_seat
-                          and state.reach_states[s] is not None
-                          and state.reach_states[s].is_reach)
-    if opp_reach_count >= 2:
-        # 2家以上リーチ = 危険 → オリ
-        score -= 60
-        reasons.append(f"他家リーチ {opp_reach_count}家 危険")
-    elif opp_reach_count == 1:
-        score -= 20
-        reasons.append(f"他家リーチ 1家")
+    # === 1.④ 手替わり 種類と有効枚数 ===
+    tenpai_change = calc_tenpai_change_potential(state)
+    score += tenpai_change * 0.2  # 最大 +20
+    if tenpai_change > 50:
+        reasons.append(f"手替わり 期待 大 (山 {state.left_tile_count}枚)")
 
-    # === 6. 待ちの形 (ukeire から取得) ===
+    # === 1.⑤ 手替わり 打点爆発力 ===
+    score_exp = calc_score_explosion_potential(state, han)
+    score += score_exp * 0.3  # 最大 +30 (1 翻以下)
+    if score_exp >= 50:
+        reasons.append(f"打点 爆発力 大 (1.⑤)")
+
+    # === 1.⑥ 裏ドラ・赤ドラ 期待値 ===
+    ura_exp = calc_ura_aka_expectation(state)
+    score += ura_exp * 0.3  # 最大 +30
+    if ura_exp >= 40:
+        reasons.append(f"裏ドラ 乗り 良い (1.⑥)")
+
+    # === 2.① 待ちの形 ===
     if ukeire and 'wait_type' in ukeire:
         wait_type = ukeire['wait_type']
         if wait_type == 'ryanmen':
@@ -316,9 +714,143 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
             score -= 30 * rules['PUSH_SHANPON_PENALTY']
             reasons.append("シャボ待ち → オリ")
 
-    # === 7. 4枚見え数牌 (待ち薄) ===
-    # 簡略: state.my_hand の各牌について 4 枚見え = 待ち薄
-    # 詳略: ukeire モジュール から 取得 する べき
+    # === 2.② 死に牌 数 ===
+    if wait_tiles:
+        dead = count_dead_tiles(state, wait_tiles)
+        if dead >= 3:
+            score -= 60
+            reasons.append(f"死に牌 {dead}枚 多い (2.②)")
+        elif dead >= 1:
+            score -= 20
+            reasons.append(f"死に牌 {dead}枚 (2.②)")
+
+    # === 2.③ 他家 出やすさ ===
+    if wait_tiles:
+        ease = calc_pickup_ease(state, wait_tiles)
+        if ease >= 60:
+            score += 40
+            reasons.append(f"他家 出やすい ({ease:.0f}%, 2.③)")
+        elif ease <= 35:
+            score -= 40
+            reasons.append(f"他家 出にくい ({ease:.0f}%, 2.③)")
+
+    # === 2.④ 待ちドラ ===
+    if is_wait_dora_aka(state, wait_tiles):
+        score -= 80
+        reasons.append("待ち が ドラ・赤ドラ (2.④) 絶対手放さない")
+
+    # === 3.① 巡目 ===
+    turn = (state.tsumo_count - 1) // 4 + 1 if state.tsumo_count > 0 else 1
+    if turn >= rules['PUSH_LATE_TURN']:
+        score += 60
+        reasons.append(f"終盤 ({turn}巡) 押す")
+    elif turn <= rules['PUSH_EARLY_TURN']:
+        score -= 60
+        reasons.append(f"序盤 ({turn}巡) オリ")
+
+    # === 3.② 残り ツモ 回数 ===
+    rem_tsumo = remaining_tsumo_count(state)
+    if rem_tsumo >= 10:
+        score += 20
+        reasons.append(f"残り ツモ {rem_tsumo}回 余裕 (3.②)")
+    elif rem_tsumo <= 4:
+        score -= 30
+        reasons.append(f"残り ツモ {rem_tsumo}回 少ない (3.②)")
+
+    # === 3.③ ハイテイ ===
+    if is_near_haitei(state):
+        score -= 20
+        reasons.append("ハイテイ 近い (3.③)")
+
+    # === 4.① 先行リーチ ===
+    opp_reach_count = sum(1 for s in range(4)
+                          if s != state.my_seat
+                          and state.reach_states[s] is not None
+                          and state.reach_states[s].is_reach)
+    if opp_reach_count >= 2:
+        score -= 60
+        reasons.append(f"他家リーチ {opp_reach_count}家 危険 (4.①)")
+    elif opp_reach_count == 1:
+        score -= 20
+        reasons.append(f"他家リーチ 1家 (4.①)")
+
+    # === 4.② 高打点 仕掛け ===
+    high_danger = count_opp_high_danger(state)
+    if high_danger >= 1:
+        score -= 40
+        reasons.append(f"他家 高打点 仕掛け {high_danger}件 (4.②)")
+
+    # === 4.④ 他家 ベタ降り ===
+    if is_opp_full_fold(state):
+        score += 30
+        reasons.append("他家 ベタ降り (4.④) ダマ有利")
+
+    # === 5.① 順位 ===
+    if hasattr(state, 'scores') and state.scores:
+        my_score = state.scores[state.my_seat]
+        max_score = max(state.scores)
+        min_score = min(state.scores)
+        margin_top = my_score - max_score
+        margin_last = my_score - min_score
+
+        if margin_top == 0:
+            score -= 100
+            reasons.append("トップ目 オリ逃げ (5.①)")
+        elif margin_last == 0:
+            score += 100
+            reasons.append("ラス目 押す (5.①)")
+        elif margin_top > rules['PUSH_TOP_PLACE_MARGIN']:
+            score -= 50
+            reasons.append(f"トップリード ({margin_top:+d})")
+        elif margin_last < rules['PUSH_LAST_PLACE_MARGIN']:
+            score += 50
+            reasons.append(f"ラスビハインド ({margin_last:+d})")
+
+        if rules['PUSH_DEALER_BONUS'] and hasattr(state, 'dealer_seat'):
+            if state.dealer_seat == state.my_seat:
+                score += 40
+                reasons.append("親番 連荘狙い (5.①)")
+
+    # === 5.② オーラス / 局数 ===
+    if is_orasu(state):
+        score += 20
+        reasons.append("オーラス (5.②) 着順 確定 近い")
+
+    # === 5.③ ターゲット 点差 ===
+    target_diff = calc_target_point_diff(state)
+    if target_diff < -3000:  # 3,000 点 ビハインド
+        score += 50
+        reasons.append(f"2位 と {target_diff}点 ビハインド (5.③) 満貫ツモで捲り")
+    elif target_diff < 0:
+        score += 20
+        reasons.append(f"2位 と {target_diff}点 (5.③)")
+
+    # === 5.④ 供託リーチ棒 ===
+    honba = get_honba_count(state)
+    if honba >= 3:
+        score += 50
+        reasons.append(f"供託 {honba}本 価値大 (5.④) +{honba * 1000}点")
+    elif honba >= 1:
+        score += 20
+        reasons.append(f"供託 {honba}本 (5.④)")
+
+    # === 6.③ トビ リスク (雀魂ルール: 0点まで使ってOK) ===
+    tobi_level, tobi_msg = get_tobi_risk(state)
+    if tobi_level == 2:
+        score -= 150
+        reasons.append(f"トビ リスク 大 (6.③) {tobi_msg}")
+    elif tobi_level == 1:
+        score -= 50
+        reasons.append(f"トビ リスク 中 (6.③) {tobi_msg}")
+
+    # === 4. 現物 判定 (押し/オリ 補助) ===
+    safe_tiles = get_safe_tiles(state)
+    if len(safe_tiles) >= 8:
+        score -= 40
+        reasons.append(f"安全牌 {len(safe_tiles)}種 オリ余裕")
+    elif len(safe_tiles) <= 2:
+        score += 80
+        reasons.append(f"安全牌 {len(safe_tiles)}種 オリ不可能 → 押す")
 
     # === 最終判定 ===
     if score >= 50:
