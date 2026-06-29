@@ -670,8 +670,8 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
     # === 1. 確定打点 (1.①) ===
     han = get_effective_han(state)
     if han >= 4:  # 4翻以上 (跳満以上) = ダマテン 推奨
-        hand_score += 0  # ダマテン 寄り (警戒 ロス)
-        reasons.append(f"高打点 ({han}翻 → 跳満以上) ダマテン 寄り")
+        hand_score -= 150  # ダマテン 寄り (警戒 ロス)
+        reasons.append(f"高打点 ({han}翻 → 跳満以上) ダマテン 寄り (-150)")
     elif han >= rules['PUSH_HAN_THRESHOLD']:
         hand_score += 100
         reasons.append(f"中打点 ({han}翻) 押す")
@@ -763,8 +763,8 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
     # === 3.① 巡目 (han 依存) ===
     turn = (state.tsumo_count - 1) // 4 + 1 if state.tsumo_count > 0 else 1
     if turn >= rules['PUSH_LATE_TURN']:
-        sit_score += 30
-        reasons.append(f"終盤 ({turn}巡) 押す")
+        sit_score -= 50  # 終盤 = オリ 寄り (手替わり 期待 薄、 ダマテン 評価)
+        reasons.append(f"終盤 ({turn}巡) オリ 寄り (-50)")
     elif turn <= rules['PUSH_EARLY_TURN']:
         # 序盤 = han 依存: han=0 → 即リー, han>=1 → ダマテン
         if han == 0:
@@ -794,8 +794,8 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
                           and state.reach_states[s] is not None
                           and state.reach_states[s].is_reach)
     if opp_reach_count >= 2:
-        sit_score -= 120
-        reasons.append(f"他家リーチ {opp_reach_count}家 危険 (4.①)")
+        sit_score -= 150
+        reasons.append(f"他家リーチ {opp_reach_count}家 危険 (4.①) オリ 寄り")
     elif opp_reach_count == 1:
         sit_score -= 20
         reasons.append(f"他家リーチ 1家 (4.①)")
@@ -820,12 +820,13 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         margin_last = my_score - min_score
 
         if margin_top == 0:
-            sit_score -= 50
-            reasons.append("トップ目 オリ逃げ (5.①)")
-            # オーラス + トップ = 強 減点 (ダマテン 寄り)
-            if is_orasu(state):
-                sit_score -= 100
-                reasons.append("オーラス + トップ → ダマテン 強化 (-100)")
+            # 役ありテンパイ (han >= 1) かつ トップ目 かつ オーラス なら ダマテン最優先
+            if is_orasu(state) and han >= 1:
+                sit_score -= 200
+                reasons.append("オーラス・トップ目・役ありテンパイ (5.①) ダマテン最優先 (-200)")
+            else:
+                sit_score -= 30
+                reasons.append("トップ目 オリ逃げ (5.①) (-30)")
         elif margin_last == 0:
             sit_score += 100
             reasons.append("ラス目 押す (5.①)")
@@ -843,8 +844,18 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
 
     # === 5.② オーラス / 局数 ===
     if is_orasu(state):
-        sit_score += 0  # オーラス = ダマテン 寄り (加点しない)
-        reasons.append("オーラス (5.②) ダマテン 寄り")
+        # トップ目のオーラスは、リーチせずにダマテンで局消化を目指すため、押し評価を弱める
+        if hasattr(state, 'scores') and state.scores:
+            my_score = state.scores[state.my_seat]
+            if my_score == max(state.scores):
+                sit_score -= 50
+                reasons.append("オーラス・トップ目 (5.②) 慎重に局消化 (-50)")
+            else:
+                sit_score += 20
+                reasons.append("オーラス (5.②) 着順 確定 近い")
+        else:
+            sit_score += 0
+            reasons.append("オーラス (5.②) ダマテン 寄り")
 
     # === 5.③ ターゲット 点差 ===
     target_diff = calc_target_point_diff(state)
@@ -874,13 +885,15 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         reasons.append(f"トビ リスク 中 (6.③) {tobi_msg}")
 
     # === 4. 現物 判定 (押し/オリ 補助) ===
+    # 他家リーチがある場合のみ、安全牌の枚数による押し引き補正を行う
     safe_tiles = get_safe_tiles(state)
-    if len(safe_tiles) >= 8:
-        sit_score -= 40
-        reasons.append(f"安全牌 {len(safe_tiles)}種 オリ余裕")
-    elif len(safe_tiles) <= 2:
-        sit_score += 80
-        reasons.append(f"安全牌 {len(safe_tiles)}種 オリ不可能 → 押す")
+    if opp_reach_count >= 1:
+        if len(safe_tiles) >= 8:
+            sit_score -= 40
+            reasons.append(f"安全牌 {len(safe_tiles)}種 オリ余裕")
+        elif len(safe_tiles) <= 2:
+            sit_score += 80
+            reasons.append(f"安全牌 {len(safe_tiles)}種 オリ不可能 → 押す")
 
     # === 配分 比率 適用 ===
     score = hand_score * hand_w + sit_score * sit_w
