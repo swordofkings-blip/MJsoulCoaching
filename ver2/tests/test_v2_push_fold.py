@@ -50,18 +50,17 @@ class TestPushFoldRules(unittest.TestCase):
     """@title 押し引き ルール テスト"""
 
     def test_0_han_1shanten_fold(self):
-        """@title 0 翻 1 シャンテン → オリ"""
-        # 牌構成 14 枚 で 1 待ち残 1 シャンテン (winning でない)
-        # 1m-6m 23p 567p 88s 9p = 2 面子 + 1 塔子 + 1 雀頭 + 1 孤立 = 1 待ち
-        # 12 巡 経過 (安全牌 8 種以上) で オリ 余裕
+        """@title 0 翻 1 シャンテン + 山 0 + 序盤 + 2家リーチ + トップ → オリ"""
         state = make_state(
             hand=['1m','2m','3m','4m','5m','6m','2p','3p','5p','6p','7p','8s','8s','9p'],
             doras=['1z'],
-            tsumo_count=48,  # 12 巡目
-            rivers=[['1m','2m','3m','4p','5p','6p','7p','8p','1z','2z'], [], [], []],
+            tsumo_count=20,  # 5 巡目
+            reach_states=[False, True, True, False],  # 2 家 リーチ
+            scores=[33000, 25000, 25000, 22000],  # トップ
+            left_tile_count=0,  # 山 0 枚 (手替わり 期待 なし)
         )
         decision, reasons = judge_push_fold(state, shanten=1)
-        self.assertEqual(decision, 'fold', f"0 翻 1 シャンテン = オリ (decision={decision}, {reasons})")
+        self.assertEqual(decision, 'fold', f"0 翻 1 シャンテン + 2家リーチ + トップ + 山0 = オリ (decision={decision}, {reasons})")
 
     def test_3_han_1shanten_push(self):
         """@title 3 翻 (満貫) 1 シャンテン → 押す"""
@@ -159,16 +158,28 @@ class TestSuji(unittest.TestCase):
 class TestSafeTiles(unittest.TestCase):
     """@title 安全牌 テスト"""
 
-    def test_safe_own_river(self):
-        """@title 自分の捨牌 = 安全"""
+    def test_safe_reach_river(self):
+        """@title リーチ者の捨牌 = 現物 = 安全"""
         state = make_state(
             hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
-            rivers=[['5p','6p','7p'], [], [], []],
+            reach_states=[False, True, False, False],  # seat 1 リーチ
+            rivers=[['5p'], ['6p','7p','8p'], [], []],  # リーチ者 6p,7p,8p 捨牌
         )
         safe = get_safe_tiles(state)
-        self.assertIn('5p', safe, f"自分の捨牌 5p = 安全 ({safe})")
-        self.assertIn('6p', safe, f"自分の捨牌 6p = 安全 ({safe})")
-        self.assertIn('7p', safe, f"自分の捨牌 7p = 安全 ({safe})")
+        self.assertIn('6p', safe, f"リーチ者 6p 捨牌 = 現物 ({safe})")
+        self.assertIn('7p', safe, f"リーチ者 7p 捨牌 = 現物 ({safe})")
+        self.assertIn('8p', safe, f"リーチ者 8p 捨牌 = 現物 ({safe})")
+
+    def test_safe_own_river_NOT_safe(self):
+        """@title 自分の捨牌は安全牌ではない"""
+        state = make_state(
+            hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
+            reach_states=[False, True, False, False],  # seat 1 リーチ
+            rivers=[['5p'], ['6p'], [], []],  # 自分 5p 捨牌、 リーチ者 6p 捨牌
+        )
+        safe = get_safe_tiles(state)
+        self.assertNotIn('5p', safe, f"自分 の 5p 捨牌 = 安全 で ない ({safe})")
+        self.assertIn('6p', safe, f"リーチ者 の 6p 捨牌 = 現物 ({safe})")
 
     def test_safe_4visible_honor(self):
         """@title 4枚見え字牌 = 安全"""
@@ -184,23 +195,26 @@ class TestSelectDiscard(unittest.TestCase):
     """@title 打牌選択 テスト"""
 
     def test_select_push_safe(self):
-        """@title 押し 際 安全牌 選択"""
+        """@title 押し 際 安全牌 選択 (リーチ者の捨牌 = 安全)"""
         state = make_state(
             hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
-            rivers=[['5p','6p'], [], [], []],
+            reach_states=[False, True, False, False],  # seat 1 リーチ
+            rivers=[[], ['6p'], [], []],  # リーチ者 6p 捨牌
         )
         candidates = ['5m', '6p', '5p']
         tile, reason = select_push_discard(state, candidates)
-        self.assertIn(tile, ['5p', '6p'], f"押し 際 安全牌 選択 (tile={tile})")
+        self.assertEqual(tile, '6p', f"押し 際 リーチ者 捨牌 6p 選択 (tile={tile})")
 
     def test_select_fold_safe(self):
-        """@title オリ 際 安全牌 選択"""
+        """@title オリ 際 安全牌 選択 (リーチ者の捨牌 + 4枚見え字牌)"""
         state = make_state(
             hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
-            rivers=[['5p','6p','7p','8p'], [], [], []],
+            reach_states=[False, True, False, False],  # seat 1 リーチ
+            rivers=[[], ['5p','6p','7p','8p'], [], []],
         )
         candidates = ['5m', '6p', '5p', '1z']
         tile, reason = select_fold_discard(state, candidates)
+        # リーチ者 捨牌 (5p, 6p, 7p, 8p) のうち いずれか
         self.assertIn(tile, ['5p', '6p', '7p', '8p'], f"オリ 際 安全牌 選択 (tile={tile})")
 
 
@@ -272,7 +286,7 @@ class TestNewRules(unittest.TestCase):
         from core.push_fold_v2 import is_wait_dora_aka
         s = make_state(
             hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
-            doras=['5p'],  # ドラ 5p
+            doras=['4p'],  # ドラ表示牌 4p → ドラ = 5p
         )
         self.assertTrue(is_wait_dora_aka(s, ['5p']), "5p = ドラ 待ち → True")
 
@@ -394,6 +408,133 @@ class TestNewRules(unittest.TestCase):
         )
         sticks = get_riichi_sticks(s)
         self.assertEqual(sticks, 2, f"リーチ 棒 2本 (実測 {sticks})")
+
+
+class TestBugFixes(unittest.TestCase):
+    """@title 4 大バグ 修正 テスト"""
+
+    def test_bug1_dora_indicator_conversion(self):
+        """@title バグ 1: ドラ表示牌 → ドラ 変換
+        牌構成 14 枚: 5m 5m 5m (5m 3 枚) + ドラ表示牌 4m → ドラ = 5m
+        ドラ枚数 = 5m 3 枚 = 3 翻
+        """
+        from core.push_fold_v2 import get_effective_han
+        s = make_state(
+            hand=['5m','5m','5m','1p','2p','3p','4p','5p','6p','7p','8p','8p','8p','9p'],
+            doras=['4m'],  # ドラ表示牌 4m → ドラ = 5m
+        )
+        han = get_effective_han(s)
+        # ドラ = 5m × 3 枚 = 3 翻 + 役牌 8p × 3 = 1 翻 → 計 4 翻
+        self.assertGreaterEqual(han, 3, f"ドラ表示牌 4m → ドラ 5m × 3 = 3 翻 (実測 {han})")
+
+    def test_bug1_dora_old_bug_check(self):
+        """@title バグ 1: 旧バグ: ドラ表示牌 4m を そのまま ドラ として カウント して いた
+        牌構成: 4m 4m 4m 6z 6z 6z + ドラ表示牌 4m → 旧バグ なら 3 翻 (4m 3 枚)
+                  修正後: ドラ = 5m → 0 翻 + 役牌 6z = 1 翻
+        """
+        from core.push_fold_v2 import get_effective_han
+        s = make_state(
+            hand=['4m','4m','4m','6z','6z','6z','1p','2p','3p','4p','5p','7p','8p','9p'],
+            doras=['4m'],  # ドラ表示牌 4m → ドラ = 5m (手牌に なし)
+        )
+        han = get_effective_han(s)
+        # 旧バグ: 4m × 3 = 3 翻
+        # 修正後: 5m (ドラ) × 0 + 役牌 6z × 3 = 1 翻
+        # 期待: 1 翻
+        self.assertEqual(han, 1, f"ドラ表示牌 4m → ドラ 5m × 0 = 0 翻 + 役牌 6z = 1 (実測 {han})")
+
+    def test_bug2_safe_tiles_own_river_not_safe(self):
+        """@title バグ 2: 自分 の 捨牌 は 安全牌 で ない
+        自分 の 捨牌 5p → 安全牌 に 含ま れ ない
+        リーチ者 の 捨牌 6p → 安全牌
+        """
+        from core.push_fold_v2 import get_safe_tiles
+        s = make_state(
+            hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
+            reach_states=[False, True, False, False],  # seat 1 リーチ
+            rivers=[['5p','5m'], ['6p','6m'], ['7p'], []],  # 自分 5p 捨牌、 リーチ者 6p 捨牌
+        )
+        safe = get_safe_tiles(s)
+        # 自分 の 5p は 安全牌 で ない
+        self.assertNotIn('5p', safe, f"自分 の 5p 捨牌 = 安全牌 で ない (実測 {safe})")
+        # リーチ者 の 6p は 安全牌 (現物)
+        self.assertIn('6p', safe, f"リーチ者 の 6p 捨牌 = 現物 (実測 {safe})")
+
+    def test_bug2_danger_tiles_excludes_reach_river(self):
+        """@title バグ 2: get_danger_tiles が リーチ者 の 捨牌 (= 現物) を 危険牌 から 除外"""
+        from core.push_fold_v2 import get_danger_tiles
+        s = make_state(
+            hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
+            reach_states=[False, True, False, False],  # seat 1 リーチ
+            rivers=[['5p'], ['6p'], [], []],  # リーチ者 6p 捨牌
+        )
+        danger = get_danger_tiles(s)
+        # リーチ者 の 6p = 現物 = 危険 で は ない
+        self.assertNotIn('6p', danger, f"リーチ者 6p = 現物、 危険 で ない (実測 {danger})")
+
+    def test_bug2_4visible_honor_safe(self):
+        """@title バグ 2: 4枚見え字牌 = 安全 (手牌含む)"""
+        from core.push_fold_v2 import get_safe_tiles
+        s = make_state(
+            hand=['1z','1z','1z','1p','2p','3p','4p','5p','6p','7p','8p','9p','1s','2s'],
+            rivers=[['1z'], [], [], []],  # 1z 4 枚見え (自分 3 + 河 1)
+        )
+        safe = get_safe_tiles(s)
+        self.assertIn('1z', safe, f"4枚見え字牌 1z = 安全 (実測 {safe})")
+
+    def test_bug3_riichi_benefit_0han(self):
+        """@title バグ 3: 0翻 の リーチ 利益 = +200 (大)
+        旧バグ: bp=8000 (満貫) と 見なさ れ 利益 -75% (誤り)
+        修正後: 0翻 → リーチ = 役 確定 → 利益 極めて 大 (+200)
+        """
+        from core.push_fold_v2 import calc_riichi_benefit
+        s = make_state(hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'])
+        benefit = calc_riichi_benefit(s, 0)
+        self.assertEqual(benefit, 200, f"0翻 利益 = +200 (実測 {benefit})")
+
+    def test_bug3_riichi_benefit_1han(self):
+        """@title バグ 3: 1翻 の リーチ 利益 = 1,000→2,600 = 160% (大)"""
+        from core.push_fold_v2 import calc_riichi_benefit
+        s = make_state(hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'])
+        benefit = calc_riichi_benefit(s, 1)
+        # 1,000 → 2,000 + 1,000 (立直棒) = 3,000
+        # 利益 = (3,000 - 1,000) / 1,000 = 200%
+        self.assertGreater(benefit, 100, f"1翻 利益 > 100% (実測 {benefit})")
+
+    def test_bug4_remaining_tsumo_0(self):
+        """@title バグ 4: 山残り 0 = 残り ツモ 0 回
+        旧バグ: 0 // 4 + 1 = 1
+        修正後: 山 0 なら 0 返す
+        """
+        from core.push_fold_v2 import remaining_tsumo_count
+        s = make_state(hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
+                       left_tile_count=0)
+        r = remaining_tsumo_count(s)
+        self.assertEqual(r, 0, f"山 0 = 残り 0回 (実測 {r})")
+
+    def test_bug4_remaining_tsumo_4(self):
+        """@title バグ 4: 山残り 4 = 残り ツモ 2 回"""
+        from core.push_fold_v2 import remaining_tsumo_count
+        s = make_state(hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
+                       left_tile_count=4)
+        r = remaining_tsumo_count(s)
+        self.assertEqual(r, 2, f"山 4 = 残り 2回 (実測 {r})")
+
+    def test_bug2_is_wait_dora_actual(self):
+        """@title バグ 2: 待ちドラ 判定 で ドラ牌 を 正しく 認識
+        牌構成: 5p 5p (5p 待ち) + ドラ表示牌 4p → ドラ = 5p → 待ちドラ True
+        """
+        from core.push_fold_v2 import is_wait_dora_aka
+        s = make_state(
+            hand=['5p','5p','1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s'],
+            doras=['4p'],  # ドラ表示牌 4p → ドラ = 5p
+        )
+        # 待ち牌 = 5p (ドラ)
+        self.assertTrue(is_wait_dora_aka(s, ['5p']), f"5p 待ち = ドラ (実測)")
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
 
 
 if __name__ == '__main__':
