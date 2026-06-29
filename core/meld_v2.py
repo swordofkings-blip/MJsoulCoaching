@@ -50,7 +50,7 @@ DEFAULT_WEIGHTS = {
     'MELD_W_OPP_STYLE': 60.0,          # 22. 他家スタイル
     # threshold と全体補正
     'MELD_THRESHOLD': 0.0,              # meld_score > 0 で鳴く
-    'MELD_BASE_BIAS': -350.0,           # 基本バイアス (負でスルー寄り)
+    'MELD_BASE_BIAS': -350.0,           # 基本バイアス (麻雀セオリー 93% / 人間 Recall 81% のバランスポイント)
 }
 
 
@@ -181,11 +181,13 @@ def score_han_gain(state, call_type, tiles, params) -> Tuple[float, str]:
     # ドラなら追加
     dora_count = count_dora_tiles(state.my_hand + ([tiles[0]] if call_type in (1, 2) else []), state.doras)
     if dora_count >= 3:
-        gain += 2.0  # ドラ 3 で +2
+        gain += 3.0  # ドラ 3 で +3 翻相当 (人間判断: ドラ 3 確定は積極的メリット)
     elif dora_count >= 1:
         gain += 0.5 * dora_count
     # 満貫 (4 翻) 以上なら加点大幅 UP (押し判断)
-    if gain >= 2.5:
+    if gain >= 3.5:
+        score = w['MELD_W_HAN_GAIN'] * gain * 2.0  # 1.5 → 2.0 (満貫押し強化)
+    elif gain >= 2.5:
         score = w['MELD_W_HAN_GAIN'] * gain * 1.5
     else:
         score = w['MELD_W_HAN_GAIN'] * gain
