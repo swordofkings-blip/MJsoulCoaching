@@ -102,6 +102,41 @@ class TestShantenCalculatorV2(unittest.TestCase):
         chiitoi = ShantenCalculatorV2._chiitoitsu_shanten(counts)
         self.assertEqual(chiitoi, 2, f"七対子 2 向聴 (4 対子, 6-4) (実際={chiitoi})")
 
+    def test_explain_hand_structure_1_shanten(self):
+        """@title explain_hand_structure: 1 向聴手の最良分解を返す"""
+        # 123456789m 1p 4p 5p 6p (14 枚) → 1 シャンテン
+        # - 3 面子 (123m 456m 789m) + 0 雀頭 + 1 塔子 (45p) + 2 孤立 (1p, 6p) = 1 シャンテン
+        hand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','4p','5p','6p','7p']
+        counts = hand_to_counts(hand)
+        sh, melds, pairs, taatsu = ShantenCalculatorV2.explain_hand_structure(counts, 0)
+        self.assertEqual(sh, 1, f"1 シャンテン (実際={sh})")
+        self.assertEqual(melds, 3, f"3 面子 (実際={melds})")
+        self.assertEqual(pairs, 0, f"雀頭なし (実際={pairs})")
+        self.assertGreaterEqual(taatsu, 1, f"1 塔子以上 (実際={taatsu})")
+
+    def test_explain_hand_structure_0_shanten_tenpai(self):
+        """@title explain_hand_structure: 0 向聴 (テンパイ) の最良分解を返す"""
+        # 123456789m 123p 56p (14 枚) → 0 シャンテン (テンパイ)
+        # - 4 面子 (123m 456m 789m 123p) + 0 雀頭 + 1 塔子 (56p)
+        hand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','5p','6p']
+        counts = hand_to_counts(hand)
+        sh, melds, pairs, taatsu = ShantenCalculatorV2.explain_hand_structure(counts, 0)
+        self.assertEqual(sh, 0, f"0 シャンテン (実際={sh})")
+        self.assertEqual(melds, 4, f"4 面子 (実際={melds})")
+        self.assertGreaterEqual(taatsu, 1, f"テンパイ = 塔子 or 雀頭 (実際={taatsu})")
+
+    def test_explain_hand_structure_with_pair(self):
+        """@title explain_hand_structure: 雀頭有りの 1 向聴"""
+        # 123456789m 111p 4p 7p (14 枚) → 1 シャンテン
+        # - 3 面子 (123m 456m 789m) + 1 雀頭 (11p) + 1 孤立 (1p) + 2 孤立 (4p, 7p)
+        # 4p 7p は距離があり 1 牌 ツモでも塔子を作らない → テンパイではない
+        hand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','1p','1p','4p','7p']
+        counts = hand_to_counts(hand)
+        sh, melds, pairs, taatsu = ShantenCalculatorV2.explain_hand_structure(counts, 0)
+        self.assertEqual(sh, 1, f"1 シャンテン (実際={sh})")
+        self.assertEqual(melds, 3, f"3 面子 (実際={melds})")
+        self.assertEqual(pairs, 1, f"1 雀頭 (実際={pairs})")
+
 
 class TestTacticalRank(unittest.TestCase):
     """@title 戦術ランク関数のテスト"""

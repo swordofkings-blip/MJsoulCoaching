@@ -161,11 +161,21 @@ class ShantenCalculatorV2:
 
     @staticmethod
     def _suit_shanten(counts: List[int], open_meld_count: int) -> int:
+        return ShantenCalculatorV2._suit_shanten_detail(counts, open_meld_count)[0]
+
+    @staticmethod
+    def _suit_shanten_detail(counts: List[int], open_meld_count: int) -> Tuple[int, int, int, int]:
+        """
+        @title 詳細シャンテン計算
+        @description 面子手でのシャンテン数と、その時の最良分解 (面子, 対子, 塔子) を返す。
+        @returns (shanten, total_melds, total_pairs, total_taatsu)
+        """
         m_combs = ShantenCalculatorV2._solve_suit_combinations(tuple(counts[0:9]))
         p_combs = ShantenCalculatorV2._solve_suit_combinations(tuple(counts[9:18]))
         s_combs = ShantenCalculatorV2._solve_suit_combinations(tuple(counts[18:27]))
         h_combs = ShantenCalculatorV2._solve_honor_combinations(tuple(counts[27:34]))
-        best = 8
+        best_shanten = 8
+        best_decomp = (0, 0, 0)
         for mm, mt, mp in m_combs:
             for pm, pt, pp in p_combs:
                 for sm, st, sp in s_combs:
@@ -177,14 +187,33 @@ class ShantenCalculatorV2:
                         if total_pairs >= 1:
                             rem_blocks = total_taatsu + (total_pairs - 1)
                             s = still_needed + max(0, still_needed - rem_blocks) - 1
+                        elif still_needed == 0 and total_taatsu == 0:
+                            s = 1
                         else:
                             rem_blocks = total_taatsu + total_pairs
                             s = still_needed + max(0, still_needed - rem_blocks)
-                        if s < best:
-                            best = s
-        if best <= 0 and open_meld_count == 0 and not any(c >= 2 for c in counts):
-            best = max(best, 1)
-        return best
+                        if s < best_shanten or (s == best_shanten and (total_pairs, total_taatsu, total_melds) > (best_decomp[1], best_decomp[2], best_decomp[0])):
+                            best_shanten = s
+                            best_decomp = (total_melds, total_pairs, total_taatsu)
+        return (best_shanten, best_decomp[0], best_decomp[1], best_decomp[2])
+
+    @staticmethod
+    def explain_hand_structure(hand_counts: List[int], open_meld_count: int = 0) -> Tuple[int, int, int, int]:
+        """
+        @title 手牌構造の解説用分解
+        @description 向聴数最小の分解 (面子, 対子, 塔子) を返す。
+                    evaluator_v2.explain_discard のコーチング文生成や、
+                    block_shortage 計算の精度向上に使う。
+        @returns (shanten, melds, pairs, taatsu) - 面子は露張含む
+        @note 既存 int 戻り値関数 (calculate_*) は維持、破壊なし。
+        """
+        key = (tuple(hand_counts), open_meld_count, 'explain')
+        cache = ShantenCalculatorV2._get_cache()
+        if key in cache:
+            return cache[key]
+        result = ShantenCalculatorV2._suit_shanten_detail(hand_counts, open_meld_count)
+        cache[key] = result
+        return result
 
     @staticmethod
     def _chiitoitsu_shanten(counts: List[int]) -> int:
