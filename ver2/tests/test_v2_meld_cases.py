@@ -79,11 +79,30 @@ def make_already_meld_state(hand: List[str], existing_meld_tiles: List[str],
     """
     @title 既 1 副露済みの state 構築
     @description ケース 8 (トイトイ 2 副露目) など
+    @param hand: 14 枚の total 手牌 (副露牌 3 枚 + 残 11 枚) — 副露牌は my_hand から除く
     @param existing_meld_tiles: 副露した 3 枚の牌
     @param existing_meld_type: 0=チー, 1=ポン, 2=大明槓
     """
+    # hand から 副露牌を 除く (他家捨牌 1 枚 + 自家手牌 2 枚 = 3 枚 consumed)
+    consumed = list(existing_meld_tiles)  # 3 枚 (他家 + 自家 2 枚)
+    remaining_hand = [t for t in hand if t not in consumed or consumed.remove(t) is None]
+    # ↑ この ロジックは 複雑なので 別アプローチ
+    from collections import Counter
+    hand_counter = Counter(hand)
+    consumed_counter = Counter(existing_meld_tiles)
+    remaining_counter = hand_counter - consumed_counter
+    # 元の順序を 維持しつつ consumed を 除く
+    remaining_hand = []
+    consumed_remaining = dict(consumed_counter)
+    for t in hand:
+        if consumed_remaining.get(t, 0) > 0:
+            consumed_remaining[t] -= 1
+        else:
+            remaining_hand.append(t)
+    assert len(remaining_hand) == 11, f"手牌は 11 枚になるはず (14 - 3 consumed = 11) 実際: {len(remaining_hand)} 枚, hand={hand}, meld={existing_meld_tiles}"
+
     state = make_state(
-        hand=hand,
+        hand=remaining_hand,
         doras=doras,
         my_seat=my_seat,
         chang=chang, ju=ju, tsumo_count=tsumo_count,
@@ -218,23 +237,24 @@ class TestMeldV2Cases(unittest.TestCase):
     def test_otakaze_pon_toitoi_allowed(self):
         """@title オタ風ポンも状況次第: トイトイ狙い (1 副露 + 対子 2+) = 鳴く
         @description
-            1z ポン済み (1 副露) + 手牌に 2m 2m 5m 5m 8p 8p 対子 3 個
-            → 2m ポン (オタ風) → 222 暗刻 → 1z + 222 = 2 暗刻 + 残 雀頭 = 4 面子 + 雀頭 → テンパイ
-            → トイトイ狙い OK
+            1z ポン済み (1 副露) + 手牌 14 枚 total
+            副露後 11 枚 = 2 暗刻 + 5 孤立 → 1 雀頭未定 → 1 待ち → 1 シャンテン
+            2z ポン (オタ風) → 2z 暗刻 → 3 暗刻 + 4 孤立 → 1 雀頭確定 → 0 待ち (テンパイ)
+            → 鳴く価値大
         """
-        # 牌構成: 1m 1m 2m 2m 5m 5m 8p 8p 4z 4z 6p 7p 8p 9p 9p (14 枚)
-        # 4 対子 (1m, 2m, 5m, 8p) + 残り 6 枚 (6p 7p 8p 9p 9p + 4z 4z 雀頭)
-        # 1z ポン済み → 1z 暗刻 + 手牌 14 枚
-        # 2m ポン (オタ風) → 222 暗刻 → 1z + 222 = 2 暗刻 + 残 雀頭 → 4 面子 + 雀頭 → テンパイ
+        # 牌構成: 1z 暗刻 (副露) + 4m 4m 4m 暗刻 + 9m 9m 9m 暗刻 + 1p 2p 3p 4p 5p (5 孤立)
+        # 副露後 11 枚: 2 暗刻 + 5 孤立 → 0 雀頭 + 0 塔子 + 0 雀頭候補 + 5 孤立 → 1 待ち → 1 シャンテン
+        # 2z ポン (オタ風) → 2z 2z 2p → 3 暗刻 + 4 孤立 → 1 雀頭確定 → 0 待ち (テンパイ)
+        # → 鳴く価値大
         state = make_already_meld_state(
-            hand=['1m','1m','2m','2m','5m','5m','8p','8p','4z','4z','6p','7p','8p','9p'],
+            hand=['1z','1z','1z','4m','4m','4m','9m','9m','9m','1p','2p','3p','4p','5p'],  # 14 枚
             existing_meld_tiles=['1z','1z','1z'],
             existing_meld_type=1,
             from_seat=0,
             my_seat=0, chang=0, ju=0, tsumo_count=29,
             doras=['5m'],
         )
-        # 2z ポン (オタ風) → トイトイ狙い
+        # 2z ポン (オタ風、my_seat=0 + chang=0 → 自風=東、場風=東 → 2z=南=オタ風)
         should, reason = should_call_meld(state, 1, ['2z','2z','2z'], 2, {})
         self.assertTrue(should, f"トイトイ狙い オタ風ポン OK (実際: {should}, {reason})")
 
@@ -399,25 +419,27 @@ class TestMeldV2Cases(unittest.TestCase):
     def test_case8_toitoi_2nd_pon(self):
         """@title ケース 8: 東 1 局 7 巡 1 ポン後 トイトイ 2 副露目 = ポン
         @description
-            1z ポン済み (1 副露) + 手牌 1 向聴 (1 雀頭候補)
-            2m ポン → 222 暗刻 → 2 暗刻 + 1 塔子 + 1 雀頭 → 4 面子 + 1 雀頭 → テンパイ
+            1z ポン済み (1 副露) + 手牌 14 枚 total (副露牌 3 枚 含む、残 11 枚手牌)
+            副露後 11 枚 = 2 暗刻 + 2 塔子 (雀頭候補 なし) → 1 待ち → 1 シャンテン
+            2p ポン → 2p 暗刻 → 3 暗刻 + 2 塔子 → 0 待ち + 0 残り → 0 待ち (テンパイ)
+            → 鳴く価値大
         """
-        # 牌構成: 1m 1m 2m 3m 4m 5m 6m 7m 8m 9m 9m 1z 1z 5z 5z (14 枚)
-        # 2 面子 (123 456) + 1 塔子 (89) + 1 雀頭 (1m) + 1 雀頭候補 (1z) + 1 雀頭候補 (5z) + 1 孤立 (9m)
-        # = 2 面子 + 1 塔子 + 1 雀頭 + 2 雀頭候補 + 1 孤立
-        # 1 待ち (雀頭単騎) → 1 シャンテン
-        # 2m ポン → 222 暗刻 → 2 暗刻 + 1 塔子 (89) + 1 雀頭 (1m) → 4 面子 + 1 雀頭 → テンパイ
-        # → 鳴く価値: 1 待ち → 0 待ち
+        # 牌構成 (14 枚 = 1z 副露 3 枚 + 残 11 枚):
+        # 1z 1z 1z (副露) + 4m 4m 4m 暗刻 + 9m 9m 9m 暗刻 + 1p 2p 3p 4p 5p (5 枚孤立 = 1p 2p 3p 4p 5p)
+        # 副露後 11 枚: 4m 4m 4m 暗刻 + 9m 9m 9m 暗刻 + 1p 2p 3p 4p 5p (5 枚孤立)
+        # 0 雀頭 + 0 雀頭候補 + 2 塔子 (123, 45) → 1 待ち 不足 → 1 待ち → 1 シャンテン
+        # 2p ポン (他家捨て牌 2p) → 2p 2p 2p 暗刻 → 3 暗刻 + 2 塔子 → 0 待ち + 0 残り → 0 待ち (テンパイ)
+        # → 鳴く価値大
         state = make_already_meld_state(
-            hand=['1m','1m','2m','3m','4m','5m','6m','7m','8m','9m','9m','1z','1z','5z'],
+            hand=['1z','1z','1z','4m','4m','4m','9m','9m','9m','1p','2p','3p','4p','5p'],  # 14 枚
             existing_meld_tiles=['1z','1z','1z'],
             existing_meld_type=1,
             from_seat=0,
             my_seat=1, chang=0, ju=0, tsumo_count=29,
             doras=['5m'],
         )
-        # 2m ポン (他家捨て牌 2m)
-        should, reason = should_call_meld(state, 1, ['2m','2m','2m'], 0, {})
+        # 2p ポン (他家捨て牌 2p)
+        should, reason = should_call_meld(state, 1, ['2p','2p','2p'], 0, {})
         self.assertTrue(should, f"東 1 局 7 巡 1 ポン後 トイトイ 2 副露目 = ポン (実際: {should}, {reason})")
 
     # ============================================================
