@@ -50,7 +50,7 @@ DEFAULT_WEIGHTS = {
     'MELD_W_OPP_STYLE': 60.0,          # 22. 他家スタイル
     # threshold と全体補正
     'MELD_THRESHOLD': 0.0,              # meld_score > 0 で鳴く
-    'MELD_BASE_BIAS': 0.0,              # 基本バイアス (正で鳴き寄り)
+    'MELD_BASE_BIAS': -350.0,           # 基本バイアス (負でスルー寄り)
 }
 
 
