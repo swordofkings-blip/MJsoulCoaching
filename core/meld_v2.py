@@ -73,25 +73,33 @@ def simulate_meld(hand: List[str], call_type: int, tiles: List[str]) -> Tuple[Li
     @title 副露シミュレーション
     @returns (hand_after, shanten_after, melds_after)
     """
-    hand_after = list(hand)
-    if call_type == 1:
-        consumed = [tiles[0], tiles[0]]
-    elif call_type == 0:
-        consumed = list(tiles[1:])
-    elif call_type == 2:
-        consumed = [tiles[0], tiles[0], tiles[0]]
-    else:
-        return hand_after, 8, sum(1 for _ in []) + 1
-    for t in consumed:
-        tid = tile_to_id(t)
-        for h in list(hand_after):
-            if tile_to_id(h) == tid:
-                hand_after.remove(h)
-                break
-    counts = hand_to_counts(hand_after)
-    open_meld_count_before = 0  # このシミュでは現在 0 と仮定
-    sh = ShantenCalculatorV2.calculate_open(counts, open_meld_count_before + 1)
-    return hand_after, sh, open_meld_count_before + 1
+    try:
+        hand_after = list(hand)
+        if call_type == 1:  # ポン
+            consumed = [tiles[0], tiles[0]]
+        elif call_type == 0:  # チー
+            consumed = list(tiles[1:]) if len(tiles) > 1 else []
+        elif call_type == 2:  # 大明槓
+            consumed = [tiles[0], tiles[0], tiles[0]]
+        else:
+            return hand_after, 8, 0
+        for t in consumed:
+            try:
+                tid = tile_to_id(t)
+            except Exception:
+                continue
+            for h in list(hand_after):
+                try:
+                    if tile_to_id(h) == tid:
+                        hand_after.remove(h)
+                        break
+                except Exception:
+                    continue
+        counts = hand_to_counts(hand_after)
+        sh = ShantenCalculatorV2.calculate_open(counts, 1)  # 1 副露
+        return hand_after, sh, 1
+    except Exception:
+        return list(hand), 8, 1
 
 
 # ============================================================
