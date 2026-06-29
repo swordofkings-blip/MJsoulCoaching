@@ -129,6 +129,42 @@ def display_hand(hand: List[str]) -> None:
         print(f'  ★ テンパイ')
 
 
+def find_matching_hands(target_shanten: Optional[int] = None,
+                       target_melds: Optional[int] = None,
+                       target_pairs: Optional[int] = None,
+                       target_honor_count: Optional[int] = None,
+                       min_red_five: int = 0,
+                       must_include: Optional[List[str]] = None,
+                       n: int = 14,
+                       n_results: int = 5,
+                       seed_start: int = 0,
+                       max_total: int = 100000) -> List[List[str]]:
+    """
+    @title 条件に合う手牌を自動探索
+    @param max_total: 最大試行数 (全体で)
+    @returns 条件に合う手牌のリスト
+    """
+    results = []
+    for seed in range(seed_start, seed_start + max_total):
+        if len(results) >= n_results:
+            break
+        try:
+            hand = generate_hand(
+                n=n, seed=seed,
+                target_shanten=target_shanten,
+                target_melds=target_melds,
+                target_pairs=target_pairs,
+                target_honor_count=target_honor_count,
+                min_red_five=min_red_five,
+                must_include=must_include,
+                max_attempts=1,  # 1 試行のみ (高速化)
+            )
+            results.append(hand)
+        except ValueError:
+            pass
+    return results
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--n', type=int, default=14, help='枚数')
@@ -141,25 +177,50 @@ def main():
     p.add_argument('--red5', type=int, default=0, help='最低赤 5 枚数 (0-4)')
     p.add_argument('--must-include', type=str, default=None, help='必須牌 (カンマ区切り)')
     p.add_argument('--no-display', action='store_true', help='プレビュー非表示')
+    p.add_argument('--search', action='store_true', help='条件に合う手牌を自動探索')
+    p.add_argument('--max-search', type=int, default=100000, help='最大探索数')
     args = p.parse_args()
 
     must_include = args.must_include.split(',') if args.must_include else None
     seed = args.seed if args.seed is not None else 0
-    for i in range(args.count):
-        if not args.no_display and args.count > 1:
-            print(f'--- 牌譜 {i+1} ---')
-        hand = generate_hand(
-            n=args.n,
-            seed=seed + i,
+
+    if args.search:
+        # 探索モード: 条件に合う手牌を n_results 個見つける
+        results = find_matching_hands(
             target_shanten=args.shanten,
             target_melds=args.melds,
             target_pairs=args.pairs,
             target_honor_count=args.honor,
             min_red_five=args.red5,
             must_include=must_include,
+            n=args.n,
+            n_results=args.count,
+            seed_start=seed,
+            max_total=args.max_search,
         )
-        if not args.no_display:
-            display_hand(hand)
+        print(f"=== 探索結果: {len(results)} 件見つかりました (max {args.max_search} 試行) ===")
+        for i, hand in enumerate(results):
+            if not args.no_display and args.count > 1:
+                print(f'--- 牌譜 {i+1} ---')
+            if not args.no_display:
+                display_hand(hand)
+    else:
+        # 通常モード
+        for i in range(args.count):
+            if not args.no_display and args.count > 1:
+                print(f'--- 牌譜 {i+1} ---')
+            hand = generate_hand(
+                n=args.n,
+                seed=seed + i,
+                target_shanten=args.shanten,
+                target_melds=args.melds,
+                target_pairs=args.pairs,
+                target_honor_count=args.honor,
+                min_red_five=args.red5,
+                must_include=must_include,
+            )
+            if not args.no_display:
+                display_hand(hand)
 
 
 if __name__ == '__main__':
