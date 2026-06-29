@@ -98,13 +98,10 @@ def tactical_discard_rank(state, tile: str) -> int:
             return 78
         # 役牌 (rank 55-65)
         if is_yakuhai:
-            # 2 枚以上見え → 安全 (rank 4)
-            if public_count >= 2:
+            # 全 4 枚見え (= 残 0 枚) → 刻子が作れない (rank 4)
+            if public_count + my_count >= 4:
                 return 4
-            # 1 枚見え → 少し残す (rank 30)
-            if public_count == 1:
-                return 30
-            # 生牌 (rank 60)
+            # 残あり → 刻子狙いなので残す (rank 60)
             return 60
         # 客風 (オタ風)
         # 2 枚以上見え → 真っ先に切る (rank 0)
