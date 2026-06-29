@@ -19,7 +19,9 @@ sys.path.insert(0, '.')
 from tools.tenhou_xml_to_actions import tenhou_blob_to_actions
 from core.game_state import GameState, ReachState, Meld
 from core.meld_v2 import should_call_meld
+from core.shanten_v2 import ShantenCalculatorV2
 from str_converter import hand_to_counts, tile_to_id
+import json
 
 
 DB = r'C:\Users\Daikichi\Documents\code-workspace\雀魂ラッパー_拡散AI\data\raw\tenhou_logs.db'
@@ -180,7 +182,11 @@ def _build_state_before(actions: list, target_seat: int) -> GameState:
     return state
 
 
-def main(n_logs: int = 50):
+def main(n_logs: int = 50, save_mismatches: bool = False, out_path: str = None,
+         exclude_outliers: bool = True):
+    """
+    exclude_outliers: シャンテン 0/4/5 のミスマッチ (人間判断ミス疑い) を除外
+    """
     conn = sqlite3.connect(DB)
     cur = conn.cursor()
     cur.execute('SELECT id, log FROM logs WHERE is_processed=1 AND was_error=0 LIMIT ?', (n_logs,))
@@ -190,7 +196,9 @@ def main(n_logs: int = 50):
     v2_correct = 0
     v2_wrong = 0
     v2_errors = 0
+    excluded = 0
     meld_types = {}
+    mismatches = []
 
     t0 = time.time()
     for log_id, blob in rows:
@@ -208,10 +216,13 @@ def main(n_logs: int = 50):
                     continue
                 if not tiles:
                     continue
-                # ver.2 で判定
+                # ハズレ値除外: シャンテン 0/4/5 のミスマッチは人間判断ミス疑い
+                sh = ShantenCalculatorV2.calculate_closed_effective(hand_to_counts(before_state.my_hand))
+                if exclude_outliers and sh in (0, 4, 5, 6, 7, 8):
+                    excluded += 1
+                    continue
                 try:
                     v2_should, reason = should_call_meld(before_state, call_type, tiles, from_seat, {})
-                    # 人間は鳴いた → 鳴くべき = True が正解
                     if v2_should:
                         v2_correct += 1
                     else:
@@ -222,6 +233,22 @@ def main(n_logs: int = 50):
                         meld_types[call_type][0] += 1
                     else:
                         meld_types[call_type][1] += 1
+                    if save_mismatches and not v2_should:
+                        if len(mismatches) < 200:
+                            from core.meld_v2 import score_meld
+                            total, breakdown = score_meld(before_state, call_type, tiles, from_seat, {})
+                            mismatches.append({
+                                'log_id': log_id,
+                                'seat': seat,
+                                'call_type': call_type,
+                                'tiles': tiles,
+                                'from_seat': from_seat,
+                                'hand': before_state.my_hand,
+                                'shanten': sh,
+                                'meld_score': round(total, 1),
+                                'reason': reason,
+                                'breakdown_top': sorted(breakdown, key=lambda x: -abs(x[1]))[:5],
+                            })
                 except Exception as e:
                     v2_errors += 1
         except Exception as e:
@@ -231,6 +258,7 @@ def main(n_logs: int = 50):
     print()
     print(f'=== ver.2 人間副露判断 recall テスト ({n_logs} ログ) ===')
     print(f'  経過時間: {elapsed:.1f}秒')
+    print(f'  除外 (shanten 0/4-8): {excluded}')
     print(f'  判定数: {total_decisions}')
     print(f'  ver.2 鳴く (正解): {v2_correct}')
     print(f'  ver.2 スルー (不正解): {v2_wrong}')
@@ -244,6 +272,38 @@ def main(n_logs: int = 50):
         total = ok + ng
         rate = ok / total * 100 if total else 0
         print(f'    {ct_name}: {ok}/{total} ({rate:.1f}%)')
+
+    if save_mismatches and mismatches:
+        if out_path is None:
+            out_path = 'tenhou_meld_mismatches.json'
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(mismatches, f, ensure_ascii=False, indent=2)
+        print(f'\n  不一致ケース {len(mismatches)} 件を {out_path} に保存')
+        from collections import Counter
+        sh_count = Counter(m['shanten'] for m in mismatches)
+        print(f'  シャンテン数別: {dict(sh_count)}')
+        avg_score = sum(m['meld_score'] for m in mismatches) / len(mismatches)
+        print(f'  平均 meld_score: {avg_score:.1f}')
+
+        # ポン分析
+        pon_mismatches = [m for m in mismatches if m['call_type'] == 1]
+        if pon_mismatches:
+            print(f'  ポン不一致: {len(pon_mismatches)} 件')
+            for m in pon_mismatches[:5]:
+                print(f"    手牌={m['hand']} | 鳴き={m['tiles']} | score={m['meld_score']} | shanten={m['shanten']}")
+                for n, v, r in m['breakdown_top']:
+                    print(f"      {n}: {v:+.0f} ({r})")
+
+
+if __name__ == '__main__':
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument('--n', type=int, default=50, help='ログ数')
+    p.add_argument('--save-mismatches', action='store_true', help='不一致ケース保存')
+    p.add_argument('--out', type=str, default=None, help='保存先')
+    p.add_argument('--no-exclude', action='store_true', help='ハズレ値除外しない')
+    args = p.parse_args()
+    main(args.n, args.save_mismatches, args.out, not args.no_exclude)
 
 
 if __name__ == '__main__':

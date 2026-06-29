@@ -275,16 +275,13 @@ def score_meld_remaining(state, call_type, tiles, params) -> Tuple[float, str]:
 # ============================================================
 def score_yaku_fixed(state, call_type, tiles, params) -> Tuple[float, str]:
     """@title 7. 役の確定有無 (役牌/三元/タンヤオ)
-    @description オタ風ポンも状況次第で OK:
-                - 染め手狙い (手牌内字牌 >= 6)
-                - トイトイ狙い (既 1 副露 + 対子複数)
-                - あがれないケース (巡目遅い + 1 向聴 + 手役未定)
+    @description 通常のポンでも加点 (1 面子追加 = 価値あり)
     """
     w = get_weights(params)
     target_id = tile_to_id(tiles[0]) if tiles else -1
     SANGEN = {31, 32, 33}
     is_yakuhai = False
-    is_otakaze = False  # オタ風
+    is_otakaze = False
     if call_type == 1 and 0 <= target_id <= 33:
         if target_id in SANGEN:
             is_yakuhai = True
@@ -295,7 +292,6 @@ def score_yaku_fixed(state, call_type, tiles, params) -> Tuple[float, str]:
                 is_yakuhai = True
             elif 27 <= target_id <= 30:
                 is_otakaze = True
-    # チーで 123 / 678 / 234 / 567 なら順子確定
     is_shuntsu_complete = False
     if call_type == 0 and len(tiles) == 3:
         ids = sorted([tile_to_id(t) for t in tiles if t])
@@ -304,10 +300,11 @@ def score_yaku_fixed(state, call_type, tiles, params) -> Tuple[float, str]:
     if is_yakuhai:
         return w['MELD_W_YAKU_FIXED'], "役牌確定"
     if is_otakaze:
-        # オタ風ポン: 状況依存で加点 / 減点
         return _score_otakaze_pon(state, target_id, params)
     if is_shuntsu_complete:
         return w['MELD_W_YAKU_FIXED'] * 0.3, "順子形成 (役未確定)"
+    if call_type == 1:  # 通常のポン: 1 面子追加 = 価値あり
+        return w['MELD_W_YAKU_FIXED'] * 0.4, "ポン 1 面子追加 (進行期待)"
     return 0.0, "役未確定"
 
 
@@ -353,24 +350,23 @@ def _score_otakaze_pon(state, target_id, params) -> Tuple[float, str]:
 # 要素 8: 食い下がり・消滅する役
 # ============================================================
 def score_yaku_loss(state, call_type, tiles, params) -> Tuple[float, str]:
-    """@title 8. 食い下がり・消滅する役 (減点)"""
+    """@title 8. 食い下がり・消滅する役 (減点)
+    @description チーは食い下がりが大きく、ポンはやや軽い
+    """
     w = get_weights(params)
-    # 門前固定の役: 平和 / 一盃口 / 両立直 / 七対子
     open_meld_count = sum(1 for m in state.my_melds if m.is_open)
     new_open = open_meld_count + 1
     if new_open == 0:
         return 0.0, "門前維持"
-    # ピンフ狙いなら 鳴く前にチェック (簡略: 鳴くときは基本的に失う)
     loss = 0.0
-    # ピンフ消滅
-    if call_type == 0:  # チー
-        loss += 0.4
-    # 一盃口消滅
-    loss += 0.2
-    # 両立直消滅
-    loss += 0.1
+    if call_type == 0:  # チー: 食い下がり大
+        loss += 0.3  # 0.4 → 0.3 (軽量化)
+    elif call_type == 1:  # ポン: 食い下がり中
+        loss += 0.15  # 0.2 → 0.15 (軽量化)
+    else:
+        loss += 0.05
     score = -w['MELD_W_YAKU_LOSS'] * loss
-    return score, f"門前役消滅 -{loss:.1f}"
+    return score, f"門前役消滅 -{loss:.2f}"
 
 
 # ============================================================
@@ -503,14 +499,30 @@ def score_kyohaku(state, params) -> Tuple[float, str]:
 
 
 # ============================================================
+# 要素 13: 巡目 (序盤減点)
+# ============================================================
+def score_turn_early(state, params) -> Tuple[float, str]:
+    """@title 13. 巡目 (序盤は減点)"""
+    w = get_weights(params)
+    turn = (state.tsumo_count - 1) // 4 + 1
+    if turn <= 3:
+        return -w['MELD_W_TURN_EARLY_PENALTY'] * 0.8, f"序盤 {turn} 巡 (面子の自由度維持)"
+    if turn <= 7:
+        return -w['MELD_W_TURN_EARLY_PENALTY'] * 0.3, f"中盤序 {turn} 巡"
+    if turn >= 14:
+        return w['MELD_W_TURN_EARLY_PENALTY'] * 0.3, f"終盤 {turn} 巡 (加点効率)"
+    return 0.0, f"{turn} 巡"
+
+
+# ============================================================
 # 要素 16: 残り局数 (オーラス)
 # ============================================================
 def score_round_position(state, params) -> Tuple[float, str]:
-    """@title 16. 残り局数 (オーラス)"""
+    """@title 16. 残り局数 (オーラス)
+    @description 人間はオーラスでも鳴く判断あり → 撤廃
+    """
     w = get_weights(params)
-    if hasattr(state, 'is_last_round') and state.is_last_round():
-        return -w['MELD_W_ROUND_POSITION'] * 0.5, "オーラス (他家警戒)"
-    return 0.0, "通常局"
+    return 0.0, "状況依存なし"
 
 
 # ============================================================
@@ -526,8 +538,6 @@ def score_rank(state, params) -> Tuple[float, str]:
     my_rank = sorted_scores.index(my_score)
     if my_rank == 3:  # ラス
         return w['MELD_W_RANK_FACTOR'] * 0.5, "ラス目 (攻め必要)"
-    if my_rank == 0:  # トップ
-        return -w['MELD_W_RANK_FACTOR'] * 0.3, "トップ (慎重に)"
     return 0.0, f"{my_rank + 1} 位"
 
 
