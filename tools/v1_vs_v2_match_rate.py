@@ -34,13 +34,13 @@ def load_params(path: str) -> dict:
 
 
 def process_record(record_path: str, params: dict, max_decisions: int = 0,
-                   save_mismatches: bool = False, scoring: str = 'proportional') -> dict:
+                   save_mismatches: bool = False, scoring: str = 'topk') -> dict:
     """
     1 つの牌譜を ver.1 と ver.2 で再生し、各打牌の一致率を測定。
     人間打牌と AI の最良打牌が一致したかを見る。
     max_decisions: 0 = 全て、それ以外 = 制限 (デバッグ用)
     save_mismatches: 不一致ケースを保存
-    scoring: 'strict' (完全一致) | 'proportional' (比率スコアリング 0-100)
+    scoring: 'strict' (完全一致) | 'proportional' (比率 0-100) | 'topk' (top-1, top-3, top-5)
     """
     with open(record_path, 'r', encoding='utf-8') as f:
         record = json.load(f)
@@ -62,9 +62,13 @@ def process_record(record_path: str, params: dict, max_decisions: int = 0,
         'file': os.path.basename(record_path),
         'v1_total': v1_eval['total'],
         'v1_exact': v1_eval['exact_match'],
+        'v1_top3': v1_eval['top3_match'],
+        'v1_top5': v1_eval['top5_match'],
         'v1_avg_match': v1_eval['avg_match'],
         'v2_total': v2_eval['total'],
         'v2_exact': v2_eval['exact_match'],
+        'v2_top3': v2_eval['top3_match'],
+        'v2_top5': v2_eval['top5_match'],
         'v2_avg_match': v2_eval['avg_match'],
         'v2_mismatches': v2_eval.get('mismatches', []),
     }
@@ -72,17 +76,19 @@ def process_record(record_path: str, params: dict, max_decisions: int = 0,
 
 def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2: bool,
                    max_decisions: int = 0, save_mismatches: bool = False,
-                   scoring: str = 'strict') -> dict:
+                   scoring: str = 'topk') -> dict:
     """
     actions を逐次処理。
     RecordDiscardTile 直前に state を構築して AI の best_discard を呼び、人間打牌と比較。
     max_decisions: 0 = 全て
     save_mismatches: 不一致ケースを保存
-    scoring: 'strict' (完全一致) | 'proportional' (比率スコアリング 0-100)
+    scoring: 'strict' (完全一致) | 'proportional' (比率 0-100) | 'topk' (top-1, top-3, top-5)
     """
     total = 0
     match_sum = 0.0
     exact_match = 0
+    top3_match = 0
+    top5_match = 0
     mismatches = []
     for action in actions:
         result = action.get('result', {})
@@ -134,23 +140,26 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
                     else:
                         chosen = evals[0][0]
                         total += 1
-                        if chosen == tile:
+                        # 人間の打牌が何位かを検索
+                        actual_pos = None
+                        for k, (t, _) in enumerate(evals):
+                            if t == tile:
+                                actual_pos = k
+                                break
+                        if actual_pos == 0:
                             exact_match += 1
+                            top3_match += 1
+                            top5_match += 1
                             match_sum += 100.0
-                        elif scoring == 'proportional':
-                            # 比率スコアリング (順位ベース): 人間の打牌が何位かを 0-100 で評価
-                            # best (1位) = 100, worst (最下位) = 0, 線形補間
-                            n = len(evals)
-                            actual_pos = None
-                            for k, (t, _) in enumerate(evals):
-                                if t == tile:
-                                    actual_pos = k
-                                    break
-                            if actual_pos is not None and n > 1:
-                                # 1位が 100, 最下位が 0
-                                match = (n - 1 - actual_pos) / (n - 1) * 100.0
+                        else:
+                            if actual_pos is not None and actual_pos <= 2:
+                                top3_match += 1
+                            if actual_pos is not None and actual_pos <= 4:
+                                top5_match += 1
+                            if scoring == 'proportional' and actual_pos is not None and len(evals) > 1:
+                                match = (len(evals) - 1 - actual_pos) / (len(evals) - 1) * 100.0
                                 match_sum += match
-                            else:
+                            elif actual_pos is None:
                                 match_sum += 0.0
                         if save_mismatches and chosen != tile and len(mismatches) < 30:
                             structure = ai.describe_hand_structure() if hasattr(ai, 'describe_hand_structure') else ''
@@ -159,6 +168,7 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
                                 'hand': hand,
                                 'actual': tile,
                                 'ai': chosen,
+                                'actual_pos': actual_pos,
                                 'mode': mode,
                                 'structure': structure,
                             })
@@ -177,6 +187,8 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
     return {
         'total': total,
         'exact_match': exact_match,
+        'top3_match': top3_match,
+        'top5_match': top5_match,
         'match_sum': match_sum,
         'avg_match': match_sum / total if total else 0.0,
         'mismatches': mismatches,
@@ -184,7 +196,7 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
 
 
 def main(file_list: List[str], params_path: str, max_decisions: int = 0,
-         save_mismatches: bool = False, out_path: str = None, scoring: str = 'proportional'):
+         save_mismatches: bool = False, out_path: str = None, scoring: str = 'topk'):
     params = load_params(params_path)
     print(f"=== ver.1 vs ver.2 人間牌譜一致率テスト ===")
     print(f"  ファイル数: {len(file_list)}")
@@ -194,9 +206,13 @@ def main(file_list: List[str], params_path: str, max_decisions: int = 0,
 
     grand_v1_total = 0
     grand_v1_exact = 0
+    grand_v1_top3 = 0
+    grand_v1_top5 = 0
     grand_v1_match_sum = 0.0
     grand_v2_total = 0
     grand_v2_exact = 0
+    grand_v2_top3 = 0
+    grand_v2_top5 = 0
     grand_v2_match_sum = 0.0
     all_v2_mismatches = []
     t0 = time.time()
@@ -204,18 +220,25 @@ def main(file_list: List[str], params_path: str, max_decisions: int = 0,
         try:
             r = process_record(fp, params, max_decisions=max_decisions,
                                save_mismatches=save_mismatches, scoring=scoring)
-            v1_pct = r['v1_avg_match']
-            v2_pct = r['v2_avg_match']
-            v1_strict = r['v1_exact'] / r['v1_total'] * 100 if r['v1_total'] else 0
-            v2_strict = r['v2_exact'] / r['v2_total'] * 100 if r['v2_total'] else 0
-            print(f"  [{i+1}/{len(file_list)}] {r['file']}: "
-                  f"ver.1=完全一致 {r['v1_exact']}/{r['v1_total']} ({v1_strict:.1f}%) 比率 {v1_pct:.1f} | "
-                  f"ver.2=完全一致 {r['v2_exact']}/{r['v2_total']} ({v2_strict:.1f}%) 比率 {v2_pct:.1f}")
+            def pct(n, d): return n / d * 100 if d else 0
+            print(f"  [{i+1}/{len(file_list)}] {r['file']}:")
+            print(f"    ver.1: top-1 {r['v1_exact']}/{r['v1_total']} ({pct(r['v1_exact'], r['v1_total']):.1f}%) | "
+                  f"top-3 {r['v1_top3']}/{r['v1_total']} ({pct(r['v1_top3'], r['v1_total']):.1f}%) | "
+                  f"top-5 {r['v1_top5']}/{r['v1_total']} ({pct(r['v1_top5'], r['v1_total']):.1f}%) | "
+                  f"比率 {r['v1_avg_match']:.1f}")
+            print(f"    ver.2: top-1 {r['v2_exact']}/{r['v2_total']} ({pct(r['v2_exact'], r['v2_total']):.1f}%) | "
+                  f"top-3 {r['v2_top3']}/{r['v2_total']} ({pct(r['v2_top3'], r['v2_total']):.1f}%) | "
+                  f"top-5 {r['v2_top5']}/{r['v2_total']} ({pct(r['v2_top5'], r['v2_total']):.1f}%) | "
+                  f"比率 {r['v2_avg_match']:.1f}")
             grand_v1_total += r['v1_total']
             grand_v1_exact += r['v1_exact']
+            grand_v1_top3 += r['v1_top3']
+            grand_v1_top5 += r['v1_top5']
             grand_v1_match_sum += r['v1_avg_match'] * r['v1_total']
             grand_v2_total += r['v2_total']
             grand_v2_exact += r['v2_exact']
+            grand_v2_top3 += r['v2_top3']
+            grand_v2_top5 += r['v2_top5']
             grand_v2_match_sum += r['v2_avg_match'] * r['v2_total']
             all_v2_mismatches.extend(r.get('v2_mismatches', []))
         except Exception as e:
@@ -226,18 +249,20 @@ def main(file_list: List[str], params_path: str, max_decisions: int = 0,
     print()
     print("=== 結果サマリ ===")
     if grand_v1_total:
-        v1_pct = grand_v1_match_sum / grand_v1_total
-        v1_strict = grand_v1_exact / grand_v1_total * 100
-        print(f"  ver.1: 完全一致 {grand_v1_exact}/{grand_v1_total} ({v1_strict:.1f}%) | 比率スコア {v1_pct:.1f}")
+        print(f"  ver.1: top-1 {grand_v1_exact}/{grand_v1_total} ({grand_v1_exact/grand_v1_total*100:.1f}%) | "
+              f"top-3 {grand_v1_top3}/{grand_v1_total} ({grand_v1_top3/grand_v1_total*100:.1f}%) | "
+              f"top-5 {grand_v1_top5}/{grand_v1_total} ({grand_v1_top5/grand_v1_total*100:.1f}%) | "
+              f"比率 {grand_v1_match_sum/grand_v1_total:.1f}")
     if grand_v2_total:
-        v2_pct = grand_v2_match_sum / grand_v2_total
-        v2_strict = grand_v2_exact / grand_v2_total * 100
-        print(f"  ver.2: 完全一致 {grand_v2_exact}/{grand_v2_total} ({v2_strict:.1f}%) | 比率スコア {v2_pct:.1f}")
+        print(f"  ver.2: top-1 {grand_v2_exact}/{grand_v2_total} ({grand_v2_exact/grand_v2_total*100:.1f}%) | "
+              f"top-3 {grand_v2_top3}/{grand_v2_total} ({grand_v2_top3/grand_v2_total*100:.1f}%) | "
+              f"top-5 {grand_v2_top5}/{grand_v2_total} ({grand_v2_top5/grand_v2_total*100:.1f}%) | "
+              f"比率 {grand_v2_match_sum/grand_v2_total:.1f}")
     if grand_v1_total and grand_v2_total:
-        v1_pct = grand_v1_match_sum / grand_v1_total
-        v2_pct = grand_v2_match_sum / grand_v2_total
-        diff = v2_pct - v1_pct
-        print(f"  比率スコア差分: ver.2 - ver.1 = {diff:+.1f}pt")
+        diff1 = grand_v2_exact / grand_v2_total * 100 - grand_v1_exact / grand_v1_total * 100
+        diff3 = grand_v2_top3 / grand_v2_total * 100 - grand_v1_top3 / grand_v1_total * 100
+        diff5 = grand_v2_top5 / grand_v2_total * 100 - grand_v1_top5 / grand_v1_total * 100
+        print(f"  差分 (ver.2 - ver.1): top-1 {diff1:+.1f}pt | top-3 {diff3:+.1f}pt | top-5 {diff5:+.1f}pt")
     print(f"  経過時間: {time.time() - t0:.1f}秒")
 
     if save_mismatches and all_v2_mismatches:
@@ -252,7 +277,7 @@ def main(file_list: List[str], params_path: str, max_decisions: int = 0,
         print(f"  モード別不一致: {dict(mode_count)}")
         # 不一致のサンプル表示 (最初の 5 件)
         for i, m in enumerate(all_v2_mismatches[:5]):
-            print(f"  例{i+1}: 手牌={m['hand']} 人間={m['actual']} ver.2={m['ai']} mode={m['mode']} 構造={m['structure']}")
+            print(f"  例{i+1}: 手牌={m['hand']} 人間={m['actual']} ver.2={m['ai']} 順位={m.get('actual_pos', '?')} mode={m['mode']} 構造={m['structure']}")
 
 
 if __name__ == "__main__":
@@ -262,7 +287,7 @@ if __name__ == "__main__":
     p.add_argument("--max-decisions", type=int, default=0, help="ファイルあたり判定数の上限 (デバッグ用)")
     p.add_argument("--save-mismatches", action="store_true", help="ver.2 不一致ケースを JSON 保存")
     p.add_argument("--out", type=str, default=None, help="不一致ケース保存先")
-    p.add_argument("--scoring", choices=['strict', 'proportional'], default='proportional',
-                   help="スコアリング方式 (strict=完全一致, proportional=比率スコア)")
+    p.add_argument("--scoring", choices=['strict', 'proportional', 'topk'], default='topk',
+                   help="スコアリング方式 (strict=完全一致, proportional=比率, topk=top-1/3/5)")
     args = p.parse_args()
     main(args.files, args.params, args.max_decisions, args.save_mismatches, args.out, args.scoring)
