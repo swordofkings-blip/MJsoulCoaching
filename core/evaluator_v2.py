@@ -277,12 +277,17 @@ class EvaluatorV2:
 
     def should_call_meld(self, call_type: int, tiles: List[str], from_seat: int) -> bool:
         """
-        @title 鳴き判定 (チー・ポン・大明槓)
-        @description ver.1 Evaluator に委譲 (MELD_GAP_MAX 等の重み)
+        @title 鳴き判定 (ver.2 加減算モデル)
+        @description 22 要素の加重スコアで判定、ver.1 よりも明示的・調整可能
+        @returns (鳴くべきか, 理由)
         """
+        from core.meld_v2 import should_call_meld as _should_call_meld_v2
         try:
-            return self._v1_evaluator().should_call_meld(call_type, tiles, from_seat)
-        except Exception:
+            decision, reason = _should_call_meld_v2(self.state, call_type, tiles, from_seat, self.params)
+            self.last_meld_reason = reason
+            return decision
+        except Exception as e:
+            self.last_meld_reason = f"ver.2 meld error: {e}"
             return False
 
     def should_go_kokushi_13(self) -> bool:
