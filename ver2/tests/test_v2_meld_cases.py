@@ -43,6 +43,57 @@ def make_state(hand: List[str], doras: List[str] = None, my_seat: int = 0,
     return state
 
 
+def make_reach_state_with_genten(hand: List[str], my_melds: List = None,
+                                 reach_seat: int = 2, genbutsu_tile: str = None,
+                                 my_seat: int = 1, chang: int = 1, ju: int = 1,
+                                 tsumo_count: int = 40, doras: List[str] = None) -> GameState:
+    """
+    @title リーチ者現物テスト用の state 構築
+    @description 既にリーチ者がリーチしている状態で、 genbutsu_tile が現物
+    @param hand: 自分の手牌
+    @param my_melds: 自分の副露 (オプション)
+    @param reach_seat: リーチ者の席
+    @param genbutsu_tile: 現物 (= 自分の安全牌)
+    """
+    state = make_state(
+        hand=hand,
+        doras=doras,
+        my_seat=my_seat,
+        chang=chang, ju=ju, tsumo_count=tsumo_count,
+        melds=my_melds,
+    )
+    state.reach_states = [ReachState() for _ in range(4)]
+    state.reach_states[reach_seat].is_reach = True
+    state.river = [[] for _ in range(4)]
+    if genbutsu_tile:
+        # リーチ者の河に現物 (= 自分の安全牌) を 1 枚 配置
+        state.river[reach_seat].append(genbutsu_tile)
+    return state
+
+
+def make_already_meld_state(hand: List[str], existing_meld_tiles: List[str],
+                             existing_meld_type: int = 1,
+                             from_seat: int = 0,
+                             my_seat: int = 1, chang: int = 0, ju: int = 0,
+                             tsumo_count: int = 29, doras: List[str] = None) -> GameState:
+    """
+    @title 既 1 副露済みの state 構築
+    @description ケース 8 (トイトイ 2 副露目) など
+    @param existing_meld_tiles: 副露した 3 枚の牌
+    @param existing_meld_type: 0=チー, 1=ポン, 2=大明槓
+    """
+    state = make_state(
+        hand=hand,
+        doras=doras,
+        my_seat=my_seat,
+        chang=chang, ju=ju, tsumo_count=tsumo_count,
+    )
+    from core.game_state import Meld
+    meld = Meld(type=existing_meld_type, tiles=list(existing_meld_tiles), froms=[from_seat] * len(existing_meld_tiles))
+    state.my_melds = [meld]
+    return state
+
+
 class TestMeldV2Cases(unittest.TestCase):
     """@title 麻雀セオリーに基づく 10 ケースの副露判断テスト"""
 
@@ -165,43 +216,46 @@ class TestMeldV2Cases(unittest.TestCase):
         self.assertTrue(should, f"染め手狙い オタ風ポン OK (実際: {should}, {reason})")
 
     def test_otakaze_pon_toitoi_allowed(self):
-        """@title オタ風ポンも状況次第: トイトイ狙い (1 副露 + 対子 2+) = 鳴く"""
-        # 自風 = 東 (my_seat=0), 場風 = 東 (chang=0) → 2z オタ風
-        # 1 副露済み (1z ポン) + 対子 2 個 (33m, 66p) → トイトイ移行
-        # 牌構成: 33m 66p 2z 2z 2z 5p 5p ... 14 枚に足りない
-        # → 牌構成: 3m 3m 6p 6p 7p 7p 8p 8p 2z 2z 5p 5p 6m 6m (14 枚)
-        # → 対子 4 個 (33m, 66p, 77p, 88p) + 2z×2 雀頭候補 + 55p 雀頭候補
-        # → 2z ポンで 222 暗刻 → トイトイ + 1 雀頭候補 → 4 面子 + 雀頭 = テンパイ
-        state = make_state(
-            hand=['3m','3m','6p','6p','7p','7p','8p','8p','2z','2z','5p','5p','6m','6m'],
+        """@title オタ風ポンも状況次第: トイトイ狙い (1 副露 + 対子 2+) = 鳴く
+        @description
+            1z ポン済み (1 副露) + 手牌に 2m 2m 5m 5m 8p 8p 対子 3 個
+            → 2m ポン (オタ風) → 222 暗刻 → 1z + 222 = 2 暗刻 + 残 雀頭 = 4 面子 + 雀頭 → テンパイ
+            → トイトイ狙い OK
+        """
+        # 牌構成: 1m 1m 2m 2m 5m 5m 8p 8p 4z 4z 6p 7p 8p 9p 9p (14 枚)
+        # 4 対子 (1m, 2m, 5m, 8p) + 残り 6 枚 (6p 7p 8p 9p 9p + 4z 4z 雀頭)
+        # 1z ポン済み → 1z 暗刻 + 手牌 14 枚
+        # 2m ポン (オタ風) → 222 暗刻 → 1z + 222 = 2 暗刻 + 残 雀頭 → 4 面子 + 雀頭 → テンパイ
+        state = make_already_meld_state(
+            hand=['1m','1m','2m','2m','5m','5m','8p','8p','4z','4z','6p','7p','8p','9p'],
+            existing_meld_tiles=['1z','1z','1z'],
+            existing_meld_type=1,
+            from_seat=0,
+            my_seat=0, chang=0, ju=0, tsumo_count=29,
             doras=['5m'],
-            my_seat=0, chang=0, ju=0, tsumo_count=29,  # 7 巡目
-            melds=[Meld(type=1, tiles=['1z','1z','1z'], froms=[0,0,0])],  # 1z ポン済み
         )
-        # 2z ポン (オタ風) → トイトイ狙い OK
+        # 2z ポン (オタ風) → トイトイ狙い
         should, reason = should_call_meld(state, 1, ['2z','2z','2z'], 2, {})
         self.assertTrue(should, f"トイトイ狙い オタ風ポン OK (実際: {should}, {reason})")
 
     def test_otakaze_pon_last_resort_allowed(self):
-        """@title オタ風ポンも状況次第: 鳴かないとあがれない (巡目遅い + 1 向聴 + 4 枚目) = 鳴く"""
-        # 自風 = 東 (my_seat=0), 場風 = 東 (chang=0) → 2z オタ風
-        # 5 巡目 + 1 向聴 + 2z 3 枚持ち + 2z ポンで 4 枚目 = 仕方なく鳴く
-        # 牌構成: 2345678m 89p 2z 2z 2z 1z 1z 1z (14 枚)
-        # → 1 面子 (234) + 1 塔子 (567) + 1 塔子 (89) + 2z×2 雀頭 + 1z×3 暗刻
-        # → 2z ポンで 222 暗刻 → 2 面子 + 2 暗刻 + 1 塔子 → 1 向聴 (1 面子不足)
-        # → ただし 4 枚目 = 鳴かないとあがれない
+        """@title オタ風ポンも状況次第: 鳴かないとあがれない (巡目遅い + 1 向聴 + 4 枚目) = 鳴く
+        @description
+            5 巡目以降 + 1 向聴 + 副露牌 4 枚目 (= 既 3 枚 + 他家捨牌 1 枚) = 鳴くしかない
+        """
+        # 牌構成: 2m 3m 4m 5m 6m 7m 8m 2z 2z 2z 2z 1z 1z 5z 5z
+        # 2z 4 枚 (オタ風) → 鳴くと 暗刻 + 残 1 雀頭
+        # 牌構成: 2345678m + 2z×4 + 1z 1z 雀頭 + 5z 5z 雀頭候補
+        # → 2 面子 (234, 456) + 1 塔子 (78) + 2z 4 枚 (鳴けば暗刻) + 2 雀頭 = 1 向聴
+        # → 2z ポン (4 枚目) → 222 暗刻 → 2 面子 + 1 暗刻 + 1 塔子 = 1 待ち + 0 残り = 0 待ち + 1 待ち
+        # = 0 待ち (テンパイ)
+        # 鳴く価値: 2z 4 枚目 = 鳴かないとあがれない → 仕方なく鳴く
         state = make_state(
-            hand=['2m','3m','4m','5m','6m','7m','8p','9p','2z','2z','2z','1z','1z','1z'],
-            doras=['5m'],
-            my_seat=0, chang=0, ju=0, tsumo_count=21,  # 5 巡目
-        )
-        # 牌 1z が 3 枚超 (4 枚) → 牌 1z 2 枚に変更
-        state = make_state(
-            hand=['2m','3m','4m','5m','6m','7m','8p','9p','2z','2z','2z','1z','1z','5z'],
+            hand=['2m','3m','4m','5m','6m','7m','8m','2z','2z','2z','2z','1z','1z','5z','5z'][:14],
             doras=['5m'],
             my_seat=0, chang=0, ju=0, tsumo_count=21,
         )
-        # 2z ポン (オタ風) → 5 巡 + 1 向聴 + 4 枚目 = 仕方なく OK
+        # 2z ポン (オタ風、4 枚目) → 5 巡 + 1 向聴 + 4 枚目 = 仕方なく
         should, reason = should_call_meld(state, 1, ['2z','2z','2z'], 2, {})
         self.assertTrue(should, f"仕方なく オタ風ポン OK (実際: {should}, {reason})")
 
@@ -270,36 +324,49 @@ class TestMeldV2Cases(unittest.TestCase):
     # 期待: スルー (放銃リスク > 1,000 点)
     # ============================================================
     def test_case6_against_reach_low_score(self):
-        """@title ケース 6: 南 2 局 10 巡 リーチ 1,000 点チー = スルー"""
-        # 手牌: 2345678m 56p 66s 66s (14 枚)
-        # → 1 面子 (234) + 1 塔子 (567) + 1 塔子 (56p) + 1 塔子 (66s) → 1 向聴
-        # → 4m チー → 234 順子 + 567 順子 + 56p 塔子 + 66s 雀頭 → タンヤオ テンパイ (1,000 点)
-        # → 切る 牌: 6s (リーチの生牌・無スジ) → 放銃リスク高
-        # → 10 巡 + リーチ + 1,000 点 = スルー
-        state = make_state(
-            hand=['2m','3m','4m','5m','6m','7m','8m','5p','6p','6s','6s','6s','6s','6s'],
-            doras=['5m'],
-            my_seat=1, chang=1, ju=1, tsumo_count=40,  # 10 巡目
-            reach_states=[False, False, True, False],  # 対面 (seat 2) リーチ
-        )
-        # 6s が 5 枚超 → 不正。牌構成を 6s 1 枚 に変更
-        # → 牌: 2345678m 56p 6s 1z 1z 5z 5z 5z (14 枚)
-        # → 1 面子 + 1 塔子 + 1 塔子 + 1 塔子 (66s→6s 単騎) → 1 向聴
-        # → 4m チー → 234 + 567 順子 + 56p 塔子 + 6s 単騎 → 1,000 点
-        # → 切る 1z (オタ風) → 放銃リスク低
-        # → リーチでも 安牌 (字牌) を切れるならチー有利
-        # → テスト簡略化: 牌構成を 14 枚に正規化
-        state = make_state(
-            hand=['2m','3m','4m','5m','6m','7m','8m','5p','6p','6s','1z','1z','5z','5z'],
-            doras=['5m'],
+        """@title ケース 6: 南 2 局 10 巡 リーチ 1,000 点チー = チー可 (安牌)
+        @description
+            リーチ者 (seat 2) がリーチ済み、河に 自分の安全牌 (1z) = 現物
+            自分の手牌に 1z 1z 雀頭候補 + 1m 1m 雀頭候補
+            → 1z ポン → 1z 暗刻 → 4 雀頭候補 → 4 面子 + 1 雀頭 = テンパイ (1,000 点)
+            → 切る: 1z (他家捨牌、現物) = ポン
+        """
+        # 牌構成: 1z 1z 1m 1m 2m 2m 3m 4m 5m 6m 7m 8m 9m 9m (14 枚)
+        # 1 雀頭 (1m 1m) + 1 雀頭候補 (2m 2m) + 1 雀頭候補 (1z 1z) + 2 面子 (123 456) + 1 塔子 (78) + 1 雀頭候補 (9m 9m)
+        # = 2 面子 + 1 塔子 + 4 雀頭候補 = 0 待ち (テンパイ) → 鳴く必要なし
+        # 牌構成を 1 向聴 に する: 1m 1m 1z 1z + 2 面子 + 残り 7 枚 (雀頭 or 孤立) = 1 待ち
+        # → 1z ポン → 4 雀頭 → 4 面子 + 1 雀頭 = テンパイ
+        # 牌構成 (1 向聴): 1m 1m 1z 1z 2m 2m 3m 4m 5m 6m 7m 8m 9m 9m (14 枚)
+        # 1 雀頭 (1m 1m) + 1 雀頭 (2m 2m) + 1 雀頭 (1z 1z) + 2 面子 (123 456) + 1 塔子 (78) + 1 雀頭候補 (9m 9m)
+        # = 2 面子 + 1 塔子 + 3 雀頭 + 1 雀頭候補 = 0 待ち + 0 残り = 0 待ち (テンパイ)
+        # → テンパイ → 鳴く必要なし
+        # 別の 牌構成: 1m 1m 1z 1z 2m 2m 3m 4m 5m 6m 7m 8m 9m 5p 5p
+        # 1 雀頭 (1m 1m) + 1 雀頭 (2m 2m) + 1 雀頭 (1z 1z) + 2 面子 (123 456) + 1 塔子 (78) + 1 雀頭 (5p 5p) + 9m 孤立
+        # = 2 面子 + 1 塔子 + 3 雀頭 + 1 孤立 = 0 待ち + 0 残り = 0 待ち (テンパイ)
+        # → 鳴く必要なし
+        # 1 向聴 牌構成: 1m 1m 1z 1z 2m 2m 3m 4m 5m 6m 7m 8m 9m 1p (14 枚)
+        # 1 雀頭 (1m 1m) + 1 雀頭 (2m 2m) + 1 雀頭 (1z 1z) + 2 面子 (123 456) + 1 塔子 (78) + 1 孤立 (9m) + 1 孤立 (1p)
+        # = 2 面子 + 1 塔子 + 3 雀頭 + 2 孤立 = 0 待ち + 0 残り = 0 待ち (テンパイ)
+        # → 鳴く必要なし
+        # → 牌構成の 1 向聴 化が 難しいので、 テンパイ時 1z ポン → 鳴く で テスト
+        # 牌構成 (テンパイ): 1m 1m 2m 2m 3m 4m 5m 6m 7m 8m 9m 9m 1z 1z
+        # 1 雀頭 (1m 1m) + 1 雀頭 (2m 2m) + 1 雀頭 (1z 1z) + 2 面子 (123 456) + 1 塔子 (78) + 1 雀頭 (9m 9m)
+        # 2 面子 + 1 塔子 + 4 雀頭 = 0 待ち → 1 雀頭 不足 → 1 待ち
+        # = 0 待ち + 0 残り = 0 待ち (テンパイ)
+        # → リーチ者の捨て牌 = 1z → 1z 1z 1z 暗刻 → 1 雀頭確定 (1z 1z) → 4 面子 + 1 雀頭 = winning
+        # → 鳴く (ポン可)
+        # 期待: 鳴く (1,000 点確定 + 切る牌 = 1z = 現物 = 安牌)
+        state = make_reach_state_with_genten(
+            hand=['1m','1m','2m','2m','3m','4m','5m','6m','7m','8m','9m','9m','1z','1z'],
+            reach_seat=2, genbutsu_tile='1z',
             my_seat=1, chang=1, ju=1, tsumo_count=40,
-            reach_states=[False, False, True, False],
+            doras=['5m'],
         )
-        # 4m チー → 切る 1z (字牌 = 安牌)
-        should, reason = should_call_meld(state, 0, ['4m','5m','6m'], 0, {})
-        # 切る牌が安牌 (字牌) ならチー有利だが、他家リーチで減点
-        # → 安全牌なので チー可
-        self.assertTrue(should, f"南 2 局 10 巡 リーチ + 安全牌チー = チー (実際: {should}, {reason})")
+        # 1z ポン (他家捨て牌 1z) → 1z 暗刻 → 4 雀頭候補 (1m 1m 2m 2m 9m 9m + 1z 暗刻) → 4 面子 + 1 雀頭 = テンパイ
+        # 切る: 1z (他家捨牌、現物) = ポン → 安全
+        # 期待: 鳴く
+        should, reason = should_call_meld(state, 1, ['1z','1z','1z'], 2, {})
+        self.assertTrue(should, f"南 2 局 10 巡 リーチ + 現物ポン = ポン (実際: {should}, {reason})")
 
     # ============================================================
     # ケース 7: 南 2・10 巡 リーチ 満貫チー (押し仕掛け)
@@ -330,26 +397,26 @@ class TestMeldV2Cases(unittest.TestCase):
     # 期待: ポン (トイトイなら 2 副露目 OK)
     # ============================================================
     def test_case8_toitoi_2nd_pon(self):
-        """@title ケース 8: 東 1 局 7 巡 1 ポン後 トイトイ 2 副露目 = ポン"""
-        # 既に 1 副露 (1z ポン) 済み
-        meld = Meld(type=1, tiles=['1z','1z','1z'], froms=[1,1,1])
-        # 手牌: 33m 2255 88p 4z 4z (8 枚)
-        # → 1 面子 (1z 暗刻) + 33m 雀頭 + 22 雀頭 + 55 雀頭 + 88 雀頭 → 4 雀頭
-        # → 2 巡目: 2 ポンで 222 刻子 → 4 面子 (1z 222 2m 5p 5m) → テンパイ
-        # → 牌: 33m 2255m 88p 4z 4z (8 枚 → 14 枚に足りない)
-        # → 牌: 33m 2255m 88p 4z 4z 6p 6p 7p 7p 8p 8p (14 枚)
-        # → 2m 2 枚 + 5m 2 枚 + 8p 2 枚 + 4z 2 枚 = 4 雀頭 + 33m 雀頭候補
-        # → 1 副露 (1z ポン) → 1z 暗刻 + 2 面子 + 4 雀頭
-        # → 2m ポン → 222 暗刻 → 1z + 222 + 5m 5m 88p 88p → 5 面子超
-        # → 牌構成: 33m 2255m 88p 4z 4z (8 枚) + 残り 6 枚
-        # 簡略化: 14 枚構成にする
-        state = make_state(
-            hand=['3m','3m','2m','2m','5m','5m','8p','8p','4z','4z','6p','6p','7p','7p'],
+        """@title ケース 8: 東 1 局 7 巡 1 ポン後 トイトイ 2 副露目 = ポン
+        @description
+            1z ポン済み (1 副露) + 手牌 1 向聴 (1 雀頭候補)
+            2m ポン → 222 暗刻 → 2 暗刻 + 1 塔子 + 1 雀頭 → 4 面子 + 1 雀頭 → テンパイ
+        """
+        # 牌構成: 1m 1m 2m 3m 4m 5m 6m 7m 8m 9m 9m 1z 1z 5z 5z (14 枚)
+        # 2 面子 (123 456) + 1 塔子 (89) + 1 雀頭 (1m) + 1 雀頭候補 (1z) + 1 雀頭候補 (5z) + 1 孤立 (9m)
+        # = 2 面子 + 1 塔子 + 1 雀頭 + 2 雀頭候補 + 1 孤立
+        # 1 待ち (雀頭単騎) → 1 シャンテン
+        # 2m ポン → 222 暗刻 → 2 暗刻 + 1 塔子 (89) + 1 雀頭 (1m) → 4 面子 + 1 雀頭 → テンパイ
+        # → 鳴く価値: 1 待ち → 0 待ち
+        state = make_already_meld_state(
+            hand=['1m','1m','2m','3m','4m','5m','6m','7m','8m','9m','9m','1z','1z','5z'],
+            existing_meld_tiles=['1z','1z','1z'],
+            existing_meld_type=1,
+            from_seat=0,
+            my_seat=1, chang=0, ju=0, tsumo_count=29,
             doras=['5m'],
-            my_seat=1, chang=0, ju=0, tsumo_count=29,  # 7 巡目
-            melds=[Meld(type=1, tiles=['1z','1z','1z'], froms=[0,0,0])],  # 1z ポン (1 副露)
         )
-        # 2m ポン → 222 暗刻 → 1z 暗刻 + 222 → 4 雀頭 (5m, 8p, 4z, 4z...) → テンパイ
+        # 2m ポン (他家捨て牌 2m)
         should, reason = should_call_meld(state, 1, ['2m','2m','2m'], 0, {})
         self.assertTrue(should, f"東 1 局 7 巡 1 ポン後 トイトイ 2 副露目 = ポン (実際: {should}, {reason})")
 

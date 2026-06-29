@@ -512,8 +512,14 @@ def score_kyohaku(state, params) -> Tuple[float, str]:
 # 要素 13: 巡目 (序盤減点)
 # ============================================================
 def score_turn_early(state, params) -> Tuple[float, str]:
-    """@title 13. 巡目 (序盤は減点)"""
+    """@title 13. 巡目 (序盤は減点)
+    @description 既 1 副露以上 = 序盤減点 0 (トイトイ等の 2 副露目 を許容)
+    """
     w = get_weights(params)
+    # 既 1 副露以上なら 序盤減点 なし
+    open_meld_count = sum(1 for m in state.my_melds if m.is_open)
+    if open_meld_count >= 1:
+        return 0.0, f"既 {open_meld_count} 副露 (序盤減点なし)"
     turn = (state.tsumo_count - 1) // 4 + 1
     if turn <= 3:
         return -w['MELD_W_TURN_EARLY_PENALTY'] * 0.8, f"序盤 {turn} 巡 (面子の自由度維持)"
