@@ -236,21 +236,27 @@ class EvaluatorV2:
 
     def should_riichi(self) -> bool:
         """
-        @title 立直判定
-        @description ver.1 Evaluator に委譲 (玉座の間スタッツ準拠の重み付きスコア)
+        @title 立直判定 (ver.2 加減算モデル)
+        @description core/riichi_v2.py の 自前実装
         """
+        from core.riichi_v2 import should_riichi as _should_riichi_v2
         try:
-            return self._v1_evaluator().should_riichi()
+            return _should_riichi_v2(self.state, self.params)
         except Exception:
             return False
 
     def should_kan(self) -> bool:
         """
-        @title 槓判定 (暗槓・加槓)
-        @description ver.1 Evaluator に委譲
+        @title 槓判定 (暗槓・加槓・大明槓)
+        @description core/riichi_v2.py の 自前実装 (meld_v2 委譲)
         """
+        from core.riichi_v2 import should_kan as _should_kan_v2
         try:
-            return self._v1_evaluator().should_kan()
+            # 加槓は 嶺上牌 + 1 枚 を加えるので call_type=1 (ポン) として
+            # 槓元の牌 + 嶺上牌 で ポン判定 する代わりに
+            # ここでは meld_v2.should_call_meld に 委譲 する 簡易版
+            from core.meld_v2 import should_call_meld
+            return should_call_meld(self.state, 1, self.state.my_hand[-1:] * 2, 0, self.params)
         except Exception:
             return False
 
