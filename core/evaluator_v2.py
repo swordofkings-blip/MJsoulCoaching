@@ -229,6 +229,81 @@ class EvaluatorV2:
         else:
             return ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count) <= -1
 
+    def _v1_evaluator(self):
+        """ver.1 Evaluator への委譲 (should_riichi 等の複雑なメソッド用)"""
+        from core.evaluator import Evaluator
+        return Evaluator(self.state, params=self.params)
+
+    def should_riichi(self) -> bool:
+        """
+        @title 立直判定
+        @description ver.1 Evaluator に委譲 (玉座の間スタッツ準拠の重み付きスコア)
+        """
+        try:
+            return self._v1_evaluator().should_riichi()
+        except Exception:
+            return False
+
+    def should_kan(self) -> bool:
+        """
+        @title 槓判定 (暗槓・加槓)
+        @description ver.1 Evaluator に委譲
+        """
+        try:
+            return self._v1_evaluator().should_kan()
+        except Exception:
+            return False
+
+    def should_ankan(self) -> bool:
+        """@title 暗槓判定"""
+        try:
+            return self._v1_evaluator().should_ankan()
+        except Exception:
+            return False
+
+    def should_kakan(self, tile: str) -> bool:
+        """@title 加槓判定"""
+        try:
+            return self._v1_evaluator().should_kakan(tile)
+        except Exception:
+            return False
+
+    def should_daiminkan(self, tile: str, from_seat: int) -> bool:
+        """@title 大明槓判定"""
+        try:
+            return self._v1_evaluator().should_daiminkan(tile, from_seat)
+        except Exception:
+            return False
+
+    def should_call_meld(self, call_type: int, tiles: List[str], from_seat: int) -> bool:
+        """
+        @title 鳴き判定 (チー・ポン・大明槓)
+        @description ver.1 Evaluator に委譲 (MELD_GAP_MAX 等の重み)
+        """
+        try:
+            return self._v1_evaluator().should_call_meld(call_type, tiles, from_seat)
+        except Exception:
+            return False
+
+    def should_go_kokushi_13(self) -> bool:
+        """
+        @title 国士無双 13 面待ち判定
+        @description テンパイ時に 13 種全部 幺九牌ならツモる (国士)
+        """
+        from str_converter import hand_to_counts
+        hand_counts = hand_to_counts(self.state.my_hand)
+        yaochu_ids = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        yaochu_kinds = sum(1 for i in yaochu_ids if hand_counts[i] >= 1)
+        return yaochu_kinds >= 13
+
+    def get_tile_description(self, tile: str) -> str:
+        """@title 牌の日本語説明"""
+        return _to_japanese(tile)
+
+    def record_detail(self, label: str, value) -> None:
+        """@title デバッグ用: 詳細ログ (no-op)"""
+        pass
+
     def describe_hand_structure(self) -> str:
         """
         @title 手牌構造の解説
@@ -269,6 +344,23 @@ def _detect_yakuman_type(state) -> str:
     from core.yakuman_v2 import get_active_yakuman
     y = get_active_yakuman(state)
     return y or 'kokushi'
+
+
+def _to_japanese(tile: str) -> str:
+    """@title 牌の日本語表記"""
+    from str_converter import tile_to_id
+    tid = tile_to_id(tile)
+    if tid is None or tid < 0:
+        return tile
+    if 0 <= tid <= 26:  # 数牌
+        n = (tid % 9) + 1
+        suit = '萬' if tid < 9 else ('筒' if tid < 18 else '索')
+        if tile.startswith('0'):
+            return f"赤{n}{suit}"
+        return f"{n}{suit}"
+    # 字牌
+    honors = ['東', '南', '西', '北', '白', '發', '中']
+    return honors[tid - 27]
 
 
 def _explain_difference(chosen: str, other: str, layer: int, a, b, layer_name: str) -> str:
