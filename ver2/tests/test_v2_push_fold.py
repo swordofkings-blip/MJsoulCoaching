@@ -18,15 +18,17 @@ from core.push_fold_v2 import (
 
 
 def make_state(hand: List[str], doras: List[str] = None, my_seat: int = 0,
-               chang: int = 0, ju: int = 0, tsumo_count: int = 7,
-               reach_states: List[bool] = None, scores: List[int] = None,
-               left_tile_count: int = 70, dealer_seat: int = 0,
-               rivers: List[List[str]] = None) -> GameState:
+               chang: int = 0, ju: int = 0, ben: int = 0, liqibang: int = 0,
+               tsumo_count: int = 7, reach_states: List[bool] = None,
+               scores: List[int] = None, left_tile_count: int = 70,
+               dealer_seat: int = 0, rivers: List[List[str]] = None) -> GameState:
     state = GameState()
     state.my_hand = list(hand)
     state.my_seat = my_seat
     state.chang = chang
     state.ju = ju
+    state.ben = ben
+    state.liqibang = liqibang
     state.tsumo_count = tsumo_count
     state.doras = doras or ['1m']
     state.reach_states = [ReachState() for _ in range(4)]
@@ -340,11 +342,11 @@ class TestNewRules(unittest.TestCase):
         self.assertEqual(diff, -8000, f"2位 との 点差 = -8000 (実測 {diff})")
 
     def test_honba_count(self):
-        """@title 5.④ 供託 本場"""
+        """@title 5.④ 本場 数"""
         from core.push_fold_v2 import get_honba_count
         s = make_state(hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p','5p'],
-                       chang=3)
-        self.assertEqual(get_honba_count(s), 3, f"供託 3本 (実測 {get_honba_count(s)})")
+                       ben=3)
+        self.assertEqual(get_honba_count(s), 3, f"本場 3本 (実測 {get_honba_count(s)})")
 
     def test_tobi_risk_high(self):
         """@title 6.③ トビ リスク 大: 持ち点 < 1,000 = 大"""

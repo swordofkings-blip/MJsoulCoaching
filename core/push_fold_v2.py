@@ -417,11 +417,11 @@ def is_orasu(state) -> bool:
 
 def get_honba_count(state) -> int:
     """
-    @title 供託 本場 (= 供託リーチ棒 数)
-    @returns 供託 本場
+    @title 本場数 (積棒の数)
+    @returns 本場数 (1本につきあがり時の点数が300点加算される)
     """
-    if hasattr(state, 'chang'):
-        return state.chang
+    if hasattr(state, 'ben'):
+        return state.ben
     return 0
 
 
@@ -478,13 +478,16 @@ def get_tobi_risk(state) -> Tuple[int, str]:
 
 def get_riichi_sticks(state) -> int:
     """
-    @title 場 の リーチ 棒 (= 供託 1000点棒) の 数
-    @description 立直 が かかる ごと に +1 本 (= 1,000 点)
+    @title 場の リーチ 棒 (= 供託 1000点棒) の 数
+    @description 持ち越し供託棒 (liqibang) + 現在リーチしている他家のリーチ棒
     @returns リーチ 棒 数
     """
-    if not hasattr(state, 'reach_states'):
-        return 0
-    return sum(1 for rs in state.reach_states if rs is not None and rs.is_reach)
+    total = 0
+    if hasattr(state, 'liqibang'):
+        total += state.liqibang
+    if hasattr(state, 'reach_states'):
+        total += sum(1 for rs in state.reach_states if rs is not None and rs.is_reach)
+    return total
 
 
 # ============================================================
@@ -651,6 +654,12 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
     hand_w = rules.get('_HAND_WEIGHT', 1.0)
     sit_w = rules.get('_SITUATION_WEIGHT', 1.0)
 
+    # 他家リーチ数 (先行リーチ判定などで定義前に使われるのを防ぐため、関数先頭で定義)
+    opp_reach_count = sum(1 for s in range(4)
+                          if s != state.my_seat
+                          and state.reach_states[s] is not None
+                          and state.reach_states[s].is_reach)
+
     reasons = []
     hand_score = 0
     sit_score = 0
@@ -669,9 +678,12 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
 
     # === 1. 確定打点 (1.①) ===
     han = get_effective_han(state)
-    if han >= 4:  # 4翻以上 (跳満以上) = ダマテン 推奨
-        hand_score -= 150  # ダマテン 寄り (警戒 ロス)
-        reasons.append(f"高打点 ({han}翻 → 跳満以上) ダマテン 寄り (-150)")
+    if han >= 5:  # 5翻以上 (倍満以上) = ダマテン 推奨
+        hand_score -= 150  # ダマテン 寄り (打点 上限キャップ)
+        reasons.append(f"高打点 ({han}翻 → 倍満以上) ダマテン 寄り (-150)")
+    elif han >= 4:  # 4翻 (跳満) = 中打点
+        hand_score += 50
+        reasons.append(f"中打点 ({han}翻 → 跳満) 押す (+50)")
     elif han >= rules['PUSH_HAN_THRESHOLD']:
         hand_score += 100
         reasons.append(f"中打点 ({han}翻) 押す")
@@ -760,18 +772,23 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         hand_score -= 80
         reasons.append("待ち が ドラ・赤ドラ (2.④) 絶対手放さない")
 
-    # === 3.① 巡目 (han 依存) ===
+    # === 3.① 巡目 (状況 依存) ===
     turn = (state.tsumo_count - 1) // 4 + 1 if state.tsumo_count > 0 else 1
     if turn >= rules['PUSH_LATE_TURN']:
-        sit_score -= 50  # 終盤 = オリ 寄り (手替わり 期待 薄、 ダマテン 評価)
+        sit_score -= 50  # 終盤 = オリ 寄り
         reasons.append(f"終盤 ({turn}巡) オリ 寄り (-50)")
     elif turn <= rules['PUSH_EARLY_TURN']:
-        # 序盤 = han 依存: han=0 → 即リー, han>=1 → ダマテン
+        # 序盤: 先制テンパイ + リーチ な し → 即リー 寄り
+        # 序盤: han=0 → 即リー, han>=1 → ダマテン
         if han == 0:
-            sit_score -= 50
-            reasons.append(f"序盤 ({turn}巡) + 0 翻 → 即リー 寄り")
+            if opp_reach_count == 0:
+                sit_score += 30  # 先制テンパイ + リーチ な し → 即リー
+                reasons.append(f"序盤 ({turn}巡) + 0 翻 + 先制テンパイ → 即リー 寄り (+30)")
+            else:
+                sit_score -= 30
+                reasons.append(f"序盤 ({turn}巡) + リーチ {opp_reach_count}家 → オリ 寄り")
         else:
-            sit_score -= 150
+            sit_score -= 50
             reasons.append(f"序盤 ({turn}巡) + {han}翻 → ダマテン 寄り")
 
     # === 3.② 残り ツモ 回数 ===
@@ -789,13 +806,10 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         reasons.append("ハイテイ 近い (3.③)")
 
     # === 4.① 先行リーチ ===
-    opp_reach_count = sum(1 for s in range(4)
-                          if s != state.my_seat
-                          and state.reach_states[s] is not None
-                          and state.reach_states[s].is_reach)
+    # (opp_reach_count は 関数先頭で定義済み)
     if opp_reach_count >= 2:
-        sit_score -= 150
-        reasons.append(f"他家リーチ {opp_reach_count}家 危険 (4.①) オリ 寄り")
+        sit_score -= 250
+        reasons.append(f"他家リーチ {opp_reach_count}家 危険 (4.①) オリ 寄り (-250)")
     elif opp_reach_count == 1:
         sit_score -= 20
         reasons.append(f"他家リーチ 1家 (4.①)")
@@ -819,14 +833,20 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         margin_top = my_score - max_score
         margin_last = my_score - min_score
 
-        if margin_top == 0:
-            # 役ありテンパイ (han >= 1) かつ トップ目 かつ オーラス なら ダマテン最優先
+        # 4人同点判定 (全員 25000 点 など)
+        all_tied = (max_score == min_score)
+
+        if margin_top == 0 and not all_tied:
+            # 役ありテンパイ + トップ目 + オーラス なら ダマテン最優先
             if is_orasu(state) and han >= 1:
                 sit_score -= 200
                 reasons.append("オーラス・トップ目・役ありテンパイ (5.①) ダマテン最優先 (-200)")
             else:
                 sit_score -= 30
                 reasons.append("トップ目 オリ逃げ (5.①) (-30)")
+        elif margin_top == 0 and all_tied:
+            # 4人同点 → オリ逃げ な し (平場)
+            pass
         elif margin_last == 0:
             sit_score += 100
             reasons.append("ラス目 押す (5.①)")
@@ -839,8 +859,18 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
 
         if rules['PUSH_DEALER_BONUS'] and hasattr(state, 'dealer_seat'):
             if state.dealer_seat == state.my_seat:
-                sit_score += 40
-                reasons.append("親番 連荘狙い (5.①)")
+                if opp_reach_count == 0:
+                    # 親 先制テンパイ + リーチ な し
+                    # 終盤（14巡以降）は即リー最強ボーナスを適用しない
+                    if turn < 14:
+                        sit_score += 150
+                        reasons.append("親番 先制テンパイ (5.①) 最強 (+150)")
+                    else:
+                        sit_score += 40
+                        reasons.append("親番 終盤テンパイ 連荘狙い (5.①) (+40)")
+                else:
+                    sit_score += 40
+                    reasons.append("親番 連荘狙い (5.①)")
 
     # === 5.② オーラス / 局数 ===
     if is_orasu(state):
@@ -867,13 +897,13 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         reasons.append(f"2位 と {target_diff}点 (5.③)")
 
     # === 5.④ 供託リーチ棒 ===
-    honba = get_honba_count(state)
-    if honba >= 3:
+    riichi_sticks = get_riichi_sticks(state)
+    if riichi_sticks >= 3:
         sit_score += 50
-        reasons.append(f"供託 {honba}本 価値大 (5.④) +{honba * 1000}点")
-    elif honba >= 1:
+        reasons.append(f"供託リーチ棒 {riichi_sticks}本 価値大 (5.④) +{riichi_sticks * 1000}点")
+    elif riichi_sticks >= 1:
         sit_score += 20
-        reasons.append(f"供託 {honba}本 (5.④)")
+        reasons.append(f"供託リーチ棒 {riichi_sticks}本 (5.④) +{riichi_sticks * 1000}点")
 
     # === 6.③ トビ リスク (雀魂ルール: 0点まで使ってOK) ===
     tobi_level, tobi_msg = get_tobi_risk(state)

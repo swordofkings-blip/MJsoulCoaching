@@ -74,16 +74,16 @@ def gen_tenpai_hand(must_include=None, seed=0, max_total=50000):
 # 10 ケース 設定
 CASE_CONFIGS = [
     # (name, doras, must_include, ju, chang, tsumo_count, my_seat, dealer_seat, reach_states, scores, left_tile, expected)
-    ('ケース①', ['1m'], ['2m','2m','2m'], 0, 0, 24, 0, 0, [False]*4, None, 70, 'push'),
-    ('ケース②', ['5m'], None, 1, 0, 16, 0, 0, [False]*4, None, 70, 'push'),
-    ('ケース③', ['1z'], None, 2, 0, 32, 0, 0, [False]*4, None, 70, 'push'),
+    ('ケース①', ['1m'], ['2m','2m','2m'], 0, 0, 24, 1, 0, [False]*4, None, 70, 'push'),  # 子
+    ('ケース②', ['5m'], None, 1, 0, 16, 1, 0, [False]*4, None, 70, 'push'),  # 子
+    ('ケース③', ['1z'], None, 2, 0, 32, 1, 0, [False]*4, None, 70, 'push'),  # 子
     ('ケース④', ['1z'], None, 3, 0, 36, 0, 0, [False]*4, None, 70, 'push'),  # 親
-    ('ケース⑤', ['5m','5p'], ['6m','6p'], 0, 1, 40, 1, 0, [False,True,False,False], None, 70, 'push'),
-    ('ケース⑥', ['1z'], None, 3, 3, 36, 1, 0, [False]*4, [25000,32000,25000,18000], 70, 'neutral'),
-    ('ケース⑦', ['1z','1m'], ['2z','2z','2z','2z','2m','2m'], 1, 0, 32, 0, 0, [False]*4, None, 70, 'neutral'),  # ドラ 5-6 翻 → 倍満 → ダマテン
-    ('ケース⑧', ['1z'], None, 2, 0, 64, 0, 0, [False]*4, None, 4, 'neutral'),
-    ('ケース⑨', ['1z'], None, 1, 1, 44, 1, 0, [True,False,True,False], None, 70, 'fold'),
-    ('ケース⑩', ['5s'], ['6s','6s'], 0, 0, 12, 0, 0, [False]*4, None, 70, 'neutral'),  # ドラ 2 翻
+    ('ケース⑤', ['5m','5p'], ['6m','6p'], 0, 1, 40, 1, 0, [False,True,False,False], None, 70, 'push'),  # 子
+    ('ケース⑥', ['1z'], None, 3, 3, 36, 1, 0, [False]*4, [25000,32000,25000,18000], 70, 'neutral'),  # 子
+    ('ケース⑦', ['1z','1m'], ['2z','2z','2z','2z','2m','2m'], 1, 0, 32, 1, 0, [False]*4, None, 70, 'neutral'),  # 子、倍満
+    ('ケース⑧', ['1z'], None, 2, 0, 64, 1, 0, [False]*4, None, 4, 'neutral'),  # 子、終盤
+    ('ケース⑨', ['1z'], None, 1, 1, 44, 1, 0, [True,False,True,False], None, 70, 'fold'),  # 子、オリ
+    ('ケース⑩', ['5s'], ['6s','6s'], 0, 0, 12, 1, 0, [False]*4, None, 70, 'neutral'),  # 子、好形手替わり
 ]
 
 
