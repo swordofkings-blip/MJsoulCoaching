@@ -440,6 +440,27 @@ class TestEvaluator(unittest.TestCase):
         # 選ばれた牌がハンド内に存在する
         self.assertIn(best, hand_list, f"打牌がハンド内に存在 (実際={best})")
 
+    def test_describe_hand_structure_1_shanten(self):
+        """@title describe_hand_structure: 1 向聴手の構成を日本語で返す"""
+        state = make_state(
+            hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','4p','5p','6p','7p'],
+        )
+        ev = EvaluatorV2(state)
+        desc = ev.describe_hand_structure()
+        self.assertIn('1 向聴', desc, f"1 向聴が含まれる (実際={desc})")
+        self.assertIn('3 面子', desc, f"3 面子が含まれる (実際={desc})")
+        self.assertIn('2 塔子', desc, f"2 塔子が含まれる (実際={desc})")
+
+    def test_describe_hand_structure_tenpai(self):
+        """@title describe_hand_structure: テンパイ (0 向聴) の構成を日本語で返す"""
+        state = make_state(
+            hand=['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','5p','6p'],
+        )
+        ev = EvaluatorV2(state)
+        desc = ev.describe_hand_structure()
+        self.assertIn('テンパイ', desc, f"テンパイが含まれる (実際={desc})")
+        self.assertIn('4 面子', desc, f"4 面子が含まれる (実際={desc})")
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

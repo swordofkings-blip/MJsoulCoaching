@@ -229,6 +229,27 @@ class EvaluatorV2:
         else:
             return ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count) <= -1
 
+    def describe_hand_structure(self) -> str:
+        """
+        @title 手牌構造の解説
+        @description 面子手 (雀頭・塔子・面子) の構成を日本語で説明する。
+                    例: 「3 面子 + 1 雀頭 + 0 塔子 (1 向聴)」
+        @returns 日本語の説明文
+        """
+        hand_counts = list(self.state.my_hand_counts())
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        sh, melds, pairs, taatsu = ShantenCalculatorV2.explain_hand_structure(hand_counts, open_meld_count)
+        if sh <= -1:
+            return f"和了形 ({melds} 面子 + {pairs} 雀頭)"
+        label = {0: 'テンパイ', 1: '1 向聴', 2: '2 向聴', 3: '3 向聴',
+                 4: '4 向聴', 5: '5 向聴', 6: '6 向聴', 7: '7 向聴', 8: '8 向聴'}.get(sh, f'{sh} 向聴')
+        parts = [f"{melds} 面子"]
+        if pairs > 0:
+            parts.append(f"{pairs} 雀頭")
+        if taatsu > 0:
+            parts.append(f"{taatsu} 塔子")
+        return f"{label} (" + " + ".join(parts) + ")"
+
 
 def _dora_loss(state, tile: str) -> int:
     """@title ドラ表示牌を捨てる際の損失"""
