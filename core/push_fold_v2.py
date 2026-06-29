@@ -669,9 +669,9 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
 
     # === 1. 確定打点 (1.①) ===
     han = get_effective_han(state)
-    if han >= rules['PUSH_HIGH_HAN_THRESHOLD']:
-        hand_score += 200
-        reasons.append(f"高打点 ({han}翻 → 跳満以上) 必ず押す")
+    if han >= 4:  # 4翻以上 (跳満以上) = ダマテン 推奨
+        hand_score += 0  # ダマテン 寄り (警戒 ロス)
+        reasons.append(f"高打点 ({han}翻 → 跳満以上) ダマテン 寄り")
     elif han >= rules['PUSH_HAN_THRESHOLD']:
         hand_score += 100
         reasons.append(f"中打点 ({han}翻) 押す")
@@ -682,13 +682,17 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         hand_score -= 80
         reasons.append(f"役なし (1.③ 0翻) オリ")
 
-    # === 1.② リーチ打点上昇幅 ===
+    # === 1.② リーチ打点上昇幅 (han 依存) ===
     riichi_benefit = calc_riichi_benefit(state, han)
-    if riichi_benefit >= 100:  # 2 倍以上
-        hand_score += 60
+    if han == 0:
+        # 0 翻 = 役なし → リーチ = 役 確定 → 価値 極めて大
+        hand_score += 50
+        reasons.append(f"リーチ 打点上昇 (0 翻 → 役確定, +50)")
+    elif riichi_benefit >= 100:
+        hand_score += 20
         reasons.append(f"リーチ 打点上昇 大 ({riichi_benefit:.0f}%)")
     elif riichi_benefit >= 30:
-        hand_score += 30
+        hand_score += 20
         reasons.append(f"リーチ 打点上昇 中 ({riichi_benefit:.0f}%)")
     else:
         hand_score -= 30
@@ -756,14 +760,19 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         hand_score -= 80
         reasons.append("待ち が ドラ・赤ドラ (2.④) 絶対手放さない")
 
-    # === 3.① 巡目 ===
+    # === 3.① 巡目 (han 依存) ===
     turn = (state.tsumo_count - 1) // 4 + 1 if state.tsumo_count > 0 else 1
     if turn >= rules['PUSH_LATE_TURN']:
-        sit_score += 60
+        sit_score += 30
         reasons.append(f"終盤 ({turn}巡) 押す")
     elif turn <= rules['PUSH_EARLY_TURN']:
-        sit_score -= 60
-        reasons.append(f"序盤 ({turn}巡) オリ")
+        # 序盤 = han 依存: han=0 → 即リー, han>=1 → ダマテン
+        if han == 0:
+            sit_score -= 50
+            reasons.append(f"序盤 ({turn}巡) + 0 翻 → 即リー 寄り")
+        else:
+            sit_score -= 150
+            reasons.append(f"序盤 ({turn}巡) + {han}翻 → ダマテン 寄り")
 
     # === 3.② 残り ツモ 回数 ===
     rem_tsumo = remaining_tsumo_count(state)
@@ -776,7 +785,7 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
 
     # === 3.③ ハイテイ ===
     if is_near_haitei(state):
-        sit_score -= 20
+        sit_score -= 40
         reasons.append("ハイテイ 近い (3.③)")
 
     # === 4.① 先行リーチ ===
@@ -785,7 +794,7 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
                           and state.reach_states[s] is not None
                           and state.reach_states[s].is_reach)
     if opp_reach_count >= 2:
-        sit_score -= 60
+        sit_score -= 120
         reasons.append(f"他家リーチ {opp_reach_count}家 危険 (4.①)")
     elif opp_reach_count == 1:
         sit_score -= 20
@@ -811,13 +820,17 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
         margin_last = my_score - min_score
 
         if margin_top == 0:
-            sit_score -= 100
+            sit_score -= 50
             reasons.append("トップ目 オリ逃げ (5.①)")
+            # オーラス + トップ = 強 減点 (ダマテン 寄り)
+            if is_orasu(state):
+                sit_score -= 100
+                reasons.append("オーラス + トップ → ダマテン 強化 (-100)")
         elif margin_last == 0:
             sit_score += 100
             reasons.append("ラス目 押す (5.①)")
         elif margin_top > rules['PUSH_TOP_PLACE_MARGIN']:
-            sit_score -= 50
+            sit_score -= 30
             reasons.append(f"トップリード ({margin_top:+d})")
         elif margin_last < rules['PUSH_LAST_PLACE_MARGIN']:
             sit_score += 50
@@ -830,16 +843,16 @@ def judge_push_fold(state, shanten: int, ukeire: Dict = None, params: dict = Non
 
     # === 5.② オーラス / 局数 ===
     if is_orasu(state):
-        sit_score += 20
-        reasons.append("オーラス (5.②) 着順 確定 近い")
+        sit_score += 0  # オーラス = ダマテン 寄り (加点しない)
+        reasons.append("オーラス (5.②) ダマテン 寄り")
 
     # === 5.③ ターゲット 点差 ===
     target_diff = calc_target_point_diff(state)
     if target_diff < -3000:  # 3,000 点 ビハインド
-        sit_score += 50
+        sit_score += 30
         reasons.append(f"2位 と {target_diff}点 ビハインド (5.③) 満貫ツモで捲り")
     elif target_diff < 0:
-        sit_score += 20
+        sit_score += 10
         reasons.append(f"2位 と {target_diff}点 (5.③)")
 
     # === 5.④ 供託リーチ棒 ===
