@@ -33,12 +33,14 @@ def load_params(path: str) -> dict:
     return {}
 
 
-def process_record(record_path: str, params: dict, max_decisions: int = 0, save_mismatches: bool = False) -> dict:
+def process_record(record_path: str, params: dict, max_decisions: int = 0,
+                   save_mismatches: bool = False, scoring: str = 'proportional') -> dict:
     """
     1 つの牌譜を ver.1 と ver.2 で再生し、各打牌の一致率を測定。
     人間打牌と AI の最良打牌が一致したかを見る。
     max_decisions: 0 = 全て、それ以外 = 制限 (デバッグ用)
     save_mismatches: 不一致ケースを保存
+    scoring: 'strict' (完全一致) | 'proportional' (比率スコアリング 0-100)
     """
     with open(record_path, 'r', encoding='utf-8') as f:
         record = json.load(f)
@@ -50,30 +52,37 @@ def process_record(record_path: str, params: dict, max_decisions: int = 0, save_
     # actions を逐次処理して人間打牌時に AI 一致を見る
     actions = record.get('detail_records', {}).get('actions', [])
     v1_eval = _walk_actions(actions, replayer_v1, params, use_v2=False,
-                            max_decisions=max_decisions, save_mismatches=save_mismatches)
+                            max_decisions=max_decisions, save_mismatches=save_mismatches,
+                            scoring=scoring)
     v2_eval = _walk_actions(actions, replayer_v2, params, use_v2=True,
-                            max_decisions=max_decisions, save_mismatches=save_mismatches)
+                            max_decisions=max_decisions, save_mismatches=save_mismatches,
+                            scoring=scoring)
 
     return {
         'file': os.path.basename(record_path),
         'v1_total': v1_eval['total'],
-        'v1_match': v1_eval['match'],
+        'v1_exact': v1_eval['exact_match'],
+        'v1_avg_match': v1_eval['avg_match'],
         'v2_total': v2_eval['total'],
-        'v2_match': v2_eval['match'],
+        'v2_exact': v2_eval['exact_match'],
+        'v2_avg_match': v2_eval['avg_match'],
         'v2_mismatches': v2_eval.get('mismatches', []),
     }
 
 
 def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2: bool,
-                   max_decisions: int = 0, save_mismatches: bool = False) -> dict:
+                   max_decisions: int = 0, save_mismatches: bool = False,
+                   scoring: str = 'strict') -> dict:
     """
     actions を逐次処理。
     RecordDiscardTile 直前に state を構築して AI の best_discard を呼び、人間打牌と比較。
     max_decisions: 0 = 全て
     save_mismatches: 不一致ケースを保存
+    scoring: 'strict' (完全一致) | 'proportional' (比率スコアリング 0-100)
     """
     total = 0
-    match = 0
+    match_sum = 0.0
+    exact_match = 0
     mismatches = []
     for action in actions:
         result = action.get('result', {})
@@ -97,12 +106,53 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
                     ai = Evaluator(state, params)
                 hand = list(state.my_hand)
                 if hand and len(hand) == 14:
-                    chosen = ai.best_discard(hand)
-                    if chosen:
+                    unique_tiles = list(dict.fromkeys(hand))
+                    # 各牌のスコア/タプルを取得
+                    if use_v2:
+                        # ver.2: タプル比較 (min() 規約、小さいほど良い)
+                        evals = []
+                        for t in unique_tiles:
+                            try:
+                                tpl = ai.evaluate_tile(t)
+                                evals.append((t, tpl))
+                            except Exception:
+                                evals.append((t, None))
+                        evals.sort(key=lambda x: x[1])  # 昇順 (min が best)
+                    else:
+                        # ver.1: 単一スコア (大きいほど良い)
+                        evals = []
+                        for t in unique_tiles:
+                            try:
+                                score = ai.evaluate_tile(t)
+                                evals.append((t, score))
+                            except Exception:
+                                evals.append((t, -99999))
+                        evals.sort(key=lambda x: -x[1])  # 降順 (max が best)
+
+                    if not evals:
+                        pass
+                    else:
+                        chosen = evals[0][0]
                         total += 1
                         if chosen == tile:
-                            match += 1
-                        elif save_mismatches and len(mismatches) < 30:
+                            exact_match += 1
+                            match_sum += 100.0
+                        elif scoring == 'proportional':
+                            # 比率スコアリング (順位ベース): 人間の打牌が何位かを 0-100 で評価
+                            # best (1位) = 100, worst (最下位) = 0, 線形補間
+                            n = len(evals)
+                            actual_pos = None
+                            for k, (t, _) in enumerate(evals):
+                                if t == tile:
+                                    actual_pos = k
+                                    break
+                            if actual_pos is not None and n > 1:
+                                # 1位が 100, 最下位が 0
+                                match = (n - 1 - actual_pos) / (n - 1) * 100.0
+                                match_sum += match
+                            else:
+                                match_sum += 0.0
+                        if save_mismatches and chosen != tile and len(mismatches) < 30:
                             structure = ai.describe_hand_structure() if hasattr(ai, 'describe_hand_structure') else ''
                             mode = ai.get_mode().name if hasattr(ai, 'get_mode') else '?'
                             mismatches.append({
@@ -124,35 +174,49 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
             replayer._an_gang_add_gang(data)
         # userInput はスキップ (AI は人間の打牌前に評価)
 
-    return {'total': total, 'match': match, 'mismatches': mismatches}
+    return {
+        'total': total,
+        'exact_match': exact_match,
+        'match_sum': match_sum,
+        'avg_match': match_sum / total if total else 0.0,
+        'mismatches': mismatches,
+    }
 
 
 def main(file_list: List[str], params_path: str, max_decisions: int = 0,
-         save_mismatches: bool = False, out_path: str = None):
+         save_mismatches: bool = False, out_path: str = None, scoring: str = 'proportional'):
     params = load_params(params_path)
     print(f"=== ver.1 vs ver.2 人間牌譜一致率テスト ===")
     print(f"  ファイル数: {len(file_list)}")
     print(f"  パラメータ: {params_path or '(default)'}")
     print(f"  max_decisions: {max_decisions or '(無制限)'}")
+    print(f"  scoring: {scoring}")
 
     grand_v1_total = 0
-    grand_v1_match = 0
+    grand_v1_exact = 0
+    grand_v1_match_sum = 0.0
     grand_v2_total = 0
-    grand_v2_match = 0
+    grand_v2_exact = 0
+    grand_v2_match_sum = 0.0
     all_v2_mismatches = []
     t0 = time.time()
     for i, fp in enumerate(file_list):
         try:
-            r = process_record(fp, params, max_decisions=max_decisions, save_mismatches=save_mismatches)
-            v1_pct = r['v1_match'] / r['v1_total'] * 100 if r['v1_total'] else 0
-            v2_pct = r['v2_match'] / r['v2_total'] * 100 if r['v2_total'] else 0
+            r = process_record(fp, params, max_decisions=max_decisions,
+                               save_mismatches=save_mismatches, scoring=scoring)
+            v1_pct = r['v1_avg_match']
+            v2_pct = r['v2_avg_match']
+            v1_strict = r['v1_exact'] / r['v1_total'] * 100 if r['v1_total'] else 0
+            v2_strict = r['v2_exact'] / r['v2_total'] * 100 if r['v2_total'] else 0
             print(f"  [{i+1}/{len(file_list)}] {r['file']}: "
-                  f"ver.1={r['v1_match']}/{r['v1_total']} ({v1_pct:.1f}%) "
-                  f"ver.2={r['v2_match']}/{r['v2_total']} ({v2_pct:.1f}%)")
+                  f"ver.1=完全一致 {r['v1_exact']}/{r['v1_total']} ({v1_strict:.1f}%) 比率 {v1_pct:.1f} | "
+                  f"ver.2=完全一致 {r['v2_exact']}/{r['v2_total']} ({v2_strict:.1f}%) 比率 {v2_pct:.1f}")
             grand_v1_total += r['v1_total']
-            grand_v1_match += r['v1_match']
+            grand_v1_exact += r['v1_exact']
+            grand_v1_match_sum += r['v1_avg_match'] * r['v1_total']
             grand_v2_total += r['v2_total']
-            grand_v2_match += r['v2_match']
+            grand_v2_exact += r['v2_exact']
+            grand_v2_match_sum += r['v2_avg_match'] * r['v2_total']
             all_v2_mismatches.extend(r.get('v2_mismatches', []))
         except Exception as e:
             print(f"  [{i+1}/{len(file_list)}] {fp}: エラー ({type(e).__name__}: {e})")
@@ -162,12 +226,18 @@ def main(file_list: List[str], params_path: str, max_decisions: int = 0,
     print()
     print("=== 結果サマリ ===")
     if grand_v1_total:
-        print(f"  ver.1 合計: {grand_v1_match}/{grand_v1_total} ({grand_v1_match/grand_v1_total*100:.1f}%)")
+        v1_pct = grand_v1_match_sum / grand_v1_total
+        v1_strict = grand_v1_exact / grand_v1_total * 100
+        print(f"  ver.1: 完全一致 {grand_v1_exact}/{grand_v1_total} ({v1_strict:.1f}%) | 比率スコア {v1_pct:.1f}")
     if grand_v2_total:
-        print(f"  ver.2 合計: {grand_v2_match}/{grand_v2_total} ({grand_v2_match/grand_v2_total*100:.1f}%)")
+        v2_pct = grand_v2_match_sum / grand_v2_total
+        v2_strict = grand_v2_exact / grand_v2_total * 100
+        print(f"  ver.2: 完全一致 {grand_v2_exact}/{grand_v2_total} ({v2_strict:.1f}%) | 比率スコア {v2_pct:.1f}")
     if grand_v1_total and grand_v2_total:
-        diff = (grand_v2_match/grand_v2_total - grand_v1_match/grand_v1_total) * 100
-        print(f"  差分: ver.2 - ver.1 = {diff:+.1f}pt")
+        v1_pct = grand_v1_match_sum / grand_v1_total
+        v2_pct = grand_v2_match_sum / grand_v2_total
+        diff = v2_pct - v1_pct
+        print(f"  比率スコア差分: ver.2 - ver.1 = {diff:+.1f}pt")
     print(f"  経過時間: {time.time() - t0:.1f}秒")
 
     if save_mismatches and all_v2_mismatches:
@@ -192,5 +262,7 @@ if __name__ == "__main__":
     p.add_argument("--max-decisions", type=int, default=0, help="ファイルあたり判定数の上限 (デバッグ用)")
     p.add_argument("--save-mismatches", action="store_true", help="ver.2 不一致ケースを JSON 保存")
     p.add_argument("--out", type=str, default=None, help="不一致ケース保存先")
+    p.add_argument("--scoring", choices=['strict', 'proportional'], default='proportional',
+                   help="スコアリング方式 (strict=完全一致, proportional=比率スコア)")
     args = p.parse_args()
-    main(args.files, args.params, args.max_decisions, args.save_mismatches, args.out)
+    main(args.files, args.params, args.max_decisions, args.save_mismatches, args.out, args.scoring)
