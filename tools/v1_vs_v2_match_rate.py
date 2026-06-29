@@ -33,10 +33,12 @@ def load_params(path: str) -> dict:
     return {}
 
 
-def process_record(record_path: str, params: dict) -> dict:
+def process_record(record_path: str, params: dict, max_decisions: int = 0, save_mismatches: bool = False) -> dict:
     """
     1 つの牌譜を ver.1 と ver.2 で再生し、各打牌の一致率を測定。
     人間打牌と AI の最良打牌が一致したかを見る。
+    max_decisions: 0 = 全て、それ以外 = 制限 (デバッグ用)
+    save_mismatches: 不一致ケースを保存
     """
     with open(record_path, 'r', encoding='utf-8') as f:
         record = json.load(f)
@@ -47,8 +49,10 @@ def process_record(record_path: str, params: dict) -> dict:
 
     # actions を逐次処理して人間打牌時に AI 一致を見る
     actions = record.get('detail_records', {}).get('actions', [])
-    v1_eval = _walk_actions(actions, replayer_v1, params, use_v2=False)
-    v2_eval = _walk_actions(actions, replayer_v2, params, use_v2=True)
+    v1_eval = _walk_actions(actions, replayer_v1, params, use_v2=False,
+                            max_decisions=max_decisions, save_mismatches=save_mismatches)
+    v2_eval = _walk_actions(actions, replayer_v2, params, use_v2=True,
+                            max_decisions=max_decisions, save_mismatches=save_mismatches)
 
     return {
         'file': os.path.basename(record_path),
@@ -56,16 +60,21 @@ def process_record(record_path: str, params: dict) -> dict:
         'v1_match': v1_eval['match'],
         'v2_total': v2_eval['total'],
         'v2_match': v2_eval['match'],
+        'v2_mismatches': v2_eval.get('mismatches', []),
     }
 
 
-def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2: bool) -> dict:
+def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2: bool,
+                   max_decisions: int = 0, save_mismatches: bool = False) -> dict:
     """
     actions を逐次処理。
     RecordDiscardTile 直前に state を構築して AI の best_discard を呼び、人間打牌と比較。
+    max_decisions: 0 = 全て
+    save_mismatches: 不一致ケースを保存
     """
     total = 0
     match = 0
+    mismatches = []
     for action in actions:
         result = action.get('result', {})
         class_name = result.get('class_name', '')
@@ -93,33 +102,48 @@ def _walk_actions(actions: list, replayer: RecordReplayer, params: dict, use_v2:
                         total += 1
                         if chosen == tile:
                             match += 1
+                        elif save_mismatches and len(mismatches) < 30:
+                            structure = ai.describe_hand_structure() if hasattr(ai, 'describe_hand_structure') else ''
+                            mode = ai.get_mode().name if hasattr(ai, 'get_mode') else '?'
+                            mismatches.append({
+                                'hand': hand,
+                                'actual': tile,
+                                'ai': chosen,
+                                'mode': mode,
+                                'structure': structure,
+                            })
             except Exception as e:
                 pass
             # 人間打牌を適用
             replayer._discard_tile(data)
+            if max_decisions > 0 and total >= max_decisions:
+                break
         elif class_name == 'RecordChiPengGang':
             replayer._chi_peng_gang(data)
         elif class_name == 'RecordAnGangAddGang':
             replayer._an_gang_add_gang(data)
         # userInput はスキップ (AI は人間の打牌前に評価)
 
-    return {'total': total, 'match': match}
+    return {'total': total, 'match': match, 'mismatches': mismatches}
 
 
-def main(file_list: List[str], params_path: str):
+def main(file_list: List[str], params_path: str, max_decisions: int = 0,
+         save_mismatches: bool = False, out_path: str = None):
     params = load_params(params_path)
     print(f"=== ver.1 vs ver.2 人間牌譜一致率テスト ===")
     print(f"  ファイル数: {len(file_list)}")
     print(f"  パラメータ: {params_path or '(default)'}")
+    print(f"  max_decisions: {max_decisions or '(無制限)'}")
 
     grand_v1_total = 0
     grand_v1_match = 0
     grand_v2_total = 0
     grand_v2_match = 0
+    all_v2_mismatches = []
     t0 = time.time()
     for i, fp in enumerate(file_list):
         try:
-            r = process_record(fp, params)
+            r = process_record(fp, params, max_decisions=max_decisions, save_mismatches=save_mismatches)
             v1_pct = r['v1_match'] / r['v1_total'] * 100 if r['v1_total'] else 0
             v2_pct = r['v2_match'] / r['v2_total'] * 100 if r['v2_total'] else 0
             print(f"  [{i+1}/{len(file_list)}] {r['file']}: "
@@ -129,6 +153,7 @@ def main(file_list: List[str], params_path: str):
             grand_v1_match += r['v1_match']
             grand_v2_total += r['v2_total']
             grand_v2_match += r['v2_match']
+            all_v2_mismatches.extend(r.get('v2_mismatches', []))
         except Exception as e:
             print(f"  [{i+1}/{len(file_list)}] {fp}: エラー ({type(e).__name__}: {e})")
             import traceback
@@ -145,10 +170,27 @@ def main(file_list: List[str], params_path: str):
         print(f"  差分: ver.2 - ver.1 = {diff:+.1f}pt")
     print(f"  経過時間: {time.time() - t0:.1f}秒")
 
+    if save_mismatches and all_v2_mismatches:
+        if out_path is None:
+            out_path = "v2_mismatches.json"
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(all_v2_mismatches, f, ensure_ascii=False, indent=2)
+        print(f"\n  ver.2 不一致ケース {len(all_v2_mismatches)} 件を {out_path} に保存")
+        # 不一致の内訳 (モード別)
+        from collections import Counter
+        mode_count = Counter(m['mode'] for m in all_v2_mismatches)
+        print(f"  モード別不一致: {dict(mode_count)}")
+        # 不一致のサンプル表示 (最初の 5 件)
+        for i, m in enumerate(all_v2_mismatches[:5]):
+            print(f"  例{i+1}: 手牌={m['hand']} 人間={m['actual']} ver.2={m['ai']} mode={m['mode']} 構造={m['structure']}")
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("files", nargs="+", help="trimmed.json ファイル (複数可)")
     p.add_argument("--params", type=str, default="config/config_parameters.json")
+    p.add_argument("--max-decisions", type=int, default=0, help="ファイルあたり判定数の上限 (デバッグ用)")
+    p.add_argument("--save-mismatches", action="store_true", help="ver.2 不一致ケースを JSON 保存")
+    p.add_argument("--out", type=str, default=None, help="不一致ケース保存先")
     args = p.parse_args()
-    main(args.files, args.params)
+    main(args.files, args.params, args.max_decisions, args.save_mismatches, args.out)
