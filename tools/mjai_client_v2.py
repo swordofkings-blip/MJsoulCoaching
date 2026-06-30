@@ -7,6 +7,7 @@
 from __future__ import annotations
 import json
 import os
+import random
 import socket
 import sys
 from typing import List, Optional
@@ -198,11 +199,18 @@ class OurMjaiClientV2:
                             return
 
                 # 4. 通常打牌
+                tsumo_pai_us = _to_us(pai_mjai)
                 discard_us = self._decide_discard_v2()
                 if not discard_us or discard_us not in self.state.my_hand:
-                    discard_us = _to_us(pai_mjai)
+                    discard_us = tsumo_pai_us
+
+                # 空切り判定: ツモ切りになる場面で意図的に手出しに偽装する
+                if self._should_karagiri(discard_us, tsumo_pai_us):
+                    tsumogiri = False
+                else:
+                    tsumogiri = (discard_us == tsumo_pai_us)
+
                 discard_mjai = _to_mjai(discard_us)
-                tsumogiri = (discard_us == _to_us(pai_mjai))
                 self._send({"type": "dahai", "pai": discard_mjai, "tsumogiri": tsumogiri})
             else:
                 self.state.on_opponent_draw(actor)
@@ -324,9 +332,49 @@ class OurMjaiClientV2:
         return ev.should_ron()
 
     def _should_kan(self) -> bool:
-        """ver.2 評価器で槓判定"""
+        """@title ver.2 評価器で槓判定"""
         ev = self._evaluator_factory(self.state)
         return ev.should_kan()
+
+    def _should_karagiri(self, discard_us: str, tsumo_pai_us: str) -> bool:
+        """
+        @title 空切り判定
+        @description ツモ切りになる場面で意図的に手出し（tsumogiri=False）に偽装し、
+                     他家への情報漏洩を抑止する。
+        Why: ツモ切り連発は「テンパイした」「手牌が整った」というシグナルを
+             他家に与えてしまう。空切りにより手牌情報のアドバンテージを減らす。
+        @param {str} discard_us - 評価器が選択した打牌
+        @param {str} tsumo_pai_us - 今回ツモった牌
+        @returns {bool} 空切りを実行すべきか
+        """
+        # ツモ牌と異なる牌を切る場合は空切り対象外（元々手出しになるため）
+        if discard_us != tsumo_pai_us:
+            return False
+        from core.str_converter import tile_to_id
+        tid = tile_to_id(tsumo_pai_us)
+        hand_counts = self.state.my_hand_counts()
+        # 手牌に同種牌が2枚以上ないと手出しできない
+        if hand_counts[tid] < 2:
+            return False
+        # シャンテン数計算
+        from core.shanten_v2 import ShantenCalculatorV2
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            shanten = ShantenCalculatorV2.calculate_closed_effective(hand_counts)
+        else:
+            shanten = ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count)
+        # テンパイまたは一シャンテン以外は対象外
+        if shanten > 1:
+            return False
+        # モード判定: 攻撃系・バランスのみ空切りを検討
+        from core.strategy_v2 import get_mode, Mode
+        current_turn = (self.state.tsumo_count - 1) // 4 + 1
+        is_last_round = self.state.is_last_round() if hasattr(self.state, 'is_last_round') else False
+        mode = get_mode(self.state, current_turn, is_last_round)
+        if mode not in (Mode.ATTACK, Mode.URGENT_ATTACK, Mode.BALANCED):
+            return False
+        # 40% の確率で空切り実行
+        return random.random() < 0.4
 
 
 def main():
