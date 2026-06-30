@@ -260,9 +260,11 @@ class EvaluatorV2:
             return False
 
     def should_call_meld(self, call_type: int, tiles: list, from_seat: int) -> bool:
-        """@title 鳴き判定 (v1 委譲)"""
+        """@title 鳴き判定 (core/meld_v2.py 自前実装)"""
+        from core.meld_v2 import should_call_meld as _should_call_meld_v2
         try:
-            return self._v1_evaluator().should_call_meld(call_type, tiles, from_seat)
+            decision, _reason = _should_call_meld_v2(self.state, call_type, tiles, from_seat, self.params)
+            return bool(decision)
         except Exception:
             return False
 
