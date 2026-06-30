@@ -170,25 +170,29 @@ def _explicit_decision(state) -> Tuple[Optional[bool], str]:
     # P2: riichi positive rules
     if han == 0:
         return (True, "R1: no yaku, must riichi")
-    if wait['is_good_shape'] and han >= 1:
+    if wait['is_good_shape'] and han >= 1 and not opp_reach:
         return (True, f"R2: good wait ({wait['type']}) + {han}han, riichi")
-    if han >= 2 and not opp_reach:
-        return (True, f"R2b: {han}han, riichi")
-    if rank == 3:
-        return (True, "R4: last place, riichi")
-    if turn >= 14 and han >= 1:
+    if han >= 3 and not opp_reach:
+        return (True, f"R2b: {han}han high value, riichi")
+    if rank == 3 and han >= 1:
+        return (True, "R4: last place, riichi to catch up")
+    if turn >= 14 and han >= 2 and not opp_reach:
         return (True, "R5: late turn, riichi")
 
-    # P3: damaten negative rules (only very conservative cases)
-    if rank == 0 and opp_reach and han <= 1:
-        return (False, "R9: top + low + opp reach, damaten")
-    if turn <= 3 and wait['is_bad_shape'] and han <= 1 and rank <= 1:
-        return (False, f"R8: early T{turn} + bad wait, damaten")
-    if opp_reach and wait['is_bad_shape'] and han <= 1 and rank <= 1:
-        return (False, "R7: opp reach + bad + low, damaten")
+    # P3: damaten negative rules
+    if opp_reach and wait['is_bad_shape'] and han <= 2:
+        return (False, "R7: opp reach + bad shape, damaten")
+    if opp_reach and han <= 1:
+        return (False, "R7b: opp reach + low value, damaten")
+    if wait['is_bad_shape'] and han <= 1:
+        return (False, "R6: bad wait + low value, damaten")
+    if turn <= 5 and wait['is_bad_shape'] and han <= 2:
+        return (False, f"R8: early turn + bad shape, damaten")
+    if rank == 0 and han <= 2:
+        return (False, "R9: top rank, damaten")
 
-    # No strong reason to damaten -> default to riichi
-    return (True, "Rdefault: no reason to damaten, riichi")
+    # No explicit rule fire -> fall through to EV comparison
+    return (None, "")
 
 
 def score_riichi(state, params: dict) -> Tuple[float, str]:
@@ -221,12 +225,18 @@ def score_riichi(state, params: dict) -> Tuple[float, str]:
     if han == 0:
         score += w['RIICHI_W_AGARI_LOW_HAN']
         reasons.append("no yaku")
+    elif han >= 2:
+        score += 20
+        reasons.append(f"{han}han+")
     if wait['is_good_shape']:
-        score += 40
+        score += 50
         reasons.append(f"good wait ({wait['type']})")
     elif wait['is_bad_shape']:
         score -= 30
         reasons.append(f"bad wait ({wait['type']})")
+    if wait['count'] >= 3:
+        score += 30
+        reasons.append("multi")
     score += w['RIICHI_W_CLOSED_BONUS']
     if turn <= 5:
         score += w['RIICHI_W_EARLY_TURN']
@@ -234,6 +244,9 @@ def score_riichi(state, params: dict) -> Tuple[float, str]:
     elif turn >= 14:
         score += w['RIICHI_W_LATE_TURN']
         reasons.append(f"late T{turn}")
+    elif turn >= 10:
+        score += 25
+        reasons.append(f"mid T{turn}")
     if rank == 0:
         score += w['RIICHI_W_TOP_PLACE']
         reasons.append("top")
@@ -243,6 +256,9 @@ def score_riichi(state, params: dict) -> Tuple[float, str]:
     if opp_reach_exists(state):
         score += w['RIICHI_W_OPP_REACH']
         reasons.append("opp reach")
+    if wait['is_bad_shape'] and opp_reach_exists(state):
+        score -= 40
+        reasons.append("bad+oppR penalty")
 
     reason = ", ".join(reasons) if reasons else "neutral"
     return score, f"EVscore={score:.0f} ({reason})"
