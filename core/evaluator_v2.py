@@ -259,6 +259,13 @@ class EvaluatorV2:
         except Exception:
             return False
 
+    def should_call_meld(self, call_type: int, tiles: list, from_seat: int) -> bool:
+        """@title 鳴き判定 (v1 委譲)"""
+        try:
+            return self._v1_evaluator().should_call_meld(call_type, tiles, from_seat)
+        except Exception:
+            return False
+
     def should_kan(self) -> bool:
         """
         @title 槓判定 (暗槓・加槓・大明槓)
