@@ -455,17 +455,21 @@ def run_1v3(seeds: int, seat_list: list, params: dict, game_type: str):
         return
 
     n = len(all_results)
-    avg_placement = sum(r['v2_placement'] for r in all_results) / n
-    avg_score = sum(r['v2_score'] for r in all_results) / n
-    avg_pt = sum(r['v2_pt'] for r in all_results) / n
-    total_wins = sum(r['v2_wins'] for r in all_results)
-    total_tsumo = sum(r['v2_tsumo_wins'] for r in all_results)
-    total_ron = sum(r['v2_ron_wins'] for r in all_results)
-    total_dealt_in = sum(r['v2_dealt_in'] for r in all_results)
-    total_reach = sum(r['v2_reach_declarations'] for r in all_results)
-    total_han = sum(r['v2_total_han'] for r in all_results)
-    total_num_kyoku = sum(r['v2_num_kyoku'] for r in all_results)
-    den = max(total_num_kyoku, 1)  # Why: 総局数を分母とすることで正しい割合を計算します
+    # run_one_game は新形式 (scores + player_stats) を返す
+    v2_stats = [r['player_stats'][r['v2_seat']] for r in all_results]
+    placements = [r['result'].placement_of(r['v2_seat']) for r in all_results]
+    avg_placement = sum(placements) / n
+    avg_score = sum(r['scores'][r['v2_seat']] for r in all_results) / n
+    avg_pt = sum(PT_TABLE.get(placements[i], 0) + (r['scores'][r['v2_seat']] - BASE_SCORE) // 1000 for i, r in enumerate(all_results)) / n
+
+    total_wins = sum(s['wins'] for s in v2_stats)
+    total_tsumo = sum(s['tsumo'] for s in v2_stats)
+    total_ron = sum(s['ron'] for s in v2_stats)
+    total_dealt_in = sum(s['deal'] for s in v2_stats)
+    total_reach = sum(s['reach'] for s in v2_stats)
+    total_han = sum(s['han'] for s in v2_stats)
+    total_num_kyoku = sum(s['nkyoku'] for s in v2_stats)
+    den = max(total_num_kyoku, 1)
 
     win_rate = total_wins / den * 100
     deal_in_rate = total_dealt_in / den * 100
