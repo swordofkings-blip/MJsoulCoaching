@@ -673,6 +673,29 @@ def score_opp_style(state, params) -> Tuple[float, str]:
     return 0.0, f"他家字牌率 {rate:.0%}"
 
 
+def score_haitei_zumashi(state, call_type, tiles, params) -> Tuple[float, str]:
+    """
+    @title 23. ハイテイずらし (海底直前の鳴き)
+    @description 残り牌が少なく他家リーチ時、鳴きでツモ番を奪う戦術。
+                 海底牌直前 (残り 1-3 枚) かつ他家リーチあり → 鳴き推奨
+    """
+    w = get_weights(params)
+    left = state.left_tile_count if hasattr(state, 'left_tile_count') else 14
+
+    if left > 3:
+        return 0.0, f"ハイテイずらし対象外 (残り{left}枚)"
+
+    opp_reach = any(
+        state.reach_states[s] is not None and state.reach_states[s].is_reach
+        for s in range(4) if s != state.my_seat
+    )
+    if not opp_reach:
+        return 0.0, "他家リーチなし"
+
+    bonus = w.get('MELD_W_HAITEI_ZUMASHI', 500.0)
+    return bonus, f"ハイテイずらし (残り{left}枚, 他家リーチ)"
+
+
 # ============================================================
 # 統合
 # ============================================================
@@ -699,6 +722,7 @@ SCORERS = [
     ('20.安牌残数', score_safe_tiles_after, ('state', 'call_type', 'tiles', 'params')),
     ('21.親番', score_dealer, ('state', 'params')),
     ('22.他家スタイル', score_opp_style, ('state', 'params')),
+    ('23.ハイテイずらし', score_haitei_zumashi, ('state', 'call_type', 'tiles', 'params')),
 ]
 
 
