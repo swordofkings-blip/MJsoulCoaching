@@ -2,8 +2,7 @@
 """
 @title MJAI TCP client (ver.2 評価器対応)
 @description ver.2 評価器 (EvaluatorV2) を使って MJAI サーバーと対戦する。
-              既存 mjai_client.py と並列稼働可能、デバッグや A/B テスト用。
-              ver.2 の新機能: 戦略モード表示、手牌構造コーチング。
+               v1 (mjai_client.py) のプロトコル処理をベースに v2 評価器を統合。
 """
 from __future__ import annotations
 import json
@@ -14,7 +13,6 @@ from typing import List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-# 既存 mjai_client.py の変換ロジックを再利用
 from tools.mjai_client import _to_mjai, _to_us, AKOCHAN_NAME, AKOCHAN_IMG
 
 
@@ -23,15 +21,6 @@ class OurMjaiClientV2:
 
     def __init__(self, host: str, port: int, room: str, name: str, params: dict = None,
                  show_coaching: bool = True):
-        """
-        @title OurMjaiClientV2 初期化
-        @param {str} host - MJAI サーバー
-        @param {int} port - ポート
-        @param {str} room - ルーム名
-        @param {str} name - プレイヤー名
-        @param {dict} params - 評価器パラメータ (None なら ver.2 デフォルト)
-        @param {bool} show_coaching - 各打牌のコーチングを表示するか
-        """
         self.name = name
         self.params = params or {}
         self.show_coaching = show_coaching
@@ -39,7 +28,7 @@ class OurMjaiClientV2:
         self._sock.connect((host, port))
         self._buf = b''
         self._id = -1
-        self._last_tsumo = None
+        self._last_tsumo_mjai = None
         self._step_count = 0
 
         from core.game_state import GameState
@@ -47,7 +36,6 @@ class OurMjaiClientV2:
 
         self.state = GameState()
         self.params.setdefault('evaluator', 'v2')
-        # 評価器は打牌ごとに作る (状態変化を反映)
         self._evaluator_factory = lambda s: EvaluatorV2(s, self.params)
 
         hello = self._recv()
@@ -63,7 +51,7 @@ class OurMjaiClientV2:
         while b'\n' not in self._buf:
             data = self._sock.recv(4096)
             if not data:
-                raise ConnectionError("Socket closed by remote host")
+                raise ConnectionError("Socket closed")
             self._buf += data
         line, self._buf = self._buf.split(b'\n', 1)
         return json.loads(line.decode('utf-8'))
@@ -89,8 +77,46 @@ class OurMjaiClientV2:
                 print(f"Error handling message {t}: {ex}", file=sys.stderr)
                 break
 
+    def _decide_discard_v2(self) -> Optional[str]:
+        """ver.2 評価器で打牌を決定"""
+        ev = self._evaluator_factory(self.state)
+        hand = list(self.state.my_hand)
+        chosen = ev.best_discard(hand)
+        if self.show_coaching and chosen:
+            explanation = ev.explain_discard(hand, chosen)
+            structure = ev.describe_hand_structure()
+            mode = ev.get_mode().name
+            print(f"[ver.2]  打牌: {chosen} | モード: {mode}")
+            print(f"  手牌構造: {structure}")
+            print(f"  理由: {explanation}")
+        return chosen
+
+    def _should_riichi(self) -> bool:
+        ev = self._evaluator_factory(self.state)
+        return ev.should_riichi()
+
+    def _should_call_meld(self, act_type: str, act: dict, pai_mjai: str, actor: int) -> bool:
+        ev = self._evaluator_factory(self.state)
+        call_type_map = {"chi": 0, "pon": 1, "daiminkan": 2}
+        consumed_mjai = act.get("consumed", [])
+        consumed_us = [_to_us(c) for c in consumed_mjai]
+        pai_us = _to_us(pai_mjai)
+        tiles_us = [pai_us] + consumed_us
+        return ev.should_call_meld(call_type_map[act_type], tiles_us, actor)
+
+    def _count_yaochu_types(self) -> int:
+        from str_converter import hand_to_counts
+        counts = hand_to_counts(self.state.my_hand)
+        yaochu_ids = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        return sum(1 for i in yaochu_ids if counts[i] >= 1)
+
     def _handle(self, t: str, msg: dict):
+        """
+        @title MJAI プロトコル処理
+        @description v1 (mjai_client.py) をベースに、ver.2 評価器で判断。
+        """
         self._step_count += 1
+
         if t == "start_game":
             self._id = msg.get("id", -1)
             self.state.my_seat = self._id
@@ -121,11 +147,63 @@ class OurMjaiClientV2:
         elif t == "tsumo":
             actor = msg["actor"]
             pai_mjai = msg.get("pai", "?")
+
             if actor == self._id:
-                self._last_tsumo = pai_mjai
+                self._last_tsumo_mjai = pai_mjai
                 pai_us = _to_us(pai_mjai)
                 self.state.on_self_draw(pai_us)
-                self._decide_self_tsumo(pai_mjai, msg)
+
+                # リーチ後はツモアガリか暗槓のみ、それ以外はツモ切り強制
+                if self.state.reach_states[self._id].is_reach:
+                    for act in msg.get("possible_actions", []):
+                        if act.get("type") == "hora":
+                            if self._should_tsumo():
+                                self._send({"type": "hora", "target": actor, "pai": pai_mjai})
+                                return
+                    for act in msg.get("possible_actions", []):
+                        if act.get("type") == "ankan":
+                            if self._should_kan():
+                                self._send(act)
+                                return
+                    self._send({"type": "dahai", "pai": pai_mjai, "tsumogiri": True})
+                    return
+
+                # 0. 九種九牌
+                for act in msg.get("possible_actions", []):
+                    if act.get("type") == "ryukyoku":
+                        if self._count_yaochu_types() >= 9:
+                            self._send({"type": "ryukyoku"})
+                            return
+                        break
+
+                # 1. ツモ和了
+                for act in msg.get("possible_actions", []):
+                    if act.get("type") == "hora":
+                        print(f"[ver.2]  ツモ和了可能")
+                        self._send({"type": "hora", "target": self._id, "pai": pai_mjai})
+                        return
+
+                # 2. 暗槓 / 加槓
+                for act in msg.get("possible_actions", []):
+                    if act.get("type") in ("ankan", "kakan"):
+                        if self._should_kan():
+                            self._send(act)
+                            return
+
+                # 3. 立直
+                for act in msg.get("possible_actions", []):
+                    if act.get("type") == "reach":
+                        if self._should_riichi():
+                            self._send({"type": "reach"})
+                            return
+
+                # 4. 通常打牌
+                discard_us = self._decide_discard_v2()
+                if not discard_us or discard_us not in self.state.my_hand:
+                    discard_us = _to_us(pai_mjai)
+                discard_mjai = _to_mjai(discard_us)
+                tsumogiri = (discard_us == _to_us(pai_mjai))
+                self._send({"type": "dahai", "pai": discard_mjai, "tsumogiri": tsumogiri})
             else:
                 self.state.on_opponent_draw(actor)
                 self._send({"type": "none"})
@@ -137,158 +215,128 @@ class OurMjaiClientV2:
             tsumogiri = msg.get("tsumogiri", False)
             is_liqi = self.state.reach_states[actor].is_reach and len(self.state.river[actor]) == self.state.reach_states[actor].reach_turn
             self.state.on_discard(actor, pai_us, isLiqi=is_liqi, moqie=tsumogiri)
+
             if actor != self._id:
-                self._decide_response(pai_mjai, msg, actor)
+                # ロン和了
+                for act in msg.get("possible_actions", []):
+                    if act.get("type") == "hora":
+                        if self._should_ron():
+                            self._send({"type": "hora", "target": actor, "pai": pai_mjai})
+                            return
+                # ポン・チー・大明槓
+                for act in msg.get("possible_actions", []):
+                    act_type = act.get("type")
+                    if act_type in ("pon", "chi", "daiminkan"):
+                        if self._should_call_meld(act_type, act, pai_mjai, actor):
+                            self._send(act)
+                            return
+                self._send({"type": "none"})
             else:
                 self._send({"type": "none"})
 
         elif t == "reach":
             actor = msg["actor"]
-            if actor != self._id:
-                self.state.on_opponent_reach(actor)
-            self._send({"type": "none"})
+            self.state.reach_states[actor].is_reach = True
+            self.state.reach_states[actor].reach_turn = len(self.state.river[actor])
 
-        elif t == "pon":
+            if actor == self._id:
+                # 自分がリーチ: 不能牌を除外して打牌
+                cannot_mjai = msg.get("cannot_dahai", [])
+                cannot_us = [_to_us(p) for p in cannot_mjai]
+                discard_us = self._decide_discard_v2()
+                if not discard_us or discard_us not in self.state.my_hand or discard_us in cannot_us:
+                    valid = [t for t in self.state.my_hand if t not in cannot_us]
+                    if valid:
+                        if self._last_tsumo_mjai and _to_us(self._last_tsumo_mjai) in valid:
+                            discard_us = _to_us(self._last_tsumo_mjai)
+                        else:
+                            discard_us = valid[0]
+                    else:
+                        discard_us = self.state.my_hand[-1]
+                discard_mjai = _to_mjai(discard_us)
+                tsumogiri = (discard_us == _to_us(self._last_tsumo_mjai)) if self._last_tsumo_mjai else False
+                self._send({"type": "dahai", "pai": discard_mjai, "tsumogiri": tsumogiri})
+            else:
+                self._send({"type": "none"})
+
+        elif t == "reach_accepted":
             actor = msg["actor"]
-            consumed = [_to_us(t) for t in msg.get("consumed", [])]
-            target = _to_us(msg.get("target", "1m"))
-            self.state.on_opponent_meld(actor, 'pon', target, consumed)
+            self.state.reach_states[actor].is_reach = True
+            if "scores" in msg:
+                self.state.scores = msg["scores"]
             self._send({"type": "none"})
 
-        elif t == "chi":
+        elif t in ("pon", "chi", "daiminkan"):
             actor = msg["actor"]
-            consumed = [_to_us(t) for t in msg.get("consumed", [])]
-            target = _to_us(msg.get("target", "1m"))
-            self.state.on_opponent_meld(actor, 'chi', target, consumed)
-            self._send({"type": "none"})
+            target = msg.get("target", actor)
+            pai_mjai = msg.get("pai", "1m")
+            consumed_mjai = msg.get("consumed", [])
 
-        elif t == "daiminkan" or t == "ankan" or t == "kakan":
+            type_map = {"chi": 0, "pon": 1, "daiminkan": 2}
+            type_ = type_map[t]
+
+            tiles_us = [_to_us(pai_mjai)] + [_to_us(c) for c in consumed_mjai]
+            froms = [target] + [actor] * len(consumed_mjai)
+            tile_states = [0] * len(tiles_us)
+
+            self.state.on_chi_peng_gang(type_, actor, tiles_us, froms, tile_states)
+
+            if actor == self._id:
+                discard_us = self._decide_discard_v2()
+                if not discard_us or discard_us not in self.state.my_hand:
+                    discard_us = self.state.my_hand[-1]
+                discard_mjai = _to_mjai(discard_us)
+                self._send({"type": "dahai", "pai": discard_mjai, "tsumogiri": False})
+            else:
+                self._send({"type": "none"})
+
+        elif t in ("ankan", "kakan"):
             actor = msg["actor"]
-            consumed = [_to_us(t) for t in msg.get("consumed", [])]
-            target = _to_us(msg.get("target", "1m"))
-            self.state.on_opponent_kan(actor, target, consumed)
+            consumed_mjai = msg.get("consumed", [])
+            consumed_us = [_to_us(c) for c in consumed_mjai]
+            type_ = 3 if t == "ankan" else 2
+            self.state.on_an_gang_add_gang(type_, actor, consumed_us[0])
             self._send({"type": "none"})
 
-        elif t == "hora":
-            print(f"\n[ver.2] 和了発生 (step {self._step_count})")
+        elif t == "dora":
+            dora_mjai = msg["dora_marker"]
+            self.state.on_new_dora(_to_us(dora_mjai))
             self._send({"type": "none"})
 
-        elif t == "ryukyoku":
-            print(f"\n[ver.2] 流局 (step {self._step_count})")
-            self._send({"type": "none"})
-
-        elif t == "end_kyoku":
+        elif t in ("hora", "ryukyoku", "end_kyoku"):
             self._send({"type": "none"})
 
         elif t == "end_game":
-            print(f"\n[ver.2] 試合終了")
-            return
+            self._send({"type": "none"})
+            raise StopIteration
 
         else:
             self._send({"type": "none"})
 
-    def _decide_self_tsumo(self, pai_mjai: str, msg: dict):
-        """自分のツモに対する応答"""
-        possible = msg.get("possible_actions", [])
-
-        # 1. ツモ和了
-        for act in possible:
-            if act.get("type") == "hora":
-                print(f"[ver.2]  ツモ和了可能")
-                self._send({"type": "hora", "target": self._id, "pai": pai_mjai})
-                return
-
-        # 2. 九種九牌
-        for act in possible:
-            if act.get("type") == "ryukyoku":
-                yaochu_types = self._count_yaochu_types()
-                if yaochu_types == 9:
-                    self._send({"type": "ryukyoku"})
-                    return
-
-        # 3. 暗槓 / 加槓
-        for act in possible:
-            if act.get("type") in ("ankan", "kakan"):
-                self._send(act)
-                return
-
-        # 4. 立直
-        for act in possible:
-            if act.get("type") == "reach":
-                if self._should_riichi():
-                    self._send({"type": "reach"})
-                    return
-
-        # 5. 通常打牌 (ver.2 評価器で決定)
-        discard_us = self._decide_discard_v2()
-        if not discard_us or discard_us not in self.state.my_hand:
-            discard_us = _to_us(pai_mjai)
-        discard_mjai = _to_mjai(discard_us)
-        tsumogiri = (discard_us == _to_us(pai_mjai))
-        self._send({"type": "dahai", "pai": discard_mjai, "tsumogiri": tsumogiri})
-
-    def _decide_response(self, pai_mjai: str, msg: dict, actor: int):
-        """他家打牌への応答 (ロン・鳴き判断)"""
-        possible = msg.get("possible_actions", [])
-        for act in possible:
-            if act.get("type") == "hora":
-                self._send({"type": "hora", "target": actor, "pai": pai_mjai})
-                return
-        for act in possible:
-            act_type = act.get("type")
-            if act_type in ("pon", "chi", "daiminkan"):
-                if not self._should_call_meld(act_type, act, pai_mjai, actor):
-                    continue
-                self._send(act)
-                return
-        self._send({"type": "none"})
-
-    def _decide_discard_v2(self) -> Optional[str]:
-        """ver.2 評価器で打牌を決定 (コーチング付き)"""
+    def _should_tsumo(self) -> bool:
+        """ver.2 評価器でツモ和了判定"""
         ev = self._evaluator_factory(self.state)
-        hand = list(self.state.my_hand)
-        chosen = ev.best_discard(hand)
-        if self.show_coaching and chosen:
-            explanation = ev.explain_discard(hand, chosen)
-            structure = ev.describe_hand_structure()
-            mode = ev.get_mode().name
-            print(f"[ver.2]  打牌: {chosen} | モード: {mode}")
-            print(f"  手牌構造: {structure}")
-            print(f"  理由: {explanation}")
-        return chosen
+        return ev.should_tsumo()
 
-    def _should_riichi(self) -> bool:
-        """ver.2 評価器で立直判定"""
+    def _should_ron(self) -> bool:
+        """ver.2 評価器でロン和了判定"""
         ev = self._evaluator_factory(self.state)
-        return ev.should_riichi()
+        return ev.should_ron()
 
-    def _should_call_meld(self, act_type: str, act: dict, pai_mjai: str, actor: int) -> bool:
-        """ver.2 評価器で鳴き判定"""
+    def _should_kan(self) -> bool:
+        """ver.2 評価器で槓判定"""
         ev = self._evaluator_factory(self.state)
-        call_type_map = {"chi": 0, "pon": 1, "daiminkan": 2}
-        consumed_mjai = act.get("consumed", [])
-        consumed_us = [_to_us(c) for c in consumed_mjai]
-        pai_us = _to_us(pai_mjai)
-        tiles_us = [pai_us] + consumed_us
-        return ev.should_call_meld(call_type_map[act_type], tiles_us, actor)
-
-    def _count_yaochu_types(self) -> int:
-        """幺九牌の種類数 (九種九牌判定用)"""
-        from str_converter import hand_to_counts
-        counts = hand_to_counts(self.state.my_hand)
-        yaochu_ids = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
-        return sum(1 for i in yaochu_ids if counts[i] >= 1)
+        return ev.should_kan()
 
 
 def main():
-    """簡易実行エントリ"""
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=11600)
     p.add_argument("--room", default="default")
     p.add_argument("--name", default="ver2_ai")
-    p.add_argument("--quiet", action="store_true", help="コーチングを非表示")
+    p.add_argument("--quiet", action="store_true")
     args = p.parse_args()
     client = OurMjaiClientV2(args.host, args.port, args.room, args.name,
                               show_coaching=not args.quiet)

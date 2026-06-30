@@ -114,6 +114,24 @@ class GameState:
         self.tsumo_count += 1
         _ = seat
 
+    def on_opponent_meld(self, actor: int, meld_type: str, target: str, consumed: list):
+        type_map = {'chi': 0, 'pon': 1}
+        type_ = type_map.get(meld_type, 1)
+        discarding_seat = (actor + 1) % 4 if meld_type == 'chi' else self.last_discard_seat
+        tiles = list(consumed)
+        froms = [actor if t != target else discarding_seat for t in tiles]
+        tile_states = [0 if f == actor else 1 for f in froms]
+        self.on_chi_peng_gang(type_, actor, tiles, froms, tile_states)
+
+    def on_opponent_kan(self, actor: int, target: str, consumed: list):
+        tiles = list(consumed)
+        froms = [actor] * len(tiles)
+        tile_states = [1] * len(tiles)
+        self.on_chi_peng_gang(2, actor, tiles, froms, tile_states)
+
+    def on_opponent_reach(self, actor: int):
+        self.reach_states[actor].is_reach = True
+
     def on_discard(self, seat: int, tile: str, isLiqi: bool, moqie: bool):
         self.river[seat].append(tile)
         self.river_moqie[seat].append(bool(moqie))

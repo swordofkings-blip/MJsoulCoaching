@@ -234,6 +234,20 @@ class EvaluatorV2:
         from core.evaluator import Evaluator
         return Evaluator(self.state, params=self.params)
 
+    def should_tsumo(self) -> bool:
+        """@title ツモ和了判定 (v1 委譲)"""
+        try:
+            return self._v1_evaluator().should_tsumo()
+        except Exception:
+            return bool(len(self.state.my_hand) >= 14)
+
+    def should_ron(self) -> bool:
+        """@title ロン和了判定 (v1 委譲)"""
+        try:
+            return self._v1_evaluator().should_ron()
+        except Exception:
+            return False
+
     def should_riichi(self) -> bool:
         """
         @title 立直判定 (ver.2 加減算モデル)
