@@ -1213,9 +1213,46 @@ class StrategyManager:
                 if shanten >= 1:
                     reach_penalty = self.params.get('REACH_PENALTY_NON4', 0.35) * n_reach
                     push_score = max(0.0, push_score - reach_penalty)
+        # ── 飛びリスク天秤補正 ──
+        # Why: まだ局が残っているのに飛んでゲームオーバーになるリスクを回避する。
+        #      ラス目で持ち点が少ない時、自分の手が安ければ押し引きスコアを
+        #      大きく引き下げ、次のチャンスを待つ。
+        push_score = self._apply_fly_risk_adjust(push_score)
+
         res = max(0.0, min(1.0, push_score))
         self._push_score_cache = res
         return res
+
+    def _apply_fly_risk_adjust(self, push_score: float) -> float:
+        """
+        @title 飛びリスク天秤補正
+        @description ラス目(4位)で持ち点が少なく、かつ自分の手が安い場合、
+                     押し引きスコアを引き下げて飛びリスクを回避する。
+        Why: 「残り局数 × 飛び確率 × 手の価値」の天秤で判断する。
+             局が多く残っているほど飛ぶリスクを避ける価値が高い。
+             自分の手が高いほどリスクを冒す価値がある。
+        """
+        my_score = self.state.scores[self.state.my_seat]
+        rank = self.state.my_score_rank()
+
+        # ラス目以外 or 持ち点に余裕がある場合は補正不要
+        if rank != 3 or my_score >= 8000:
+            return push_score
+
+        # 残り局数（東風戦ベース: 最大4局）
+        rem_rounds = max(0, 4 - getattr(self.state, 'kyoku', 0))
+        # 自分の手の推定打点
+        my_win_score = self.estimate_win_score()
+
+        # 残り局数があり、かつ自分の手が安い場合、引き(オリ)にシフト
+        if rem_rounds >= 1 and my_win_score < 4000:
+            # Why: 残り局数が多いほど飛びたくない。
+            #      手が安い(4000未満=3900以下)ほどリスクに見合わない。
+            #      補正値は -0.3 × (残局/4) × (1 - 打点/4000) で連続的に変化
+            adjust = -0.3 * (rem_rounds / 4.0) * (1.0 - my_win_score / 4000.0)
+            push_score += adjust
+
+        return push_score
 
     def compute_opponent_threat_with_reach_boost(self) -> float:
         """
