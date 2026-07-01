@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from core.shanten_v2 import ShantenCalculatorV2
 from core.str_converter import hand_to_counts
 from core.strategy_v2 import get_mode, Mode
-from tools.build_stats_db import load_stats_db, _tenhou_tile_to_str, TENHOU_XML_DIR
+from tools.build_stats_db import load_stats_db, _tenhou_tile_to_str, TENHOU_XML_DIR, get_deterministic_id
 
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
@@ -188,29 +188,24 @@ class TacticalTokenizer:
     ]
 
     def build_example(self, persona_name: str, stats: dict, score: int,
-                      shanten: int, hand_tiles: List[str], label_mode: Mode) -> dict:
+                      shanten: int, hand_tiles: List[str], label_mode: Mode,
+                      is_teacher: float = 1.0) -> dict:
         """
-        @title 学習サンプルの構築
-        @description 局面情報からトークン系列・スタッツベクトル・ラベルを生成する。
-        @param {str} persona_name - プレイヤー名
-        @param {dict} stats - プレイヤースタッツ辞書 (21項目)
-        @param {int} score - 現在の持ち点
-        @param {int} shanten - シャンテン数
-        @param {List[str]} hand_tiles - 手牌リスト
-        @param {Mode} label_mode - 正解ラベル（戦術モード）
-        @returns {dict} { "tokens": [...], "stats_vec": [...], "label": <mode_id>, "text": <元テキスト> }
+        @title 学習サンプルの構築（教師/反面教師フラグ付き）
+        @description 局面情報からトークン系列・スタッツベクトル・ラベル・
+                     教師フラグを生成する。
+        @param {float} is_teacher - 1.0=教師サンプル, 0.0=反面教師
+        @returns {dict} { "tokens": [...], "stats_vec": [...], "label": <mode_id>,
+                          "is_teacher": <float>, "text": <元テキスト> }
         """
-        # スタッツベクトル (21次元float)
         stats_vec = [stats.get(k, 0.0) for k in self.STATS_FEATURE_KEYS]
 
-        # 手牌の正規化（赤5→通常5）
         hand_norm = [
             ('5' + t[1]) if (t[0] == '0' and len(t) >= 2) else t
             for t in hand_tiles
         ]
         hand_str = ' '.join(hand_norm)
 
-        # トークン系列の構文テキスト（スタッツはベクトルで別途渡すのでテキストには含めない）
         text = (
             f'[PERSONA] {persona_name} '
             f'[SCORE] {score} '
@@ -225,6 +220,7 @@ class TacticalTokenizer:
             'tokens': tokens,
             'stats_vec': stats_vec,
             'label': label_id,
+            'is_teacher': is_teacher,
             'text': text,
         }
 
@@ -571,6 +567,9 @@ def _determine_round_modes(snapshots: List[dict], target_seat: int) -> List[Mode
         else:
             dealin_probs.append(None)
 
+    # 幺九牌インデックス（HONITSU/CHANTA防御判定用）
+    YAOCHU_INDICES = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+
     # 脅威発生点の特定: 他家リーチ or 他家2副露以上
     threat_idx = n  # デフォルト=最後まで脅威なし
     for i, s in enumerate(snapshots):
@@ -592,11 +591,31 @@ def _determine_round_modes(snapshots: List[dict], target_seat: int) -> List[Mode
     modes = [Mode.BALANCED] * n
 
     # ── 脅威発生前 (i < threat_idx) ──
-    # 手仕舞いの通常進行。シャンテン数が改善したらATTACKを部分的に付与
+    # 特殊手役（七対子・国士・役満）の検出
+    # Why: 七対子の判定は chiitoi_shanten < std_shanten かつ chiitoi_shanten <= 3 で行う。
+    #      面子手より七対子の方が進行している期間のみ七対子モードとする。
     for i in range(min(threat_idx, n)):
-        if i > 0 and shanten_list[i] < shanten_list[i - 1]:
-            modes[i] = Mode.ATTACK
-        elif i > 0 and shanten_list[i] == shanten_list[i - 1]:
+        snap = snapshots[i]
+        hc = hand_to_counts(snap['hand'])
+        omc = len(snap['melds'])
+        if omc == 0:
+            std_sh = ShantenCalculatorV2.calculate_closed_effective(hc)
+        else:
+            std_sh = ShantenCalculatorV2.calculate_open(hc, omc)
+        chiitoi_sh = ShantenCalculatorV2._chiitoitsu_shanten(hc)
+        # 幺九牌の種類数（国士判定用）
+        yaochu_indices = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+        yaochu_types = sum(1 for ix in yaochu_indices if hc[ix] >= 1)
+
+        if yaochu_types >= 10 and omc == 0:
+            # 10種以上の幺九牌 → 国士無双進行中
+            modes[i] = Mode.KOKUSHI
+        elif chiitoi_sh < std_sh and chiitoi_sh <= 3:
+            # 七対子のシャンテンが面子手より良い → 七対子モード
+            modes[i] = Mode.CHIITOITSU
+        elif i > 0 and shanten_list[i] < shanten_list[i - 1]:
+            modes[i] = Mode.RIICHI_ATTACK
+        else:
             modes[i] = Mode.BALANCED
 
     # ── 脅威発生後 (i >= threat_idx) ──
@@ -623,14 +642,48 @@ def _determine_round_modes(snapshots: List[dict], target_seat: int) -> List[Mode
                 modes[i] = Mode.FOLD
                 continue
 
+        # 防御手役検出: HONITSU_DEFEND（混一色） / CHANTA_DEFEND（チャンタ）
+        # Why: 字牌や端牌を大量に抱える染め手/チャンタ進行は、
+        #      他家リーチに対する鉄壁の安全牌を確保しながらアガリも狙う
+        #      超上級者的な防御戦術。DEFENDより積極的に分類する。
+        hc = hand_to_counts(s['hand'])
+        manzu = sum(hc[0:9]); pinzu = sum(hc[9:18])
+        souzu = sum(hc[18:27]); honors = sum(hc[27:34])
+        max_suit = max(manzu, pinzu, souzu)
+        if max_suit + honors >= 10 and honors >= 2:
+            modes[i] = Mode.HONITSU_DEFEND
+            continue
+        yaochu_hand = sum(hc[ix] for ix in YAOCHU_INDICES)
+        if yaochu_hand >= 8 and max_suit <= 6:
+            modes[i] = Mode.CHANTA_DEFEND
+            continue
+
         # 押し (ATTACK) 判定:
         # 放銃確率>=8%の危険牌を勝負 / 追っかけリーチ / シャンテン改善
+        is_attack = False
         if dp is not None and dp >= 0.08:
-            modes[i] = Mode.ATTACK
+            is_attack = True
         elif is_reach or is_meld:
-            modes[i] = Mode.ATTACK
+            is_attack = True
         elif i > 0 and shanten_list[i] < shanten_list[i - 1]:
-            modes[i] = Mode.ATTACK
+            is_attack = True
+
+        if is_attack:
+            # 攻撃モードの細分化: RIICHI_ATTACK / OPEN_ATTACK / DAMA_ATTACK
+            omc = len(s['melds'])
+            if omc > 0 or is_meld:
+                modes[i] = Mode.OPEN_ATTACK
+            else:
+                # 門前の時、将来的にリーチをかけたかスキャン
+                has_future_riichi = False
+                for k in range(i, n):
+                    if snapshots[k]['reach_states'][target_seat]:
+                        has_future_riichi = True
+                        break
+                if has_future_riichi or is_reach:
+                    modes[i] = Mode.RIICHI_ATTACK
+                else:
+                    modes[i] = Mode.DAMA_ATTACK
         else:
             # 回し打ち (DEFEND): FOLDでもATTACKでもない
             modes[i] = Mode.DEFEND
@@ -665,7 +718,7 @@ def _build_sample_at_tsumo(
         nickname = acc_info.get('nickname', 'unknown')
     elif player_names is not None and seat < len(player_names):
         nickname = player_names[seat]
-        account_id = hash(nickname) & 0x7FFFFFFF
+        account_id = get_deterministic_id(nickname)
     else:
         nickname = 'unknown'
         account_id = 0
@@ -692,6 +745,28 @@ def _build_sample_at_tsumo(
 
     mode = label_mode if label_mode is not None else Mode.BALANCED
 
+    # 教師/反面教師フラグの決定
+    # Why: 強豪(勝ち組)の打牌は模倣すべき教師、弱豪(負け組)の打牌は
+    #      避けるべき反面教師として学習させる。
+    wr = player_stats.get('win_rate', 0.25)
+    dr = player_stats.get('deal_in_rate', 0.15)
+    ap = player_stats.get('avg_placement', 2.5)
+    is_teacher = 1.0
+    if wr >= 0.22 and dr <= 0.13:
+        is_teacher = 1.0  # 強豪基準 → 教師
+    elif dr >= 0.16 or ap >= 2.65:
+        is_teacher = 0.0  # 放銃率高or低順位 → 反面教師
+    # 順位による補正: 現在のスコアから推定
+    scores = round_state.get('scores', [25000]*4)
+    if scores:
+        my_score = scores[round_state['seat']] if round_state['seat'] < len(scores) else 25000
+        sorted_scores = sorted(scores, reverse=True)
+        rank = sorted_scores.index(my_score) if my_score in sorted_scores else -1
+        if rank == 0:
+            is_teacher = 1.0  # トップ確定 → 教師
+        elif rank == 3:
+            is_teacher = 0.0  # ラス確定 → 反面教師
+
     return tokenizer.build_example(
         persona_name=nickname,
         stats=player_stats,
@@ -699,6 +774,7 @@ def _build_sample_at_tsumo(
         shanten=shanten,
         hand_tiles=hand,
         label_mode=mode,
+        is_teacher=is_teacher,
     )
 
 
@@ -932,31 +1008,6 @@ def replay_tenhou_xml_for_samples(
     _process_round()
 
     return samples
-                            'hand': list(states[seat]['hand']),
-                            'melds': list(states[seat]['melds']),
-                            'scores': list(states[seat]['scores']),
-                            'score': states[seat]['score'],
-                            'doras': list(states[seat]['doras']),
-                            'tsumo_count': states[seat]['tsumo_count'],
-                            'seat': seat,
-                            'reach_states': list(states[seat]['reach_states']),
-                        }
-                        sample = _build_sample_at_tsumo(snap, tokenizer, stats_db, None, player_names)
-                        if sample:
-                            samples.append(sample)
-            # Discard: D/E/F/G + 数字
-            elif tag and len(tag) >= 2 and tag[0] in 'DEFG':
-                try:
-                    tile_val = int(tag[1:])
-                except ValueError:
-                    continue
-                seat = 'DEFG'.index(tag[0])
-                tile_str = _tenhou_tile_to_str(tile_val)
-                if 0 <= seat < 4 and tile_str in states[seat]['hand']:
-                    states[seat]['hand'].remove(tile_str)
-                    states[seat]['river'].append(tile_str)
-
-    return samples
 
 
 def pad_sequences(sequences: List[List[int]], max_len: int, pad_token_id: int = 0) -> Tuple[List[List[int]], List[List[int]]]:
@@ -981,14 +1032,16 @@ def pad_sequences(sequences: List[List[int]], max_len: int, pad_token_id: int = 
 
 
 def _save_numpy_batch(token_ids: List[List[int]], stats_vecs: List[List[float]],
-                       labels: List[int], max_seq_len: int, pad_id: int,
+                       labels: List[int], is_teacher_flags: List[float],
+                       max_seq_len: int, pad_id: int,
                        output_dir: str, batch_idx: int):
-    """@title バッチをnumpy形式で保存（スタッツベクトル含む）"""
+    """@title バッチをnumpy形式で保存（スタッツベクトル＋教師フラグ含む）"""
     padded, masks = pad_sequences(token_ids, max_seq_len, pad_id)
     np.save(os.path.join(output_dir, f'input_ids_{batch_idx:04d}.npy'), np.array(padded, dtype=np.int32))
     np.save(os.path.join(output_dir, f'attn_masks_{batch_idx:04d}.npy'), np.array(masks, dtype=np.int8))
     np.save(os.path.join(output_dir, f'labels_{batch_idx:04d}.npy'), np.array(labels, dtype=np.int8))
     np.save(os.path.join(output_dir, f'stats_{batch_idx:04d}.npy'), np.array(stats_vecs, dtype=np.float32))
+    np.save(os.path.join(output_dir, f'teacher_{batch_idx:04d}.npy'), np.array(is_teacher_flags, dtype=np.float32))
 
 
 def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENIZED,
@@ -1019,21 +1072,23 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
     buffer_tokens: List[List[int]] = []
     buffer_stats: List[List[float]] = []
     buffer_labels: List[int] = []
+    buffer_teacher: List[float] = []
     batch_counter = 0
     total_samples = 0
     max_seq_len_observed = 0
 
     def _flush_buffer():
-        nonlocal batch_counter, buffer_tokens, buffer_stats, buffer_labels, max_seq_len_observed
+        nonlocal batch_counter, buffer_tokens, buffer_stats, buffer_labels, buffer_teacher, max_seq_len_observed
         if not buffer_tokens:
             return
-        _save_numpy_batch(buffer_tokens, buffer_stats, buffer_labels, max_seq_len_observed,
-                           tokenizer.vocab['[PAD]'], output_dir, batch_counter)
+        _save_numpy_batch(buffer_tokens, buffer_stats, buffer_labels, buffer_teacher,
+                           max_seq_len_observed, tokenizer.vocab['[PAD]'], output_dir, batch_counter)
         print(f"[tokenize]  保存: batch_{batch_counter:04d} ({len(buffer_tokens)} サンプル)")
         batch_counter += 1
         buffer_tokens = []
         buffer_stats = []
         buffer_labels = []
+        buffer_teacher = []
 
     # --- 雀魂JSONの処理 ---
     record_files = sorted(glob.glob(os.path.join(data_dir, 'record_*_trimmed.json')))
@@ -1058,6 +1113,7 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
                 buffer_tokens.append(s['tokens'])
                 buffer_stats.append(s['stats_vec'])
                 buffer_labels.append(s['label'])
+                buffer_teacher.append(s.get('is_teacher', 1.0))
                 max_seq_len_observed = max(max_seq_len_observed, len(s['tokens']))
                 total_samples += 1
                 if len(buffer_tokens) >= BATCH_SIZE:
@@ -1084,6 +1140,7 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
                     buffer_tokens.append(s['tokens'])
                     buffer_stats.append(s['stats_vec'])
                     buffer_labels.append(s['label'])
+                    buffer_teacher.append(s.get('is_teacher', 1.0))
                     max_seq_len_observed = max(max_seq_len_observed, len(s['tokens']))
                     total_samples += 1
                     if len(buffer_tokens) >= BATCH_SIZE:

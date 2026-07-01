@@ -29,22 +29,17 @@ from core.yakuman_v2 import yakuman_tuple
 from str_converter import tile_to_id, is_red_five
 
 
-# 層名 (タプル位置 → 日本語名)
-TIER_NAMES_NORMAL = [
+# 層名 (タプル位置 → 日本語名) 7D版
+# Why: 12クラスのモードに対応するため7次元固定長タプルを使用。
+#       各モードで異なる要素が同じ層に入るため、汎用的な名前にする。
+TIER_NAMES_7D = [
     '向聴数',
-    '戦術ランク',
-    '良形受入',
-    '愚形受入',
-    'ドラ損失',
+    '受入/安全度',
+    '手役補正',
+    '戦術ランク/愚形',
+    'ドラ損失/安全度',
     '安全度',
-]
-
-TIER_NAMES_DFS = [
-    '向聴数',
-    'DFS期待値',
-    '戦術ランク',
-    'ドラ損失',
-    '安全度',
+    '予備',
 ]
 
 
@@ -81,17 +76,122 @@ class EvaluatorV2:
             return yakuman_tuple(self.state, tile, yakuman_type)
         return self._normal_tuple(tile)
 
+    def _honitsu_score(self, tile: str) -> float:
+        """
+        @title 混一色防御進行用ペルソナ補正
+        @description 切る牌が手牌の最大染め色でも字牌でもない場合 100.0 を返し、
+                     優先的に切り出すように誘導する。
+        Why: 染め手進行では、染める色以外の数牌を真っ先に処理する必要がある。
+             この補正により、手牌を強制的に特定の1色+字牌に絞り込む。
+        @returns {float} 0.0 (残す) / 100.0 (切る)
+        """
+        counts = self.state.my_hand_counts()
+        suits = [sum(counts[0:9]), sum(counts[9:18]), sum(counts[18:27])]
+        main_suit = suits.index(max(suits)) * 9  # 0, 9, or 18
+        tid = tile_to_id(tile)
+        if 27 <= tid <= 33:
+            return 0.0
+        if main_suit <= tid < main_suit + 9:
+            return 0.0
+        return 100.0
+
+    def _chanta_score(self, tile: str) -> float:
+        """
+        @title チャンタ防御進行用ペルソナ補正
+        @description 切る牌が中張牌(2-8)の場合 100.0 を返し、優先的に切り出す。
+                     端牌(1,9)と字牌は 0.0 で残す。
+        Why: チャンタ進行では中張牌を最優先で処理し、端牌と字牌を残す。
+        @returns {float} 0.0 (残す) / 100.0 (切る)
+        """
+        tid = tile_to_id(tile)
+        if 27 <= tid <= 33:
+            return 0.0
+        if tid % 9 in (0, 8):
+            return 0.0
+        return 100.0
+
+    def _count_danger_patterns(self, tile: str) -> tuple:
+        """
+        @title 平沢麻雀パターン理論: (放銃パターン総数, リャンメン数)
+        @description 6パターン(上側両面/下側両面/ペンチャン/カンチャン/シャンポン/単騎)
+                    のうち何パターンが残っているかをカウントする。
+                    加えてリャンメン(両面)の数も返し、同パターン数時の
+                    危険度の差別化に使う。
+        Why:
+            - 同パターン数でもリャンメンが多い方が危険(待ち牌数が多いため)。
+            - 3枚見え(疑似壁)はリャンメン/ペンチャン/カンチャンを事実上不可能にする。
+              残り1枚の牌で順子を構成することは現実的でないため。
+            - 単騎・シャンポンは残り1枚でも成立するため別扱い。
+        @param {str} tile - 評価する牌
+        @returns {(int, int)} (総パターン数(0-6), リャンメン数(0-2))
+        """
+        from str_converter import tile_to_id, is_honor
+        tid = tile_to_id(tile)
+        visible = self.state.all_visible_counts()
+        base = (tid // 9) * 9
+        off = tid - base
+
+        ryanmen = 0
+        patterns = 0
+
+        # WALL閾値: 通常の壁(4枚見え)と疑似壁(3枚見え=残り1枚)を区別
+        # Why: リャンメン/ペンチャン/カンチャンは特定の牌を必要とするため、
+        #      残り1枚では事実上構成不可能。3枚見えでパターン消去して良い。
+        WALL = 3  # 3枚見え=壁扱い(残り1枚では順子構成不能)
+        # 単騎/シャンポン用の厳格な壁
+        WALL_STRICT = 4  # 4枚見えで完全枯れ
+
+        # 字牌
+        if is_honor(tid):
+            if visible[tid] < WALL_STRICT:
+                patterns += 1  # 単騎
+            if visible[tid] >= 2:
+                patterns += 1  # シャンポン
+            return (patterns, 0)
+
+        # 1. 上側両面 (リャンメン)
+        if off <= 6:
+            if visible[base + off + 1] < WALL and visible[base + off + 2] < WALL:
+                patterns += 1
+                ryanmen += 1
+
+        # 2. 下側両面 (リャンメン)
+        if off >= 2:
+            if visible[base + off - 2] < WALL and visible[base + off - 1] < WALL:
+                patterns += 1
+                ryanmen += 1
+
+        # 3. ペンチャン
+        if off == 2:
+            if visible[base + 0] < WALL and visible[base + 1] < WALL:
+                patterns += 1
+        elif off == 6:
+            if visible[base + 7] < WALL and visible[base + 8] < WALL:
+                patterns += 1
+
+        # 4. カンチャン
+        if 1 <= off <= 7:
+            if visible[base + off - 1] < WALL and visible[base + off + 1] < WALL:
+                patterns += 1
+
+        # 5. シャンポン: 同種が合計2枚あれば成立(残り1枚でも対子は可能)
+        if visible[tid] >= 2:
+            patterns += 1
+
+        # 6. 単騎: 場に4枚出きっていなければ常に成立
+        if visible[tid] < WALL_STRICT:
+            patterns += 1
+
+        return (patterns, ryanmen)
+
     def _normal_tuple(self, tile: str) -> Tuple:
         """
-        @title モード別タプル
-        @description 現在のモードに応じてタプルの優先順位を変える:
-                    - URGENT_ATTACK: 受入を最優先
-                    - ATTACK: 戦術ランクより受入優先
-                    - BALANCED: 戦術ランク優先
-                    - DEFEND: 安全度優先
-                    - FOLD: 安全度を最上位に
-
-        動的スイッチ: shanten_after <= 1 で DFS 経路に分岐
+        @title モード別7D評価タプル
+        @description 12クラスの戦術モードの意図を忠実に反映した7次元固定長タプル。
+                    不要な層は 0.0 でパディングし、常に7要素を返すことで
+                    安定した辞書式比較(min選択)を実現する。
+                    要素順: (向聴数, 受入/安全度, 手役補正, 戦術ランク/愚形,
+                             ドラ損失/安全度, 安全度, 予備)
         """
         hand_counts = list(self.state.my_hand_counts())
         discard_id = tile_to_id(tile)
@@ -107,43 +207,79 @@ class EvaluatorV2:
         rank = tactical_discard_rank(self.state, tile)
         dora_loss = _dora_loss(self.state, tile)
         saf = safety_score(self.state, tile)
+        mode = self.get_mode()
+
+        # ====================================================
+        # 危険牌ペナルティ (saf_penalty) の算出
+        # Why: 平沢麻雀パターン理論に基づき、6パターン中何パターンの
+        #      放銃可能性が残っているかをカウントする。
+        #      0=絶対安全(現物), 6=超危険(全パターン)。
+        #      アタック系モードでは、同じシャンテン数を維持できる安全牌が
+        #      あるなら危険牌を迂回する。
+        # ====================================================
+        n_reach = sum(1 for s in range(4) if s != self.state.my_seat
+                      and self.state.reach_states[s] is not None
+                      and self.state.reach_states[s].is_reach)
+        n_opp_melds = sum(1 for s in range(4) if s != self.state.my_seat
+                          for m in self.state.melds[s] if m.is_open)
+        has_threat = (n_reach >= 1 or n_opp_melds >= 2)
+
+        if has_threat:
+            # Why: 総パターン数を10倍+リャンメン数で重み付け。
+            #      同パターン数ならリャンメンの多い方が危険。
+            pcount, rcount = self._count_danger_patterns(tile)
+            saf_penalty = pcount * 10.0 + rcount * 1.0
+        else:
+            saf_penalty = 0.0
+
+        # ====================================================
+        # 7D固定長タプル補助: (a, b, c, d, e, f, g)
+        # ====================================================
+
+        # --- FOLD: 安全度最優先、向聴数無視 ---
+        if mode == Mode.FOLD:
+            return (-saf, shanten_after, rank, 0.0, 0.0, 0.0, 0.0)
 
         if shanten_after <= 1:
-            # 1 向聴 or テンパイ: DFS 期待値で評価
             dfs = self._get_dfs(tile)
-            mode = self.get_mode()
+            good, bad = 0, 0  # not used in 1-shanten path
+
+            if mode == Mode.RIICHI_ATTACK:
+                return (shanten_after, saf_penalty, -dfs, -dora_loss, rank, -saf, 0.0)
+            if mode == Mode.OPEN_ATTACK:
+                return (shanten_after, saf_penalty, -dfs, rank, -dora_loss, -saf, 0.0)
+            if mode == Mode.DAMA_ATTACK:
+                return (shanten_after, saf_penalty, -saf, -dfs, -dora_loss, rank, 0.0)
             if mode == Mode.URGENT_ATTACK:
-                # URGENT: 受入最優先 (-dfs を上に)
-                return (shanten_after, -dfs, -dora_loss, rank, -saf)
-            elif mode == Mode.ATTACK:
-                return (shanten_after, -dfs, -dora_loss, rank, -saf)
-            elif mode == Mode.DEFEND:
-                # DEFEND: 安全度を上に
-                return (shanten_after, -saf, -dfs, rank, dora_loss)
-            elif mode == Mode.FOLD:
-                # FOLD: 安全度最優先
-                return (-saf, shanten_after, -dfs, rank, dora_loss)
-            else:
-                # BALANCED
-                return (shanten_after, -dfs, rank, dora_loss, -saf)
+                return (shanten_after, -dfs, -dora_loss, rank, 0.0, 0.0, 0.0)
+            if mode == Mode.HONITSU_DEFEND:
+                return (shanten_after, -saf, -self._honitsu_score(tile), rank, -dfs, 0.0, 0.0)
+            if mode == Mode.CHANTA_DEFEND:
+                return (shanten_after, -saf, -self._chanta_score(tile), rank, -dfs, 0.0, 0.0)
+            if mode == Mode.DEFEND:
+                return (shanten_after, -saf, -dfs, rank, dora_loss, 0.0, 0.0)
+            # BALANCED
+            return (shanten_after, -dfs, rank, dora_loss, -saf, 0.0, 0.0)
+
         else:
-            # 2 向聴以上: 良形/愚形に分解した受入
             good, bad = count_good_bad_ukeire(self.state, tile)
-            mode = self.get_mode()
+
+            if mode == Mode.RIICHI_ATTACK:
+                return (shanten_after, saf_penalty, -good, -bad, -dora_loss, rank, -saf)
+            if mode == Mode.OPEN_ATTACK:
+                return (shanten_after, saf_penalty, -(good + bad), rank, -dora_loss, -saf, 0.0)
+            if mode == Mode.DAMA_ATTACK:
+                return (shanten_after, saf_penalty, -saf, -good, -bad, -dora_loss, rank)
             if mode == Mode.URGENT_ATTACK:
-                # URGENT: 受入を最優先
-                return (shanten_after, -good, -bad, -dora_loss, rank, -saf)
-            elif mode == Mode.ATTACK:
-                return (shanten_after, -good, -bad, -dora_loss, rank, -saf)
-            elif mode == Mode.DEFEND:
-                # DEFEND: 安全度優先
-                return (shanten_after, -saf, rank, -good, -bad, dora_loss)
-            elif mode == Mode.FOLD:
-                # FOLD: 安全度最優先
-                return (-saf, shanten_after, rank, -good, -bad, dora_loss)
-            else:
-                # BALANCED
-                return (shanten_after, rank, -good, -bad, dora_loss, -saf)
+                return (shanten_after, -good, -bad, -dora_loss, rank, 0.0, 0.0)
+            if mode == Mode.HONITSU_DEFEND:
+                return (shanten_after, -saf, -self._honitsu_score(tile), rank, -good, -bad, dora_loss)
+            if mode == Mode.CHANTA_DEFEND:
+                return (shanten_after, -saf, -self._chanta_score(tile), rank, -good, -bad, dora_loss)
+            if mode == Mode.DEFEND:
+                return (shanten_after, -saf, rank, -good, -bad, dora_loss, 0.0)
+            # BALANCED
+            return (shanten_after, rank, -good, -bad, dora_loss, -saf, 0.0)
 
     def _get_dfs(self, tile: str) -> float:
         """@title DFS 期待値 (キャッシュ付き)"""
@@ -218,8 +354,7 @@ class EvaluatorV2:
                 continue
             for i, (a, b) in enumerate(zip(chosen_tuple, t)):
                 if a != b:
-                    is_dfs_path = len(chosen_tuple) == 5
-                    layer_names = TIER_NAMES_DFS if is_dfs_path else TIER_NAMES_NORMAL
+                    layer_names = TIER_NAMES_7D
                     layer_name = layer_names[i] if i < len(layer_names) else f'層{i+1}'
                     return _explain_difference(chosen, t_str, i, a, b, layer_name)
         return f"{chosen} を切ります (タイ)。"

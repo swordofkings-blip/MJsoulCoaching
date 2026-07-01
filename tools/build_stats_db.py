@@ -29,6 +29,7 @@ Why: 戦術LLMの条件付き入力（ペルソナ）として使用するため
 }
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
 import sys
@@ -75,6 +76,19 @@ def _tenhou_tile_to_str(val: int) -> str:
             num = (val - off) // 4 + 1
             return f"{num}{'mps'[si]}" if si < 3 else f"{num}z"
     return f"?{val}"
+
+
+def get_deterministic_id(name: str) -> int:
+    """
+    @title 決定論的プレイヤーID生成
+    @description プロセス間でハッシュ値が変わらないよう MD5 を使用する。
+    Why: Python の組み込み hash() はプロセス起動ごとにシードが変わるため、
+         同じ名前でも実行ごとに異なるIDになる。stats_db と tokenizer で
+         同一プレイヤーを参照できなくなるバグを修正する。
+    @param {str} name - プレイヤー名
+    @returns {int} 0〜0x7FFFFFFF の一意な整数ID
+    """
+    return int(hashlib.md5(name.encode('utf-8')).hexdigest(), 16) & 0x7FFFFFFF
 
 
 def _tenhou_id_to_internal(val: int) -> int:
@@ -308,9 +322,9 @@ class PlayerStatsTracker:
         """
         if account_id != 0:
             return account_id
-        # Why: 天鳳にはアカウントIDが無いため、名前のハッシュ値をID代わりにする。
-        #      ハッシュ衝突のリスクは非常に低いため実用上問題ない。
-        return hash(name) & 0x7FFFFFFF
+        # Why: 天鳳にはアカウントIDが無いため、名前の MD5 ハッシュをID代わりにする。
+        #      組み込み hash() はプロセスごとにシードが変わるため使えない。
+        return get_deterministic_id(name)
 
     def process_tenhou_xml(self, xml_path: str):
         """@title 天鳳XML (mjlog) 1件を処理

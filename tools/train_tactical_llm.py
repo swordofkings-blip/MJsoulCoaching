@@ -51,10 +51,33 @@ MODEL_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 os.makedirs(MODEL_OUTPUT_DIR, exist_ok=True)
 
 
-class TacticalDataset(Dataset):
-    """@title numpyバッチからのデータセット読み込み（スタッツベクトル対応）
-    @description メモリマップドで全データを効率的にロードする。
+class TacticalUnlikelihoodLoss(nn.Module):
     """
+    @title 非尤度損失（教師＋反面教師ハイブリッド）
+    @description 教師サンプル(is_teacher=1)は CrossEntropy で正の学習、
+                 反面教師(is_teacher=0)は Unlikelihood Loss で
+                 そのモードを選ぶ確率を下げる方向に勾配を流す。
+    Why: 4位や失点につながる打牌を「避けるべき行動」として学習させる。
+         単純にデータを捨てるより効率的で、モデルの判断精度が向上する。
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.ce = nn.CrossEntropyLoss(reduction='none')
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor,
+                is_teacher: torch.Tensor) -> torch.Tensor:
+        ce_loss = self.ce(logits, targets)
+        probs = torch.softmax(logits, dim=-1)
+        target_probs = torch.gather(probs, dim=1, index=targets.unsqueeze(1)).squeeze(1)
+        # 反面教師: ターゲットクラスの確率を極小化(-log(1-p))
+        unlikelihood_loss = -torch.log(1.0 - target_probs + 1e-7)
+        loss = is_teacher * ce_loss + (1.0 - is_teacher) * unlikelihood_loss
+        return loss.mean()
+
+
+class TacticalDataset(Dataset):
+    """@title numpyバッチからのデータセット読み込み（教師フラグ対応）"""
 
     def __init__(self, npy_dir: str, split: str = 'train', val_split: float = VAL_SPLIT):
         meta_path = os.path.join(npy_dir, 'meta.json')
@@ -71,20 +94,39 @@ class TacticalDataset(Dataset):
         all_masks = []
         all_labels = []
         all_stats = []
+        all_teacher = []
+
+        max_width = 0
+        for i in range(num_batches):
+            inp = np.load(os.path.join(self.npy_dir, f'input_ids_{i:04d}.npy'), mmap_mode='r')
+            max_width = max(max_width, inp.shape[1])
+
+        pad_id = self.meta.get('pad_token_id', 0)
         for i in range(num_batches):
             inputs = np.load(os.path.join(self.npy_dir, f'input_ids_{i:04d}.npy'), mmap_mode='r')
             masks = np.load(os.path.join(self.npy_dir, f'attn_masks_{i:04d}.npy'), mmap_mode='r')
             labels = np.load(os.path.join(self.npy_dir, f'labels_{i:04d}.npy'), mmap_mode='r')
             stats = np.load(os.path.join(self.npy_dir, f'stats_{i:04d}.npy'), mmap_mode='r')
-            all_inputs.append(torch.from_numpy(inputs.copy()))
-            all_masks.append(torch.from_numpy(masks.copy()))
-            all_labels.append(torch.from_numpy(labels.copy()))
-            all_stats.append(torch.from_numpy(stats.copy()))
+            tpath = os.path.join(self.npy_dir, f'teacher_{i:04d}.npy')
+            teacher = np.load(tpath) if os.path.exists(tpath) else np.ones(len(labels))
+
+            cur_w = inputs.shape[1]
+            if cur_w < max_width:
+                pad_len = max_width - cur_w
+                inputs = np.pad(inputs, ((0, 0), (0, pad_len)), constant_values=pad_id)
+                masks = np.pad(masks, ((0, 0), (0, pad_len)), constant_values=0)
+
+            all_inputs.append(torch.from_numpy(inputs))
+            all_masks.append(torch.from_numpy(masks))
+            all_labels.append(torch.from_numpy(labels))
+            all_stats.append(torch.from_numpy(stats))
+            all_teacher.append(torch.from_numpy(teacher))
 
         inputs = torch.cat(all_inputs, dim=0)
         masks = torch.cat(all_masks, dim=0)
         labels = torch.cat(all_labels, dim=0)
         stats = torch.cat(all_stats, dim=0)
+        teacher = torch.cat(all_teacher, dim=0)
 
         num = len(inputs)
         indices = torch.randperm(num)
@@ -95,45 +137,49 @@ class TacticalDataset(Dataset):
             self.masks = masks[indices[:split_idx]]
             self.labels = labels[indices[:split_idx]]
             self.stats = stats[indices[:split_idx]]
+            self.teacher = teacher[indices[:split_idx]]
         else:
             self.inputs = inputs[indices[split_idx:]]
             self.masks = masks[indices[split_idx:]]
             self.labels = labels[indices[split_idx:]]
             self.stats = stats[indices[split_idx:]]
+            self.teacher = teacher[indices[split_idx:]]
 
     def __len__(self) -> int:
         return len(self.labels)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        return (self.inputs[idx], self.masks[idx], self.labels[idx].long(), self.stats[idx])
+    def __getitem__(self, idx: int):
+        return (self.inputs[idx], self.masks[idx], self.labels[idx].long(),
+                self.stats[idx], self.teacher[idx])
 
 
 def collate_fn(batch):
-    """バッチ内で系列長が異なる場合のパディング（スタッツベクトル含む）"""
+    """バッチ内で系列長が異なる場合のパディング（教師フラグ含む）"""
     input_ids = torch.stack([b[0] for b in batch], dim=1)
     attn_masks = torch.stack([b[1] for b in batch], dim=0)
     labels = torch.stack([b[2] for b in batch])
     stats = torch.stack([b[3] for b in batch])
-    return input_ids, attn_masks, labels, stats
+    teacher = torch.stack([b[4] for b in batch])
+    return input_ids, attn_masks, labels, stats, teacher
 
 
 def train_epoch(model: nn.Module, loader: DataLoader, optimizer: optim.Optimizer,
-                scheduler, device: torch.device) -> float:
-    """@title 1エポックの学習（スタッツベクトル対応）"""
+                scheduler, criterion, device: torch.device) -> float:
+    """@title 1エポックの学習（Unlikelihood Loss対応）"""
     model.train()
     total_loss = 0.0
     num_batches = 0
-    criterion = nn.CrossEntropyLoss()
 
-    for input_ids, attn_masks, labels, stats_vec in loader:
+    for input_ids, attn_masks, labels, stats_vec, is_teacher in loader:
         input_ids = input_ids.to(device)
         attn_masks = attn_masks.to(device)
         labels = labels.to(device)
         stats_vec = stats_vec.to(device)
+        is_teacher = is_teacher.to(device)
 
         optimizer.zero_grad()
         logits = model(input_ids, attention_mask=attn_masks, stats_features=stats_vec)
-        loss = criterion(logits, labels)
+        loss = criterion(logits, labels, is_teacher)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
@@ -146,7 +192,7 @@ def train_epoch(model: nn.Module, loader: DataLoader, optimizer: optim.Optimizer
 
 
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> Tuple[float, float]:
-    """@title バリデーション評価（スタッツベクトル対応）
+    """@title バリデーション評価
     @returns {(float, float)} (平均損失, 正解率)
     """
     model.eval()
@@ -156,7 +202,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> Tupl
     criterion = nn.CrossEntropyLoss()
 
     with torch.no_grad():
-        for input_ids, attn_masks, labels, stats_vec in loader:
+        for input_ids, attn_masks, labels, stats_vec, _ in loader:
             input_ids = input_ids.to(device)
             attn_masks = attn_masks.to(device)
             labels = labels.to(device)
@@ -214,6 +260,7 @@ def train():
     total_params = sum(p.numel() for p in model.parameters())
     print(f"[train] モデルパラメータ数: {total_params:,}")
     print(f"[train] スタッツ特徴量: {train_dataset.meta.get('num_stats_features', 21)}次元")
+    print(f"[train] 損失関数: TacticalUnlikelihoodLoss (教師+反面教師)")
 
     # Why: SGD は DirectML でフルGPU動作する。AdamW は lerp が非対応で CPU フォールバックが発生する。
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE * 10, momentum=0.9, weight_decay=WEIGHT_DECAY)
@@ -252,9 +299,11 @@ def train():
         except Exception as e:
             print(f"[train] チェックポイントのロードに失敗しました (最初から開始します): {e}")
 
+    criterion = TacticalUnlikelihoodLoss()
+
     print("[train] 学習開始...")
-    for epoch in range(start_epoch, NUM_EPOCHS + 1):
-        train_loss = train_epoch(model, train_loader, optimizer, scheduler, device)
+    for epoch in range(1, NUM_EPOCHS + 1):
+        train_loss = train_epoch(model, train_loader, optimizer, scheduler, criterion, device)
         val_loss, val_acc = evaluate(model, val_loader, device)
         lr = optimizer.param_groups[0]['lr']
 

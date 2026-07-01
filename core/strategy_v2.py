@@ -20,14 +20,18 @@ from core.yakuman_v2 import get_active_yakuman
 
 
 class Mode(Enum):
-    URGENT_ATTACK = "URGENT_ATTACK"
-    ATTACK = "ATTACK"
-    BALANCED = "BALANCED"
-    DEFEND = "DEFEND"
-    FOLD = "FOLD"
-    CHIITOITSU = "CHIITOITSU"
-    YAKUMAN = "YAKUMAN"
-    KOKUSHI = "KOKUSHI"
+    RIICHI_ATTACK = "RIICHI_ATTACK"      # 門前立直アタック
+    OPEN_ATTACK = "OPEN_ATTACK"          # 副露鳴きアタック
+    DAMA_ATTACK = "DAMA_ATTACK"          # 門前ダマテンアタック
+    URGENT_ATTACK = "URGENT_ATTACK"      # 全力押し切り
+    BALANCED = "BALANCED"                # 通常進行
+    DEFEND = "DEFEND"                    # 回し打ち
+    FOLD = "FOLD"                        # 完全撤退
+    HONITSU_DEFEND = "HONITSU_DEFEND"    # 混一色防御進行
+    CHANTA_DEFEND = "CHANTA_DEFEND"      # チャンタ防御進行
+    CHIITOITSU = "CHIITOITSU"            # 七対子
+    YAKUMAN = "YAKUMAN"                  # 役満
+    KOKUSHI = "KOKUSHI"                  # 国士無双
 
 
 # ──────────────────────────────────────────────
@@ -107,10 +111,7 @@ def _ensure_loaded():
     try:
         from core.tactical_llm import build_model
         vsz = _VOCAB.get('vocab_size', 271)
-        ncls = len(_VOCAB.get('mode_names', [
-            'URGENT_ATTACK', 'ATTACK', 'BALANCED', 'DEFEND',
-            'FOLD', 'CHIITOITSU', 'YAKUMAN', 'KOKUSHI',
-        ]))
+        ncls = len(_VOCAB.get('mode_names', [m.name for m in Mode]))
         _DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = build_model(vocab_size=vsz, num_classes=ncls, dropout=0.0,
                             num_stats_features=len(_STATS_FEATURE_KEYS))
@@ -267,7 +268,7 @@ def get_mode(state, current_turn: int, is_last_round: bool,
     #      テンパイor一シャンテンならオリる理由がなく、強気に押す。
     visible_dora = _count_visible_dora(state)
     if visible_dora >= 3 and shanten <= 1:
-        return Mode.ATTACK
+        return Mode.OPEN_ATTACK if open_meld_count > 0 else Mode.RIICHI_ATTACK
 
     # 5. TacticalTransformer 推論
     _ensure_loaded()
@@ -283,7 +284,7 @@ def get_mode(state, current_turn: int, is_last_round: bool,
     if n_reach >= 1 and not is_tenpai:
         return Mode.DEFEND
     if shanten <= 1:
-        return Mode.ATTACK
+        return Mode.RIICHI_ATTACK
     return Mode.BALANCED
 
 
