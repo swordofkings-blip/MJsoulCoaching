@@ -1228,28 +1228,47 @@ class StrategyManager:
         @title 飛びリスク天秤補正
         @description ラス目(4位)で持ち点が少なく、かつ自分の手が安い場合、
                      押し引きスコアを引き下げて飛びリスクを回避する。
-        Why: 「残り局数 × 飛び確率 × 手の価値」の天秤で判断する。
-             局が多く残っているほど飛ぶリスクを避ける価値が高い。
-             自分の手が高いほどリスクを冒す価値がある。
+        Why:
+            - 親への放銃は子の1.5倍(満貫12000)のリスクがある。
+            - 半荘なら残り局数が最大8局あり、飛ぶと取り返す機会を失う。
+            - 「残り局数 × 飛び確率 × 手の価値」の天秤で判断する。
         """
         my_score = self.state.scores[self.state.my_seat]
         rank = self.state.my_score_rank()
-
-        # ラス目以外 or 持ち点に余裕がある場合は補正不要
-        if rank != 3 or my_score >= 8000:
+        if rank != 3:
             return push_score
 
-        # 残り局数（東風戦ベース: 最大4局）
-        rem_rounds = max(0, 4 - getattr(self.state, 'kyoku', 0))
-        # 自分の手の推定打点
+        # 推定放銃打点: 親への放銃は12000、子は8000
+        # Why: リーチ者/仕掛け者のうち親がいる場合、放銃リスクが高い。
+        estimated_loss = 8000
+        for s in range(4):
+            if s == self.state.my_seat:
+                continue
+            if self.state.reach_states[s] is not None and self.state.reach_states[s].is_reach:
+                if s == getattr(self.state, 'dealer_seat', -1):
+                    estimated_loss = 12000  # 親リーチは満貫12000
+                    break
+
+        # 持ち点が推定放銃打点を下回ると飛びリスク発生
+        if my_score >= estimated_loss:
+            return push_score
+
+        # 残り局数（半荘対応）
+        # Why: chang==1(南場)が出現可能なら半荘(最大8局)、
+        #      そうでなければ東風戦(最大4局)とみなす。
+        kyoku = getattr(self.state, 'kyoku', 0)
+        # kyoku>=5 なら南場が存在 → 半荘
+        is_hanchan = kyoku >= 5 or getattr(self.state, 'chang', 0) >= 1
+        max_rounds = 8 if is_hanchan else 4
+        rem_rounds = max(0, max_rounds - kyoku)
+
         my_win_score = self.estimate_win_score()
 
-        # 残り局数があり、かつ自分の手が安い場合、引き(オリ)にシフト
         if rem_rounds >= 1 and my_win_score < 4000:
-            # Why: 残り局数が多いほど飛びたくない。
-            #      手が安い(4000未満=3900以下)ほどリスクに見合わない。
-            #      補正値は -0.3 × (残局/4) × (1 - 打点/4000) で連続的に変化
-            adjust = -0.3 * (rem_rounds / 4.0) * (1.0 - my_win_score / 4000.0)
+            # Why: 残り局数が多いほど飛びにくくする。
+            #      手が安い(4000未満)ほどリスクに見合わない。
+            #      補正値は連続的に変化: -0.3×(残局/最大局)×(1-打点/4000)
+            adjust = -0.3 * (rem_rounds / max_rounds) * (1.0 - min(my_win_score, 4000) / 4000.0)
             push_score += adjust
 
         return push_score

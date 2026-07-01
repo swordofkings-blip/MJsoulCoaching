@@ -213,4 +213,44 @@ def _tile_remaining_weights(state, reach_seats: List[int], visible: List[int], m
             ryanmen = 10.0 + 10.0  # 上下両方向
             weights[tid] = kanchan + ryanmen + tanki_shanpon
 
+    # ── 序盤捨て牌端安全度補正（危険度段階減衰） ──
+    # Why: 2切り→1, 8切り→9 は1段目(1-5巡)まで高い安全度を維持。
+    #      7切り→9, 3切り→1, 1切り→2, 9切り→8 も超序盤(1-3巡)は安全。
+    #      これらの捨て牌はその数字の外側/内側の牌が待ちになりづらいことを利用する。
+    for seat in reach_seats:
+        river_list = state.river[seat]
+        for idx, discard_str in enumerate(river_list):
+            try:
+                discard_id = tile_to_id(discard_str)
+            except Exception:
+                continue
+            if is_honor(discard_id):
+                continue
+            base = (discard_id // 9) * 9
+            off = discard_id - base
+
+            # A. 2切り→1, 8切り→9 (1〜5巡目、危険度70%減)
+            if idx < 5:
+                if off == 1:  # 2切り→安全性1へ
+                    target = base + 0
+                    weights[target] *= 0.3
+                elif off == 7:  # 8切り→安全性9へ
+                    target = base + 8
+                    weights[target] *= 0.3
+
+            # B, C. 3切り→1, 7切り→9, 1切り→2, 9切り→8 (1〜3巡目、危険度25%減)
+            if idx < 3:
+                if off == 2:  # 3切り→安全性1へ
+                    target = base + 0
+                    weights[target] *= 0.75
+                elif off == 6:  # 7切り→安全性9へ
+                    target = base + 8
+                    weights[target] *= 0.75
+                elif off == 0:  # 1切り→安全性2へ
+                    target = base + 1
+                    weights[target] *= 0.75
+                elif off == 8:  # 9切り→安全性8へ
+                    target = base + 7
+                    weights[target] *= 0.75
+
     return weights
