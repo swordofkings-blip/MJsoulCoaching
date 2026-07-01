@@ -52,10 +52,6 @@ def make_v1_ai(params: dict) -> AIPlayer:
 
 def make_v2_ai(params: dict) -> AIPlayer:
     p = dict(params) if params else {}
-    # 副露の過剰抑制
-    p.setdefault('MELD_THRESHOLD', 300.0)
-    # 立直判定の微調整 (riichi_v2)
-    p.setdefault('RIICHI_W_BASE_SCORE', -30.0)  # デフォルト -50 → -30 でやや積極的
     return AIPlayer("v2", EvaluatorV2, p)
 
 

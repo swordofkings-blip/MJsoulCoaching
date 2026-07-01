@@ -146,6 +146,30 @@ def run_one_game(game_idx: int, max_workers: int, start_seed: int) -> dict:
     sh(['docker', 'rm', '-f', server_name])
     sh(['docker', 'rm', '-f', akochan_cname])
 
+    # mjson から各プレイヤーのスタッツを集計
+    player_names = ['OurAIv2-0', 'OurAIv2-1', 'OurAIv2-2', 'Akochan']
+    stats = {n: {'wins': 0, 'tsumo': 0, 'ron': 0, 'reach': 0} for n in player_names}
+    last_hora = None
+    for mline in mjson_lines:
+        try:
+            obj = json.loads(mline)
+            t = obj.get("type")
+            if t == "reach":
+                actor = obj.get("actor", -1)
+                if 0 <= actor < 4:
+                    stats[player_names[actor]]['reach'] += 1
+            elif t == "hora":
+                actor = obj.get("actor", -1)
+                target = obj.get("target", -1)
+                if 0 <= actor < 4:
+                    stats[player_names[actor]]['wins'] += 1
+                    if actor != target and target >= 0:
+                        stats[player_names[actor]]['ron'] += 1
+                    else:
+                        stats[player_names[actor]]['tsumo'] += 1
+        except Exception:
+            pass
+
     scores = {}
     match = re.search(r"game \d+: (.+)", logs.stdout)
     if match:
@@ -159,13 +183,12 @@ def run_one_game(game_idx: int, max_workers: int, start_seed: int) -> dict:
             except ValueError:
                 continue
     if not scores:
-        # スコアパース失敗時は最終スコアをログから別形式で検索
-        for name_tag in ['OurAIv2-0', 'OurAIv2-1', 'OurAIv2-2', 'Akochan']:
+        for name_tag in player_names:
             m2 = re.search(rf'{re.escape(name_tag)}.*?(\d+)', logs.stdout)
             if m2:
                 scores[name_tag] = int(m2.group(1))
 
-    return scores
+    return {'scores': scores, 'stats': stats}
 
 
 def main():

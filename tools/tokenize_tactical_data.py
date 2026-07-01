@@ -176,29 +176,33 @@ class TacticalTokenizer:
         """@title トークンID列を文字列にデコード"""
         return ''.join(self.inv_vocab.get(tid, '[?]') for tid in token_ids)
 
+    # 牌譜屋準拠スタッツのキー一覧（stats_features の順序と一致させる）
+    STATS_FEATURE_KEYS = [
+        'win_rate', 'deal_in_rate', 'tsumo_rate', 'damaten_rate',
+        'meld_rate', 'riichi_rate', 'avg_win_points', 'avg_deal_in_points',
+        'avg_win_turn', 'avg_placement',
+        'riichi_win_rate', 'riichi_deal_in_rate', 'riichi_exhaustive_rate',
+        'open_win_rate', 'deal_in_when_open_rate',
+        'bust_rate', 'exhaustive_rate', 'tenpai_rate_in_exh',
+        'point_efficiency', 'loss_from_deal_in', 'adj_efficiency',
+    ]
+
     def build_example(self, persona_name: str, stats: dict, score: int,
                       shanten: int, hand_tiles: List[str], label_mode: Mode) -> dict:
         """
         @title 学習サンプルの構築
-        @description 局面情報からトークン系列とラベルを生成する。
+        @description 局面情報からトークン系列・スタッツベクトル・ラベルを生成する。
         @param {str} persona_name - プレイヤー名
-        @param {dict} stats - プレイヤースタッツ辞書
+        @param {dict} stats - プレイヤースタッツ辞書 (21項目)
         @param {int} score - 現在の持ち点
         @param {int} shanten - シャンテン数
         @param {List[str]} hand_tiles - 手牌リスト
         @param {Mode} label_mode - 正解ラベル（戦術モード）
-        @returns {dict} { "tokens": [...], "label": <mode_id>, "text": <元テキスト> }
+        @returns {dict} { "tokens": [...], "stats_vec": [...], "label": <mode_id>, "text": <元テキスト> }
         """
-        # 統計情報の文字列化
-        stats_str = (
-            f'wr={stats.get("win_rate", 0)} '
-            f'dir={stats.get("deal_in_rate", 0)} '
-            f'mr={stats.get("meld_rate", 0)} '
-            f'rr={stats.get("riichi_rate", 0)} '
-            f'dmr={stats.get("damaten_rate", 0)} '
-            f'awp={stats.get("avg_win_points", 0)} '
-            f'adp={stats.get("avg_deal_in_points", 0)}'
-        )
+        # スタッツベクトル (21次元float)
+        stats_vec = [stats.get(k, 0.0) for k in self.STATS_FEATURE_KEYS]
+
         # 手牌の正規化（赤5→通常5）
         hand_norm = [
             ('5' + t[1]) if (t[0] == '0' and len(t) >= 2) else t
@@ -206,21 +210,20 @@ class TacticalTokenizer:
         ]
         hand_str = ' '.join(hand_norm)
 
-        # トークン系列の構文テキスト
+        # トークン系列の構文テキスト（スタッツはベクトルで別途渡すのでテキストには含めない）
         text = (
             f'[PERSONA] {persona_name} '
-            f'[STATS] {stats_str} '
             f'[SCORE] {score} '
             f'[SHANTEN] {shanten} '
             f'[ARROW] [HAND] {hand_str}'
         )
 
-        # 簡易トークナイズ: スペースで分割して encode_string に渡す
         tokens = self.simple_tokenize(text)
         label_id = MODE_NAME_TO_ID.get(label_mode.name, 0)
 
         return {
             'tokens': tokens,
+            'stats_vec': stats_vec,
             'label': label_id,
             'text': text,
         }
@@ -253,25 +256,58 @@ def _replay_round_for_seat(
     seat_to_account: Dict[int, dict],
 ) -> List[dict]:
     """
-    @title 指定席の局再生
-    @description 牌譜アクション列を特定のプレイヤー視点で再生し、ツモ局面の状態スナップショットを返す。
-    @param {List[dict]} actions - 牌譜アクション列
-    @param {int} target_seat - 再生対象のプレイヤー席
-    @param {dict} seat_to_account - seat -> account 情報
-    @returns {List[dict]} ツモ局面のスナップショットリスト
+    @title 指定席の局再生（スナップショット＋未来行動記録）
+    @description 牌譜アクション列を4席すべての状態を追跡しながら再生し、
+                 各ツモ局面のスナップショットとその直後のプレイヤー行動を記録する。
+                 これにより未来情報ルックアヘッドでの戦術モード逆算が可能になる。
     """
     snapshots: List[dict] = []
 
-    state = {
-        'hand': [],
-        'melds': [],
-        'score': 25000,
-        'scores': [25000] * 4,
-        'doras': [],
-        'tsumo_count': 0,
-        'seat': target_seat,
-        'reach_states': [False] * 4,
-    }
+    # 4席分の状態を同時に追跡
+    states = [
+        {'hand': [], 'river': [], 'melds': [], 'melds_count': 0,
+         'riichi': False, 'tsumo_count': 0}
+        for _ in range(4)
+    ]
+    scores = [25000] * 4
+    doras = []
+    last_snapshot_idx = -1
+
+    def _push_snapshot(seat):
+        nonlocal last_snapshot_idx
+        s = states[seat]
+        hand_counts = hand_to_counts(s['hand'])
+        open_melds = s['melds']
+        if len(open_melds) == 0:
+            shanten = ShantenCalculatorV2.calculate_closed_effective(hand_counts)
+        else:
+            shanten = ShantenCalculatorV2.calculate_open(hand_counts, len(open_melds))
+
+        snapshots.append({
+            'hand': list(s['hand']),
+            'melds': list(s['melds']),
+            'melds_count': s['melds_count'],
+            'scores': list(scores),
+            'score': scores[seat],
+            'doras': list(doras),
+            'tsumo_count': s['tsumo_count'],
+            'seat': seat,
+            'reach_states': [states[s2]['riichi'] for s2 in range(4)],
+            'river': [list(states[s2]['river']) for s2 in range(4)],
+            'shanten': shanten,
+            'discard_tile': None,
+            'is_reach_declaration': False,
+            'is_meld_declaration': False,
+        })
+        last_snapshot_idx = len(snapshots) - 1
+
+    def _backfill(seat, key, value):
+        """直近のスナップショットに未来行動を書き戻す"""
+        for i in range(len(snapshots) - 1, -1, -1):
+            if snapshots[i]['seat'] == seat and snapshots[i][key] is None or key in ('is_reach_declaration', 'is_meld_declaration'):
+                if snapshots[i][key] is False:  # 未設定の場合のみ
+                    snapshots[i][key] = value
+                break
 
     for action in actions:
         t = action.get('type')
@@ -282,78 +318,87 @@ def _replay_round_for_seat(
             data = result.get('data', {})
 
             if class_name == 'RecordNewRound':
-                # 新局: 手牌を初期化
-                state['hand'] = [normalize_tile(t) for t in data.get(f'tiles{target_seat}', [])]
-                state['score'] = data.get('scores', [25000]*4)[target_seat]
-                state['scores'] = list(data.get('scores', [25000]*4))
-                state['doras'] = [normalize_tile(d) for d in data.get('doras', [])]
-                state['tsumo_count'] = 0
-                state['melds'] = []
-                state['reach_states'] = [False] * 4
+                for seat in range(4):
+                    hand_key = f'tiles{seat}'
+                    states[seat] = {
+                        'hand': [normalize_tile(t) for t in data.get(hand_key, [])],
+                        'river': [],
+                        'melds': [],
+                        'melds_count': 0,
+                        'riichi': False,
+                        'tsumo_count': 0,
+                    }
+                scores = list(data.get('scores', [25000] * 4))
+                doras = [normalize_tile(d) for d in data.get('doras', [])]
 
             elif class_name == 'RecordDealTile':
                 seat = data.get('seat')
                 tile = data.get('tile')
-                if seat == target_seat and tile:
-                    state['hand'].append(normalize_tile(tile))
-                    state['tsumo_count'] += 1
-                    # ツモ直後のスナップショット
-                    snapshots.append({
-                        'hand': list(state['hand']),
-                        'melds': list(state['melds']),
-                        'scores': list(state['scores']),
-                        'score': state['score'],
-                        'doras': list(state['doras']),
-                        'tsumo_count': state['tsumo_count'],
-                        'seat': target_seat,
-                        'reach_states': list(state['reach_states']),
-                    })
-                else:
-                    state['tsumo_count'] += 1
+                if seat is not None:
+                    states[seat]['tsumo_count'] += 1
+                    if tile:
+                        states[seat]['hand'].append(normalize_tile(tile))
+                    if seat == target_seat:
+                        _push_snapshot(seat)
 
             elif class_name == 'RecordDiscardTile':
                 seat = data.get('seat')
                 tile = data.get('tile')
                 is_liqi = data.get('isLiqi', False)
-                if is_liqi:
-                    state['reach_states'][seat] = True
-                if seat == target_seat and tile:
+                if seat is not None and tile:
                     norm = normalize_tile(tile)
-                    if norm in state['hand']:
-                        state['hand'].remove(norm)
+                    if norm in states[seat]['hand']:
+                        states[seat]['hand'].remove(norm)
+                    states[seat]['river'].append(norm)
+                    if is_liqi:
+                        states[seat]['riichi'] = True
+                        # リーチ宣言を直近スナップショットに記録
+                        if seat == target_seat:
+                            _backfill(seat, 'is_reach_declaration', True)
 
             elif class_name == 'RecordChiPengGang':
                 seat = data.get('seat')
                 tiles = data.get('tiles', [])
                 froms = data.get('froms', [])
-                if seat == target_seat:
+                if seat is not None:
+                    # 自分の手牌から削除
                     for ti, fr in zip(tiles, froms):
                         if fr == seat:
                             norm = normalize_tile(ti)
-                            if norm in state['hand']:
-                                state['hand'].remove(norm)
-                    state['melds'].append(list(tiles))
+                            if norm in states[seat]['hand']:
+                                states[seat]['hand'].remove(norm)
+                    # チー/ポン/大明槓なので1種の副露
+                    states[seat]['melds'].append([normalize_tile(t) for t in tiles])
+                    states[seat]['melds_count'] += 1
+                    # 副露を直近スナップショットに記録
+                    if seat == target_seat:
+                        _backfill(seat, 'is_meld_declaration', True)
 
             elif class_name == 'RecordAnGangAddGang':
                 seat = data.get('seat')
                 tile = data.get('tiles', '')
-                if seat == target_seat:
+                if seat is not None and tile:
                     norm = normalize_tile(tile)
+                    # 暗槓: 4枚削除
                     for _ in range(4):
-                        if norm in state['hand']:
-                            state['hand'].remove(norm)
+                        if norm in states[seat]['hand']:
+                            states[seat]['hand'].remove(norm)
+                    # 加槓: 1枚削除（既存の副露に追加）
+                    states[seat]['melds'].append([norm])
+                    states[seat]['melds_count'] += 1
 
             elif class_name == 'RecordHule':
                 if 'scores' in data:
-                    state['scores'] = list(data['scores'])
-                    state['score'] = data['scores'][target_seat]
+                    scores = list(data['scores'])
 
         elif t == 2:
             ui = action.get('userInput', {})
             ui_type = ui.get('type')
             seat = ui.get('seat')
             if ui_type == 5 and seat is not None:
-                state['reach_states'][seat] = True
+                states[seat]['riichi'] = True
+                if seat == target_seat:
+                    _backfill(seat, 'is_reach_declaration', True)
 
     return snapshots
 
@@ -365,13 +410,11 @@ def extract_training_examples_from_record(
     account_id_map: Dict[int, str],
 ) -> List[dict]:
     """
-    @title 牌譜からの学習サンプル抽出
-    @description 牌譜を全プレイヤー視点で再生し、各ツモ局面で戦術モードを判定して学習サンプルを生成する。
-    @param {dict} record - 牌譜JSON
-    @param {TacticalTokenizer} tokenizer - トークナイザ
-    @param {dict} stats_db - プレイヤースタッツDB
-    @param {dict} account_id_map - seat -> account_id のマッピング
-    @returns {List[dict]} 学習サンプルリスト
+    @title 牌譜からの学習サンプル抽出（未来ルックアヘッドラベリング版）
+    @description 牌譜を全プレイヤー視点で再生し、ルックアヘッド逆算した戦術モードを
+                 正解ラベルとして学習サンプルを生成する。
+    Why: ルールベース get_mode() ではなく、プレイヤーの実際の行動履歴から
+         戦術意図を逆算することで、ルールの焼き増しではない真の学習を可能にする。
     """
     samples: List[dict] = []
 
@@ -382,17 +425,217 @@ def extract_training_examples_from_record(
 
     actions = record.get('detail_records', {}).get('actions', [])
 
-    # 各プレイヤー視点で再生
     for seat in range(4):
         if seat not in seat_to_account:
             continue
+        # 局再生 → スナップショット
         snapshots = _replay_round_for_seat(actions, seat, seat_to_account)
-        for snap in snapshots:
-            sample = _build_sample_at_tsumo(snap, tokenizer, stats_db, seat_to_account)
+        if not snapshots:
+            continue
+
+        # 未来ルックアヘッドでモード逆算
+        modes = _determine_round_modes(snapshots, seat)
+
+        # 各スナップショットに逆算モードをラベルとして付与
+        for snap, mode in zip(snapshots, modes):
+            sample = _build_sample_at_tsumo(
+                snap, tokenizer, stats_db, seat_to_account,
+                label_mode=mode,
+            )
             if sample:
                 samples.append(sample)
 
     return samples
+
+
+def _calculate_deal_in_prob(snap: dict, tile: str, target_seat: int) -> float:
+    """
+    @title 放銃確率推定（軽量版）
+    @description スナップショットの情報のみから、指定牌を切った時の放銃確率を概算する。
+                 リーチ者の現物=0%、スジ=2%、端牌=6-8%、中張無筋=12%がベース。
+    Why: 重い GameState/StrategyManager に依存せず、スナップショットのみで計算できるようにする。
+    @param {dict} snap - ツモ局面スナップショット
+    @param {str} tile - 評価する牌
+    @param {int} target_seat - 自分の席
+    @returns {float} 放銃確率 (0.0-0.5)
+    """
+    from str_converter import tile_to_id, is_honor
+    try:
+        tid = tile_to_id(tile)
+    except Exception:
+        return 0.0
+
+    reach_seats = [
+        s for s in range(4)
+        if s != target_seat and len(snap['reach_states']) > s and snap['reach_states'][s]
+    ]
+    if not reach_seats:
+        return 0.0  # リーチ者がいなければ放銃確率0
+
+    river = snap['river']
+    visible = [0] * 34
+    for s in range(4):
+        for t in river[s]:
+            visible[tile_to_id(t)] += 1
+    for t in snap['hand']:
+        visible[tile_to_id(t)] += 1
+    for d in snap['doras']:
+        visible[tile_to_id(d)] += 1
+
+    # 現物チェック: 全リーチ者の河にあるなら絶対安全
+    is_genbutsu_all = True
+    for rs in reach_seats:
+        river_ids = set()
+        for t in river[rs]:
+            try:
+                river_ids.add(tile_to_id(t))
+            except Exception:
+                pass
+        if tid not in river_ids:
+            is_genbutsu_all = False
+            break
+    if is_genbutsu_all:
+        return 0.0
+
+    # 字牌4枚見えも絶対安全
+    if is_honor(tid) and visible[tid] >= 4:
+        return 0.0
+
+    # 残り枚数による補正
+    remaining = 4 - visible[tid]
+    if remaining <= 0:
+        return 0.0
+
+    # 牌種別ベース危険度
+    if is_honor(tid):
+        base = 0.08
+    elif tid % 9 == 0 or tid % 9 == 8:
+        base = 0.06  # 端牌
+    else:
+        base = 0.12  # 中張牌
+
+    # スジ割引: リーチ者がいる場合、スジ牌は危険度半減
+    # ただし全リーチ者に対してスジでなければ割引なし
+    all_suji = True
+    for rs in reach_seats:
+        is_suji_for_this = False
+        for river_tile_str in river[rs]:
+            try:
+                river_tid = tile_to_id(river_tile_str)
+                # スジ: 3離れた牌
+                if not is_honor(river_tid) and not is_honor(tid):
+                    same_suit = (tid // 9) == (river_tid // 9)
+                    diff = abs((tid % 9) - (river_tid % 9))
+                    if same_suit and diff == 3:
+                        is_suji_for_this = True
+                        break
+            except Exception:
+                pass
+        if not is_suji_for_this:
+            all_suji = False
+            break
+    if all_suji:
+        base *= 0.3  # 全リーチ者にスジ → 危険度70%減
+
+    # リーチ人数で補正
+    n = len(reach_seats)
+    if n >= 1:
+        base *= 1.5 + 0.3 * (n - 1)
+
+    return min(base, 0.5)
+
+
+def _determine_round_modes(snapshots: List[dict], target_seat: int) -> List[Mode]:
+    """
+    @title 戦術モード逆算（未来ルックアヘッド）
+    @description 局内の全スナップショットをスキャンし、強豪プレイヤーの実際の
+                 打牌行動（リーチ・副露・切った牌の放銃確率・シャンテン数の変化）
+                 から戦術モードを逆算する。
+    Why: ルールベース get_mode() を教師にするとルールの焼き増しにしかならない。
+         実際のプレイヤーの行動から「なぜこの判断をしたか」を推定することで、
+         より人間らしい戦術判断を学習させる。
+    """
+    n = len(snapshots)
+    if n == 0:
+        return []
+
+    # シャンテン数列
+    shanten_list = [s['shanten'] for s in snapshots]
+
+    # 切った牌の放銃確率
+    dealin_probs = []
+    for s in snapshots:
+        dt = s.get('discard_tile')
+        if dt:
+            dealin_probs.append(_calculate_deal_in_prob(s, dt, target_seat))
+        else:
+            dealin_probs.append(None)
+
+    # 脅威発生点の特定: 他家リーチ or 他家2副露以上
+    threat_idx = n  # デフォルト=最後まで脅威なし
+    for i, s in enumerate(snapshots):
+        opp_reach = sum(1 for seat in range(4) if seat != target_seat and s['reach_states'][seat])
+        if opp_reach > 0:
+            threat_idx = i
+            break
+        # 他家の副露数集計
+        # （スナップショットには target_seat の melds_count しかないため、
+        #   river の長さ変化で他家の仕掛けを間接検出する簡易ロジック）
+        if i > 0:
+            prev_river_lens = [len(snapshots[i-1]['river'][seat]) for seat in range(4) if seat != target_seat]
+            curr_river_lens = [len(s['river'][seat]) for seat in range(4) if seat != target_seat]
+            if any(c - p >= 2 for c, p in zip(curr_river_lens, prev_river_lens)):
+                threat_idx = i
+                break
+
+    # モード初期化: 脅威発生前はBALANCED、発生後はDEFEND
+    modes = [Mode.BALANCED] * n
+
+    # ── 脅威発生前 (i < threat_idx) ──
+    # 手仕舞いの通常進行。シャンテン数が改善したらATTACKを部分的に付与
+    for i in range(min(threat_idx, n)):
+        if i > 0 and shanten_list[i] < shanten_list[i - 1]:
+            modes[i] = Mode.ATTACK
+        elif i > 0 and shanten_list[i] == shanten_list[i - 1]:
+            modes[i] = Mode.BALANCED
+
+    # ── 脅威発生後 (i >= threat_idx) ──
+    for i in range(threat_idx, n):
+        s = snapshots[i]
+        dt = s.get('discard_tile')
+        dp = dealin_probs[i] if i < len(dealin_probs) else None
+        is_reach = s.get('is_reach_declaration', False)
+        is_meld = s.get('is_meld_declaration', False)
+
+        # 完全撤退 (FOLD) 判定:
+        # シャンテンが維持or悪化 + 現物のみ連打（dp=0.0）
+        if dp is not None and dp == 0.0:
+            # この先、最後まで現物以外を一切切っていない & シャンテン改善なし
+            is_folding = True
+            for k in range(i, n):
+                if dealin_probs[k] is not None and dealin_probs[k] > 0.0:
+                    is_folding = False
+                    break
+                if shanten_list[k] < shanten_list[i]:
+                    is_folding = False
+                    break
+            if is_folding:
+                modes[i] = Mode.FOLD
+                continue
+
+        # 押し (ATTACK) 判定:
+        # 放銃確率>=8%の危険牌を勝負 / 追っかけリーチ / シャンテン改善
+        if dp is not None and dp >= 0.08:
+            modes[i] = Mode.ATTACK
+        elif is_reach or is_meld:
+            modes[i] = Mode.ATTACK
+        elif i > 0 and shanten_list[i] < shanten_list[i - 1]:
+            modes[i] = Mode.ATTACK
+        else:
+            # 回し打ち (DEFEND): FOLDでもATTACKでもない
+            modes[i] = Mode.DEFEND
+
+    return modes
 
 
 def _build_sample_at_tsumo(
@@ -401,27 +644,27 @@ def _build_sample_at_tsumo(
     stats_db: Dict[str, dict],
     seat_to_account: Optional[Dict[int, dict]] = None,
     player_names: Optional[List[str]] = None,
+    label_mode: Optional[Mode] = None,
 ) -> Optional[dict]:
     """
     @title ツモ局面での学習サンプル生成
-    @description 現在の局面情報から戦術モードを特定し、学習サンプルを作成する。
-                 ラベルは strategy_v2.get_mode() で決定する（ルールベースの正解）。
+    @description スナップショットの局面情報からトークン系列を生成する。
+                 ラベルは呼び出し元から指定された label_mode（ルックアヘッド逆算値）。
     @param {dict|None} seat_to_account - MJsoul用: seat→account情報
     @param {list|None} player_names - 天鳳用: 席順のプレイヤー名リスト
+    @param {Mode|None} label_mode - ルックアヘッド逆算された正解モード
     """
     seat = round_state['seat']
     if seat < 0:
         return None
 
     # アカウント情報 (MJsoul or 天鳳)
-    import hashlib
     if seat_to_account is not None:
         acc_info = seat_to_account.get(seat, {})
         account_id = acc_info.get('accountId', 0)
         nickname = acc_info.get('nickname', 'unknown')
     elif player_names is not None and seat < len(player_names):
         nickname = player_names[seat]
-        # 天鳳はアカウントIDがないため、名前のハッシュをID代わりに
         account_id = hash(nickname) & 0x7FFFFFFF
     else:
         nickname = 'unknown'
@@ -430,19 +673,16 @@ def _build_sample_at_tsumo(
     # スタッツ
     player_stats = stats_db.get(str(account_id), None)
     if player_stats is None:
-        # スタッツ未登録のプレイヤーはデフォルト値で代替
         player_stats = {
-            'win_rate': 0.25,
-            'deal_in_rate': 0.15,
-            'meld_rate': 0.20,
-            'riichi_rate': 0.18,
-            'damaten_rate': 0.35,
-            'avg_win_points': 5000.0,
-            'avg_deal_in_points': 4000.0,
+            'win_rate': 0.25, 'deal_in_rate': 0.15, 'meld_rate': 0.20,
+            'riichi_rate': 0.18, 'damaten_rate': 0.35,
+            'avg_win_points': 5000.0, 'avg_deal_in_points': 4000.0,
         }
 
-    # 手牌カウントからシャンテン数を計算
     hand = round_state['hand']
+    if not hand:
+        return None
+
     hand_counts = hand_to_counts(hand)
     open_meld_count = len(round_state['melds'])
     if open_meld_count == 0:
@@ -450,45 +690,8 @@ def _build_sample_at_tsumo(
     else:
         shanten = ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count)
 
-    # 戦術モードをルールベースで決定（正解ラベル）
-    # 擬似的な state オブジェクトを作成 (最低限の属性)
-    from core.game_state import Meld
+    mode = label_mode if label_mode is not None else Mode.BALANCED
 
-    class _FakeState:
-        pass
-
-    fake_state = _FakeState()
-    fake_state.my_hand_counts = lambda: hand_counts
-    # Why: round_state['melds'] は list[list[str]] の形式。Meld オブジェクトに変換して is_open を参照可能にする。
-    fake_state.my_melds = [
-        Meld(type=1, tiles=list(m), froms=[seat] * len(m))
-        for m in round_state['melds']
-    ]
-    fake_state.my_seat = seat
-    fake_state.tsumo_count = round_state['tsumo_count']
-    fake_state.scores = round_state['scores']
-    # Why: doras は chiitoitsu_mode_applicable や get_active_yakuman などから参照される。
-    #      空リストを設定すれば「ドラなし」として安全に動作する。
-    fake_state.doras = round_state.get('doras', [])
-    fake_state.reach_states = [type('_', (), {'is_reach': rs})() for rs in round_state['reach_states']]
-    # Why: 四風子連打判定や tenhou_chiihou 判定でアクセスされる可能性がある属性
-    fake_state.river = [[] for _ in range(4)]
-    fake_state.my_hand = hand
-
-    def _is_last_round():
-        return False  # 簡略化
-
-    current_turn = (round_state['tsumo_count'] - 1) // 4 + 1
-    try:
-        mode = get_mode(fake_state, current_turn, _is_last_round())
-    except Exception:
-        mode = Mode.BALANCED
-
-    # 手牌がない場合はスキップ
-    if not hand:
-        return None
-
-    # サンプル構築
     return tokenizer.build_example(
         persona_name=nickname,
         stats=player_stats,
@@ -530,23 +733,77 @@ def replay_tenhou_xml_for_samples(
         player_names.append(urllib.parse.unquote(raw))
 
     samples: List[dict] = []
-
     # 各席のサンプリングカウンタ
-    # Why: sample_interval > 1 の場合はN回に1回のみサンプルを生成し、データ量を削減する。
     sample_counters = [0] * 4
 
     # --- 4プレイヤー分の状態を同時に保持 ---
     states = [
-        {'hand': [], 'riichi': False, 'has_meld': False, 'melds': [], 'score': 25000,
-         'scores': [25000] * 4, 'tsumo_count': 0, 'seat': seat, 'doras': [],
-         'reach_states': [False] * 4}
+        {'hand': [], 'riichi': False, 'has_meld': False, 'melds': [], 'melds_count': 0,
+         'score': 25000, 'scores': [25000] * 4, 'tsumo_count': 0, 'seat': seat,
+         'doras': [], 'reach_states': [False] * 4, 'river': []}
         for seat in range(4)
     ]
+
+    # ラウンドごとのスナップショット（各プレイヤーごと）
+    round_snapshots: Dict[int, List[dict]] = {s: [] for s in range(4)}
+    # 最終ラウンドのスナップショットへの参照（backfill用）
+    last_snap_idx = {s: -1 for s in range(4)}
+
+    def _push_xml_snapshot(seat):
+        s = states[seat]
+        hand_counts = hand_to_counts(s['hand'])
+        omc = len(s['melds'])
+        sh = ShantenCalculatorV2.calculate_closed_effective(hand_counts) if omc == 0 else ShantenCalculatorV2.calculate_open(hand_counts, omc)
+        round_snapshots[seat].append({
+            'hand': list(s['hand']),
+            'melds': list(s['melds']),
+            'melds_count': s['melds_count'],
+            'scores': list(s['scores']),
+            'score': s['score'],
+            'doras': list(s['doras']),
+            'tsumo_count': s['tsumo_count'],
+            'seat': seat,
+            'reach_states': list(states[s2]['riichi'] for s2 in range(4)),
+            'river': [list(states[s2]['river']) for s2 in range(4)],
+            'shanten': sh,
+            'discard_tile': None,
+            'is_reach_declaration': False,
+            'is_meld_declaration': False,
+        })
+        last_snap_idx[seat] = len(round_snapshots[seat]) - 1
+
+    def _backfill_xml(seat, key, value):
+        idx = last_snap_idx.get(seat, -1)
+        if idx >= 0 and idx < len(round_snapshots[seat]):
+            if not round_snapshots[seat][idx].get(key):
+                round_snapshots[seat][idx][key] = value
+
+    def _process_round():
+        """蓄積されたラウンドのスナップショットを処理し、サンプルを生成"""
+        for s in range(4):
+            sn = round_snapshots[s]
+            if not sn:
+                continue
+            modes = _determine_round_modes(sn, s)
+            for snap, mode in zip(sn, modes):
+                sample_counters[s] += 1
+                if sample_counters[s] % sample_interval != 0:
+                    continue
+                sample = _build_sample_at_tsumo(
+                    snap, tokenizer, stats_db,
+                    player_names=player_names,
+                    label_mode=mode,
+                )
+                if sample:
+                    samples.append(sample)
+        for s in range(4):
+            round_snapshots[s].clear()
 
     for elem in root:
         tag = elem.tag
 
         if tag == 'INIT':
+            _process_round()  # 前ラウンドを処理
             seed_str = elem.get('seed', '0,0,0,0,0,0')
             parts = [int(p) for p in seed_str.split(',')]
             dora_id = parts[5]
@@ -558,6 +815,7 @@ def replay_tenhou_xml_for_samples(
                 hai_str = elem.get(f'hai{seat}', '')
                 hand = [_tenhou_tile_to_str(int(x)) for x in hai_str.split(',') if x.strip()] if hai_str else []
                 states[seat]['hand'] = list(hand)
+                states[seat]['river'] = []
                 states[seat]['score'] = scores[seat]
                 states[seat]['scores'] = list(scores)
                 states[seat]['doras'] = [dora_tile]
@@ -565,6 +823,7 @@ def replay_tenhou_xml_for_samples(
                 states[seat]['riichi'] = False
                 states[seat]['has_meld'] = False
                 states[seat]['melds'] = []
+                states[seat]['melds_count'] = 0
                 states[seat]['reach_states'] = [False] * 4
 
         elif tag == 'REACH':
@@ -574,6 +833,7 @@ def replay_tenhou_xml_for_samples(
                 if step == 2:
                     states[who]['riichi'] = True
                     states[who]['reach_states'][who] = True
+                    _backfill_xml(who, 'is_reach_declaration', True)
 
         elif tag == 'N':
             who = int(elem.get('who', '0'))
@@ -581,7 +841,6 @@ def replay_tenhou_xml_for_samples(
             if who < 0 or who >= 4:
                 continue
             called_val = m_val & 0x1F
-            source_rel = (m_val >> 5) & 0x3
             meld_type = (m_val >> 7) & 0x3
 
             if meld_type == 3:  # 暗槓
@@ -591,6 +850,7 @@ def replay_tenhou_xml_for_samples(
                         states[who]['hand'].remove(tile_str)
                 states[who]['has_meld'] = True
                 states[who]['melds'].append([tile_str])
+                states[who]['melds_count'] += 1
             elif meld_type == 1:  # ポン
                 tile_str = _tenhou_tile_to_str(called_val)
                 for _ in range(2):
@@ -598,6 +858,8 @@ def replay_tenhou_xml_for_samples(
                         states[who]['hand'].remove(tile_str)
                 states[who]['has_meld'] = True
                 states[who]['melds'].append([tile_str])
+                states[who]['melds_count'] += 1
+                _backfill_xml(who, 'is_meld_declaration', True)
             elif meld_type == 2:  # 大明槓
                 tile_str = _tenhou_tile_to_str(called_val)
                 for _ in range(3):
@@ -605,9 +867,10 @@ def replay_tenhou_xml_for_samples(
                         states[who]['hand'].remove(tile_str)
                 states[who]['has_meld'] = True
                 states[who]['melds'].append([tile_str])
+                states[who]['melds_count'] += 1
+                _backfill_xml(who, 'is_meld_declaration', True)
             elif meld_type == 0:  # チー
                 tile_str = _tenhou_tile_to_str(called_val)
-                # 手牌から2枚削除（簡易処理）
                 removed = 0
                 for h in list(states[who]['hand']):
                     if removed >= 2:
@@ -616,9 +879,20 @@ def replay_tenhou_xml_for_samples(
                     removed += 1
                 states[who]['has_meld'] = True
                 states[who]['melds'].append([tile_str])
+                states[who]['melds_count'] += 1
+                _backfill_xml(who, 'is_meld_declaration', True)
 
         elif tag in ('AGARI', 'RYUUKYOKU'):
-            pass  # 勝敗はサンプリングに不要
+            if 'sc' in elem.attrib:
+                sc_str = elem.get('sc', '')
+                if sc_str:
+                    parts = sc_str.split(',')
+                    for i in range(0, len(parts), 2):
+                        delta = int(parts[i + 1])
+                        seat_idx = i // 2
+                        if seat_idx < 4:
+                            states[seat_idx]['score'] += delta * 100
+                            states[seat_idx]['scores'] = [states[s]['score'] for s in range(4)]
 
         elif tag == 'DORA':
             pass
@@ -638,13 +912,26 @@ def replay_tenhou_xml_for_samples(
                 if 0 <= seat < 4:
                     states[seat]['hand'].append(tile_str)
                     states[seat]['tsumo_count'] += 1
-                    # サンプリング間隔チェック
-                    sample_counters[seat] += 1
-                    if sample_counters[seat] % sample_interval != 0:
-                        continue
-                    # ツモ直後のスナップショット → サンプル生成
+                    # ツモ直後のスナップショットを記録（後で一括処理）
                     if not states[seat]['riichi']:
-                        snap = {
+                        _push_xml_snapshot(seat)
+
+            # Discard: D/E/F/G + 数字
+            elif tag and len(tag) >= 2 and tag[0] in 'DEFG':
+                try:
+                    tile_val = int(tag[1:])
+                except ValueError:
+                    continue
+                seat = 'DEFG'.index(tag[0])
+                tile_str = _tenhou_tile_to_str(tile_val)
+                if 0 <= seat < 4 and tile_str in states[seat]['hand']:
+                    states[seat]['hand'].remove(tile_str)
+                    states[seat]['river'].append(tile_str)
+
+    # 最終ラウンドを処理
+    _process_round()
+
+    return samples
                             'hand': list(states[seat]['hand']),
                             'melds': list(states[seat]['melds']),
                             'scores': list(states[seat]['scores']),
@@ -667,6 +954,7 @@ def replay_tenhou_xml_for_samples(
                 tile_str = _tenhou_tile_to_str(tile_val)
                 if 0 <= seat < 4 and tile_str in states[seat]['hand']:
                     states[seat]['hand'].remove(tile_str)
+                    states[seat]['river'].append(tile_str)
 
     return samples
 
@@ -692,13 +980,15 @@ def pad_sequences(sequences: List[List[int]], max_len: int, pad_token_id: int = 
     return padded, masks
 
 
-def _save_numpy_batch(token_ids: List[List[int]], labels: List[int], max_seq_len: int, pad_id: int,
+def _save_numpy_batch(token_ids: List[List[int]], stats_vecs: List[List[float]],
+                       labels: List[int], max_seq_len: int, pad_id: int,
                        output_dir: str, batch_idx: int):
-    """@title バッチをnumpy形式で保存"""
+    """@title バッチをnumpy形式で保存（スタッツベクトル含む）"""
     padded, masks = pad_sequences(token_ids, max_seq_len, pad_id)
     np.save(os.path.join(output_dir, f'input_ids_{batch_idx:04d}.npy'), np.array(padded, dtype=np.int32))
     np.save(os.path.join(output_dir, f'attn_masks_{batch_idx:04d}.npy'), np.array(masks, dtype=np.int8))
     np.save(os.path.join(output_dir, f'labels_{batch_idx:04d}.npy'), np.array(labels, dtype=np.int8))
+    np.save(os.path.join(output_dir, f'stats_{batch_idx:04d}.npy'), np.array(stats_vecs, dtype=np.float32))
 
 
 def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENIZED,
@@ -727,20 +1017,22 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
     #      numpyはメモリマップド読み書きが可能で、学習時に部分ロードできる。
     BATCH_SIZE = 100000
     buffer_tokens: List[List[int]] = []
+    buffer_stats: List[List[float]] = []
     buffer_labels: List[int] = []
     batch_counter = 0
     total_samples = 0
     max_seq_len_observed = 0
 
     def _flush_buffer():
-        nonlocal batch_counter, buffer_tokens, buffer_labels, max_seq_len_observed
+        nonlocal batch_counter, buffer_tokens, buffer_stats, buffer_labels, max_seq_len_observed
         if not buffer_tokens:
             return
-        _save_numpy_batch(buffer_tokens, buffer_labels, max_seq_len_observed,
+        _save_numpy_batch(buffer_tokens, buffer_stats, buffer_labels, max_seq_len_observed,
                            tokenizer.vocab['[PAD]'], output_dir, batch_counter)
         print(f"[tokenize]  保存: batch_{batch_counter:04d} ({len(buffer_tokens)} サンプル)")
         batch_counter += 1
         buffer_tokens = []
+        buffer_stats = []
         buffer_labels = []
 
     # --- 雀魂JSONの処理 ---
@@ -764,6 +1056,7 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
             )
             for s in samples:
                 buffer_tokens.append(s['tokens'])
+                buffer_stats.append(s['stats_vec'])
                 buffer_labels.append(s['label'])
                 max_seq_len_observed = max(max_seq_len_observed, len(s['tokens']))
                 total_samples += 1
@@ -789,6 +1082,7 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
                 )
                 for s in samples:
                     buffer_tokens.append(s['tokens'])
+                    buffer_stats.append(s['stats_vec'])
                     buffer_labels.append(s['label'])
                     max_seq_len_observed = max(max_seq_len_observed, len(s['tokens']))
                     total_samples += 1
@@ -819,6 +1113,8 @@ def preprocess_all(data_dir: str = DATA_DIR, tokenized_path: str = OUTPUT_TOKENI
         'vocab_size': tokenizer.vocab_size,
         'pad_token_id': tokenizer.vocab['[PAD]'],
         'mode_names': MODE_NAMES,
+        'num_stats_features': len(TacticalTokenizer.STATS_FEATURE_KEYS),
+        'stats_feature_keys': TacticalTokenizer.STATS_FEATURE_KEYS,
     }
     with open(os.path.join(output_dir, 'meta.json'), 'w', encoding='utf-8') as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)

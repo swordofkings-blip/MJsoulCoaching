@@ -10,7 +10,7 @@ import os
 import random
 import socket
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
@@ -205,8 +205,11 @@ class OurMjaiClientV2:
                     discard_us = tsumo_pai_us
 
                 # 空切り判定: ツモ切りになる場面で意図的に手出しに偽装する
-                if self._should_karagiri(discard_us, tsumo_pai_us):
+                is_karagiri, karagiri_reason = self._should_karagiri(discard_us, tsumo_pai_us)
+                if is_karagiri:
                     tsumogiri = False
+                    if self.show_coaching:
+                        print(f"[ver.2]  ★空切り（手出し）を実行: {karagiri_reason}")
                 else:
                     tsumogiri = (discard_us == tsumo_pai_us)
 
@@ -270,6 +273,9 @@ class OurMjaiClientV2:
         elif t == "reach_accepted":
             actor = msg["actor"]
             self.state.reach_states[actor].is_reach = True
+            # 他家のリーチ回数をカウント (動的スタッツ推定用)
+            if hasattr(self.state, 'player_reach_counts'):
+                self.state.player_reach_counts[actor] += 1
             if "scores" in msg:
                 self.state.scores = msg["scores"]
             self._send({"type": "none"})
@@ -288,6 +294,10 @@ class OurMjaiClientV2:
             tile_states = [0] * len(tiles_us)
 
             self.state.on_chi_peng_gang(type_, actor, tiles_us, froms, tile_states)
+            # 副露局数をカウント (1局に1回まで)
+            if hasattr(self.state, 'player_meld_counts') and not self.state.current_kyoku_melded[actor]:
+                self.state.player_meld_counts[actor] += 1
+                self.state.current_kyoku_melded[actor] = True
 
             if actor == self._id:
                 discard_us = self._decide_discard_v2()
@@ -311,7 +321,15 @@ class OurMjaiClientV2:
             self.state.on_new_dora(_to_us(dora_mjai))
             self._send({"type": "none"})
 
-        elif t in ("hora", "ryukyoku", "end_kyoku"):
+        elif t == "hora":
+            # 放銃カウント: ロン和了時 (actor=和了者, target=放銃者)
+            actor = msg.get("actor", -1)
+            target = msg.get("target", actor)
+            if target != actor and hasattr(self.state, 'player_dealt_in_counts'):
+                self.state.player_dealt_in_counts[target] += 1
+            self._send({"type": "none"})
+
+        elif t in ("ryukyoku", "end_kyoku"):
             self._send({"type": "none"})
 
         elif t == "end_game":
@@ -336,26 +354,30 @@ class OurMjaiClientV2:
         ev = self._evaluator_factory(self.state)
         return ev.should_kan()
 
-    def _should_karagiri(self, discard_us: str, tsumo_pai_us: str) -> bool:
+    def _should_karagiri(self, discard_us: str, tsumo_pai_us: str) -> Tuple[bool, str]:
         """
-        @title 空切り判定
+        @title 空切り判定（シナリオベース + コーチング解説付き）
         @description ツモ切りになる場面で意図的に手出し（tsumogiri=False）に偽装し、
-                     他家への情報漏洩を抑止する。
-        Why: ツモ切り連発は「テンパイした」「手牌が整った」というシグナルを
-             他家に与えてしまう。空切りにより手牌情報のアドバンテージを減らす。
+                     他家への情報漏洩を抑止する。人間の戦術的意図に基づくシナリオで
+                     確率的に発動し、理由テキストを返す。
+        Why: 単なるランダム空切りではなく「なぜ空切りをするのか」を明確にすることで、
+             コーチング表示での説明が可能になり、開発者が挙動を理解しやすくなる。
         @param {str} discard_us - 評価器が選択した打牌
         @param {str} tsumo_pai_us - 今回ツモった牌
-        @returns {bool} 空切りを実行すべきか
+        @returns {(bool, str)} (空切り実行するか, 戦術意図の理由テキスト)
         """
-        # ツモ牌と異なる牌を切る場合は空切り対象外（元々手出しになるため）
+        # 前提条件: リーチ中でないこと
+        if self.state.reach_states[self._id].is_reach:
+            return (False, "")
+        # 前提条件: ツモ牌と切る牌が一致していること（ツモ切りになりうる場面）
         if discard_us != tsumo_pai_us:
-            return False
+            return (False, "")
         from core.str_converter import tile_to_id
         tid = tile_to_id(tsumo_pai_us)
         hand_counts = self.state.my_hand_counts()
-        # 手牌に同種牌が2枚以上ないと手出しできない
+        # 前提条件: 手牌に同種牌が2枚以上あること（手出し可能）
         if hand_counts[tid] < 2:
-            return False
+            return (False, "")
         # シャンテン数計算
         from core.shanten_v2 import ShantenCalculatorV2
         open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
@@ -363,18 +385,28 @@ class OurMjaiClientV2:
             shanten = ShantenCalculatorV2.calculate_closed_effective(hand_counts)
         else:
             shanten = ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count)
-        # テンパイまたは一シャンテン以外は対象外
-        if shanten > 1:
-            return False
-        # モード判定: 攻撃系・バランスのみ空切りを検討
-        from core.strategy_v2 import get_mode, Mode
+
         current_turn = (self.state.tsumo_count - 1) // 4 + 1
-        is_last_round = self.state.is_last_round() if hasattr(self.state, 'is_last_round') else False
-        mode = get_mode(self.state, current_turn, is_last_round)
-        if mode not in (Mode.ATTACK, Mode.URGENT_ATTACK, Mode.BALANCED):
-            return False
-        # 40% の確率で空切り実行
-        return random.random() < 0.4
+
+        # シナリオ①: ダマテン気配の隠蔽（テンパイ時、50%）
+        # Why: テンパイ時にツモ切りを連発すると「何を引いても切っている=テンパイ」
+        #      と読まれやすい。あえて手出しに見せることでロン牌を引き出しやすくする。
+        if shanten == 0:
+            if random.random() < 0.5:
+                return (True, "ダマテンの気配を隠蔽し、他家の警戒を緩めてロン牌を"
+                              "出やすくするための空切り（手出し）です。")
+            return (False, "")
+
+        # シナリオ②: 一シャンテン時の進行アピール（一シャンテン且つ10巡目以降、40%）
+        # Why: 中盤以降のツモ切り連発は「手が止まっている」シグナルになる。
+        #      手出しに偽装することでテンパイ間近と見せかけ、他家を牽制する。
+        if shanten == 1 and current_turn >= 10:
+            if random.random() < 0.4:
+                return (True, "ツモ切り連発による手の停滞を見破られるのを防ぎ、"
+                              "テンパイ間近と見せて他家を牽制するための空切り（手出し）です。")
+            return (False, "")
+
+        return (False, "")
 
 
 def main():

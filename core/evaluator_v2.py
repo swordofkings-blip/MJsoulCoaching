@@ -60,7 +60,11 @@ class EvaluatorV2:
     def get_mode(self) -> Mode:
         if self._mode_cache is not None:
             return self._mode_cache
-        self._mode_cache = get_mode(self.state, self.current_turn, self.is_last_round)
+        # Why: config_parameters.json の target_persona で模倣対象ペルソナを指定。
+        #      未指定(None)の場合は従来通りルールベース or デフォルトstatsで動作。
+        persona = self.params.get('target_persona', None)
+        self._mode_cache = get_mode(self.state, self.current_turn, self.is_last_round,
+                                     player_name=persona)
         return self._mode_cache
 
     def evaluate_tile(self, tile: str) -> Tuple:

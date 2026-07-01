@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 @title ver.2 立直判断 (ルールベース + EV フォールバック)
 @description テンパイ時の立直判断を 明示的ルールベースで実施。
@@ -149,6 +149,28 @@ def opp_reach_exists(state) -> bool:
     return False
 
 
+def _has_tight_reach_opponent(state) -> bool:
+    """
+    @title 堅いリーチをしている強豪他家がいるか判定
+    @description リーチしてきた他家の推定立直率をラプラススムージングで計算し、
+                 15%未満なら「堅いリーチ」と判定する。
+    Why: 動的推定立直率<15%の相手はめったにリーチしない堅実なプレイヤー。
+         彼らのリーチは信頼性が高く、スジの罠（モロ筋引っ掛け）を仕掛けて
+         きている可能性が高いため、ダマ判断でのスジ過信を防止する。
+    """
+    gkc = getattr(state, 'game_kyoku_count', 0)
+    prc = getattr(state, 'player_reach_counts', [0, 0, 0, 0])
+    for s in range(4):
+        if s == getattr(state, 'my_seat', -1):
+            continue
+        if state.reach_states[s] is not None and state.reach_states[s].is_reach:
+            # ラプラススムージング: (観測回数 + 1) / (試行回数 + 5)
+            rate = (prc[s] + 1.0) / (gkc + 5.0)
+            if rate < 0.15:
+                return True
+    return False
+
+
 def _explicit_decision(state) -> Tuple[Optional[bool], str]:
     # P0: basic checks
     if not is_tenpai_closed(state):
@@ -160,6 +182,20 @@ def _explicit_decision(state) -> Tuple[Optional[bool], str]:
     my_score = state.scores[state.my_seat] if state.scores else 25000
     if my_score < 1000:
         return (False, "score < 1000, riichi impossible")
+
+    # P1b: オーラス逆転ブラフ即リーチ
+    # Why: オーラスで2-3位かつトップと12000点差以内の時、テンパイしたら愚形安手でも即リーチ。
+    #      トップ目AIの過剰ベタオリを誘発し、ツモアガリやノーテン罰符で逆転を狙う。
+    is_last = state.is_last_round() if hasattr(state, 'is_last_round') else False
+    if not is_last:
+        is_last = (getattr(state, 'chang', 0) == 1 and getattr(state, 'ju', 0) == 3)
+    if is_last:
+        rank = _get_rank(state)
+        if rank in (1, 2):  # 2位 or 3位
+            top_score = max(state.scores) if state.scores else 25000
+            score_diff = top_score - my_score
+            if 0 < score_diff <= 12000:
+                return (True, f"Last round catch-up riichi: diff={score_diff}")
 
     han = estimate_han_count(state)
     turn = _get_turn(state)
@@ -180,12 +216,18 @@ def _explicit_decision(state) -> Tuple[Optional[bool], str]:
         return (True, "R5: late turn, riichi")
 
     # P3: damaten negative rules
-    if opp_reach and wait['is_bad_shape'] and han <= 2:
+    # Why: 強豪リーチ相手のスジ過信防止。推定立直率<15%の堅い相手がリーチしている場合、
+    #      モロ筋引っ掛けを警戒し、スジだから安全と過信してダマに落とすのを防ぐ。
+    has_tight = _has_tight_reach_opponent(state)
+    if has_tight and opp_reach and han >= 1:
+        pass  # 強豪リーチ時はダマ判定をバイパス
+    elif opp_reach and wait['is_bad_shape'] and han <= 2:
         return (False, "R7: opp reach + bad shape, damaten")
-    if opp_reach and han <= 1:
+    elif opp_reach and han <= 1:
         return (False, "R7b: opp reach + low value, damaten")
-    if wait['is_bad_shape'] and han <= 1:
+    elif wait['is_bad_shape'] and han <= 1:
         return (False, "R6: bad wait + low value, damaten")
+
     if turn <= 5 and wait['is_bad_shape'] and han <= 2:
         return (False, f"R8: early turn + bad shape, damaten")
     if rank == 0 and han <= 2:
@@ -193,6 +235,15 @@ def _explicit_decision(state) -> Tuple[Optional[bool], str]:
 
     # No explicit rule fire -> fall through to EV comparison
     return (None, "")
+
+
+def score_riichi(state, params: dict) -> Tuple[float, str]:
+    decision, reason = _explicit_decision(state)
+    if decision is True:
+        return 9999.0, f"RIICHI ({reason})"
+    if decision is False:
+        return -9999.0, f"DAMATEN ({reason})"
+
 
 
 def score_riichi(state, params: dict) -> Tuple[float, str]:
@@ -277,4 +328,22 @@ def should_kan(state, call_type: int, tiles: List[str], from_seat: int, params: 
     if params is None:
         params = {}
     decision, _reason = should_call_meld(state, call_type, tiles, from_seat, params)
-    return bool(decision)
+
+
+def _has_tight_reach_opponent(state) -> bool:
+    """
+    @title 堅いリーチの他家が存在するか
+    @description 他家リーチの中に、動的推定立直率が 15% 未満のプレイヤーがいるか判定する。
+    """
+    for s in range(4):
+        if s == state.my_seat:
+            continue
+        rs = state.reach_states[s] if s < len(state.reach_states) else None
+        if rs is not None and rs.is_reach:
+            kyoku_cnt = getattr(state, 'game_kyoku_count', 0)
+            reach_cnt = getattr(state, 'player_reach_counts', [0]*4)[s]
+            # ラプラススムージング適用（初期確率 20%）
+            est_rate = (reach_cnt + 1.0) / (kyoku_cnt + 5.0)
+            if est_rate < 0.15:
+                return True
+    return False

@@ -103,15 +103,33 @@ class PlayerStatsTracker:
             self.players[account_id] = {
                 'account_id': account_id,
                 'nickname': nickname,
-                'total_hands': 0,
-                'total_wins': 0,
-                'total_deal_ins': 0,
-                'total_melds': 0,
-                'total_riichi': 0,
-                'total_hands_with_meld': 0,
-                'wins_with_riichi': 0,
-                'win_points': [],
-                'deal_in_points': [],
+                # 基本
+                'num_games': 0,          # 参加した対局数
+                'total_hands': 0,        # 総局数
+                'total_wins': 0,         # 和了回数
+                'tsumo_wins': 0,         # ツモ和了回数
+                'open_wins': 0,          # 副露あり和了
+                'total_deal_ins': 0,     # 放銃回数
+                'total_melds': 0,        # 副露回数 (延べ)
+                'total_hands_with_meld': 0,  # 副露した局数
+                'total_riichi': 0,       # 立直回数
+                'wins_with_riichi': 0,   # 立直和了回数
+                'win_points': [],        # 和了点一覧
+                'deal_in_points': [],    # 放銃点一覧
+                'win_turns': [],         # 和了巡目一覧
+                # 立直関連
+                'riichi_dealins': 0,     # 立直中の放銃回数
+                'riichi_exhaustive': 0,  # 立直流局回数
+                # 放銃関連
+                'deal_in_when_open': 0,  # 副露中の放銃回数
+                # 流局関連
+                'exhaustive_count': 0,   # 流局した局数
+                'exhaustive_tenpai': 0,  # 流局時テンパイ回数
+                # 対局関連
+                'placements': [],        # 順位一覧 (0=トップ)
+                'sum_final_score': 0,    # 最終スコア合計
+                'busted_count': 0,       # トビ回数
+                'renchan_count': 0,      # 連荘回数
             }
         return self.players[account_id]
 
@@ -139,6 +157,10 @@ class PlayerStatsTracker:
                 'account_id': a_id,
                 'nickname': acc.get('nickname', f'player_{a_id}'),
             }
+        # JSON1件=1対局
+        for seat_info in accounts_info.values():
+            stats = self._ensure_player(seat_info['account_id'], seat_info['nickname'])
+            stats['num_games'] += 1
 
         # 局ごとの状態: seat -> { 'riichi': bool, 'melds_in_hand': bool, 'is_playing': bool }
         round_state: Dict[int, dict] = {}
@@ -217,11 +239,17 @@ class PlayerStatsTracker:
                     account_id = accounts_info[winner_seat]['account_id']
                     if account_id in self.players:
                         self.players[account_id]['total_wins'] += 1
+                        if is_zimo:
+                            self.players[account_id]['tsumo_wins'] += 1
                         if winner_riichi:
                             self.players[account_id]['wins_with_riichi'] += 1
                         # pointSum が0の場合は dadian を代用
                         win_pts = point_sum if point_sum > 0 else dadian
                         self.players[account_id]['win_points'].append(win_pts)
+                        # 和了巡目
+                        self.players[account_id]['win_turns'].append(
+                            getattr(self, '_current_turn', 0)
+                        )
 
                 # 放銃者: deltaScores で和了者以外でマイナスの席 (ツモの場合は3人全員)
                 if is_zimo:
@@ -298,13 +326,17 @@ class PlayerStatsTracker:
             return
         player_names = []
         player_keys = []
+        # 対局の最終スコア (placement 算出用)
+        final_scores: List[int] = [25000] * 4
+
         for i in range(4):
             raw = un_elem.get(f'n{i}', '')
             name = urllib.parse.unquote(raw)
             player_names.append(name)
             key = self._player_key(name)
             player_keys.append(key)
-            self._ensure_player(key, name)
+            stats = self._ensure_player(key, name)
+            stats['num_games'] += 1  # このXML=1対局
 
         # --- 局ごとの状態追跡 ---
         round_state: Dict[int, dict] = {}
@@ -349,6 +381,7 @@ class PlayerStatsTracker:
                         'riichi': False,
                         'has_meld': False,
                         'riichi_step': 0,  # 0=なし, 1=宣言, 2=成立
+                        'tsumo_count': 0,  # その局のツモ回数
                     }
 
             elif tag == 'REACH' and round_state:
@@ -432,10 +465,28 @@ class PlayerStatsTracker:
                 # 和了の記録
                 if who < len(player_keys):
                     win_pts = points
+                    winner_riichi = round_state.get(who, {}).get('riichi', False)
+                    winner_has_meld = round_state.get(who, {}).get('has_meld', False)
+                    winner_turn = round_state.get(who, {}).get('tsumo_count', 0)
+
                     self.players[player_keys[who]]['total_wins'] += 1
-                    if round_state.get(who, {}).get('riichi', False):
+                    if from_who == who:
+                        self.players[player_keys[who]]['tsumo_wins'] += 1
+                    if winner_riichi:
                         self.players[player_keys[who]]['wins_with_riichi'] += 1
+                    if winner_has_meld:
+                        self.players[player_keys[who]]['open_wins'] += 1
                     self.players[player_keys[who]]['win_points'].append(win_pts)
+                    self.players[player_keys[who]]['win_turns'].append(winner_turn)
+
+                # スコア更新（飛び検出 + 最終スコア用）
+                for seat in range(4):
+                    if seat < len(delta_scores) and seat < len(player_keys):
+                        old_score = int(sc_parts[seat * 2]) if sc_str else 250
+                        new_score = old_score * 100 + delta_scores[seat]
+                        final_scores[seat] = new_score
+                        if new_score < 0:
+                            self.players[player_keys[seat]]['busted_count'] += 1
 
                 # 放銃の記録
                 if from_who != who:
@@ -445,6 +496,11 @@ class PlayerStatsTracker:
                         if deal_in_pts > 0 and from_who < len(player_keys):
                             self.players[player_keys[from_who]]['total_deal_ins'] += 1
                             self.players[player_keys[from_who]]['deal_in_points'].append(deal_in_pts)
+                            # 立直中/副露中の放銃
+                            if round_state.get(from_who, {}).get('riichi', False):
+                                self.players[player_keys[from_who]]['riichi_dealins'] += 1
+                            if round_state.get(from_who, {}).get('has_meld', False):
+                                self.players[player_keys[from_who]]['deal_in_when_open'] += 1
                 else:
                     # ツモ: 和了者以外の3名
                     for seat in range(4):
@@ -453,6 +509,11 @@ class PlayerStatsTracker:
                             if deal_in_pts > 0 and seat < len(player_keys):
                                 self.players[player_keys[seat]]['total_deal_ins'] += 1
                                 self.players[player_keys[seat]]['deal_in_points'].append(deal_in_pts)
+                                # 立直中/副露中の放銃
+                                if round_state.get(seat, {}).get('riichi', False):
+                                    self.players[player_keys[seat]]['riichi_dealins'] += 1
+                                if round_state.get(seat, {}).get('has_meld', False):
+                                    self.players[player_keys[seat]]['deal_in_when_open'] += 1
 
                 # 副露ハンドのカウント
                 for seat, st in round_state.items():
@@ -460,10 +521,32 @@ class PlayerStatsTracker:
                         self.players[player_keys[seat]]['total_hands_with_meld'] += 1
 
             elif tag == 'RYUUKYOKU' and round_state:
+                # 流局カウント
+                # Why: 天鳳のRYUUKYOKUにはhai0-3が含まれ、テンパイの席だけ手牌が入る。
+                #      haiがある=テンパイ、haiがない=ノーテン。
+                for seat in range(4):
+                    if seat in round_state and seat < len(player_keys):
+                        self.players[player_keys[seat]]['exhaustive_count'] += 1
+                        has_hai = elem.get(f'hai{seat}') is not None
+                        if has_hai:
+                            self.players[player_keys[seat]]['exhaustive_tenpai'] += 1
                 # 副露ハンドのカウント（流局時も副露は記録）
                 for seat, st in round_state.items():
                     if st['has_meld'] and seat < len(player_keys):
                         self.players[player_keys[seat]]['total_hands_with_meld'] += 1
+                # スコア更新（飛び検出用）
+                sc_str_ryu = elem.get('sc', '')
+                if sc_str_ryu:
+                    sc_parts_ryu = sc_str_ryu.split(',')
+                    for i in range(0, len(sc_parts_ryu), 2):
+                        delta = int(sc_parts_ryu[i + 1])
+                        seat_idx = i // 2
+                        if seat_idx < 4 and seat_idx < len(player_keys):
+                            old_score = int(sc_parts_ryu[i])
+                            new_score = old_score * 100 + delta * 100
+                            final_scores[seat_idx] = new_score
+                            if new_score < 0:
+                                self.players[player_keys[seat_idx]]['busted_count'] += 1
 
             elif tag in ('TAIKYOKU', 'START'):
                 pass  # 対局開始タグ、スキップ
@@ -483,52 +566,121 @@ class PlayerStatsTracker:
                         seat = 'TUVW'.index(who_char)
                         if seat in round_state:
                             round_state[seat]['hand'].append(tile_str)
+                            round_state[seat]['tsumo_count'] += 1
                     elif who_char in 'DEFG':
                         seat = 'DEFG'.index(who_char)
                         if seat in round_state and tile_str in round_state[seat]['hand']:
                             round_state[seat]['hand'].remove(tile_str)
 
+        # --- 対局終了処理: 順位・合計スコア ---
+        ordered = sorted(
+            [(final_scores[s], s) for s in range(4) if s < len(player_keys)],
+            reverse=True,
+        )
+        for rank, (score, seat) in enumerate(ordered):
+            if seat < len(player_keys):
+                self.players[player_keys[seat]]['placements'].append(rank)
+                self.players[player_keys[seat]]['sum_final_score'] += score
+
     def compute_stats(self) -> Dict[str, dict]:
         """
         @title 集計結果の計算
-        @description 各プレイヤーの生データから統計指標を算出する。
+        @description 各プレイヤーの生データから牌譜屋準拠の統計指標を算出する。
         @returns {dict} stats_db.json 形式の players dict
         """
         result = {}
         for account_id, data in self.players.items():
-            total = data['total_hands']
-            wins = data['total_wins']
-            deal_ins = data['total_deal_ins']
-            melds = data['total_melds']
+            g = data['num_games']
+            h = data['total_hands']
+            w = data['total_wins']
+            tsumo_w = data['tsumo_wins']
+            di = data['total_deal_ins']
             riichi = data['total_riichi']
-            wins_with_riichi = data['wins_with_riichi']
+            w_riichi = data['wins_with_riichi']
+            meld_h = data['total_hands_with_meld']
+            open_w = data['open_wins']
+            melds = data['total_melds']
             win_pts = data['win_points']
-            deal_in_pts = data['deal_in_points']
+            deal_pts = data['deal_in_points']
+            win_turns = data['win_turns']
+            placements = data['placements']
+            riichi_di = data['riichi_dealins']
+            di_open = data['deal_in_when_open']
+            exh = data['exhaustive_count']
+            exh_tenpai = data['exhaustive_tenpai']
+            busted = data['busted_count']
+            sum_final = data['sum_final_score']
+            riichi_exh = data['riichi_exhaustive']
 
-            win_rate = wins / total if total > 0 else 0.0
-            deal_in_rate = deal_ins / total if total > 0 else 0.0
-            # 副露率: 副露した局数 / 総局数
-            meld_rate = data['total_hands_with_meld'] / total if total > 0 else 0.0
-            # 立直率: 立直回数 / 総局数
-            riichi_rate = riichi / total if total > 0 else 0.0
-            # ダマ率: (和了回数 - 立直あり和了) / 和了回数
-            damaten_rate = (wins - wins_with_riichi) / wins if wins > 0 else 0.0
-            # 平均打点
-            avg_win = sum(win_pts) / len(win_pts) if win_pts else 0.0
-            # 平均銃点
-            avg_deal_in = sum(deal_in_pts) / len(deal_in_pts) if deal_in_pts else 0.0
+            # --- 基本 ---
+            win_rate = w / h if h > 0 else 0.0
+            deal_in_rate = di / h if h > 0 else 0.0
+            tsumo_rate = tsumo_w / w if w > 0 else 0.0
+            # 牌譜屋準拠: 黙聴率 = ダマ和了 / 門前和了
+            closed_wins = w - open_w
+            damaten_wins = w - w_riichi - open_w
+            damaten_rate = damaten_wins / closed_wins if closed_wins > 0 else 0.0
+            meld_rate = meld_h / h if h > 0 else 0.0
+            riichi_rate = riichi / h if h > 0 else 0.0
+            avg_win_pts = sum(win_pts) / len(win_pts) if win_pts else 0.0
+            avg_deal_pts = sum(deal_pts) / len(deal_pts) if deal_pts else 0.0
+            avg_win_turn = sum(win_turns) / len(win_turns) if win_turns else 0.0
+
+            # --- 立直関連 ---
+            riichi_win_rate = w_riichi / riichi if riichi > 0 else 0.0
+            riichi_deal_in_rate = riichi_di / riichi if riichi > 0 else 0.0
+            riichi_exhaustive_rate = riichi_exh / riichi if riichi > 0 else 0.0
+
+            # --- 副露関連 ---
+            open_win_rate = open_w / meld_h if meld_h > 0 else 0.0
+            deal_in_when_open_rate = di_open / di if di > 0 else 0.0
+
+            # --- 対局関連 ---
+            avg_placement = sum(placements) / len(placements) if placements else 2.5
+            bust_rate = busted / g if g > 0 else 0.0
+            exhaustive_rate = exh / h if h > 0 else 0.0
+            tenpai_rate_in_exh = exh_tenpai / exh if exh > 0 else 0.0
+
+            # --- 派生指標 ---
+            point_efficiency = win_rate * avg_win_pts
+            loss_from_deal_in = deal_in_rate * avg_deal_pts
+            adj_efficiency = point_efficiency - loss_from_deal_in
+            # 局収支: (平均最終スコア - 25000) * 対局数 / 総局数
+            round_balance = ((sum_final / max(g, 1)) - 25000) * g / max(h, 1) if h > 0 else 0.0
 
             result[str(account_id)] = {
                 'nickname': data['nickname'],
                 'account_id': account_id,
-                'total_hands': total,
+                # 生データ
+                'total_hands': h,
+                'total_games': g,
+                # 基本
                 'win_rate': round(win_rate, 4),
                 'deal_in_rate': round(deal_in_rate, 4),
+                'tsumo_rate': round(tsumo_rate, 4),
+                'damaten_rate': round(damaten_rate, 4),
                 'meld_rate': round(meld_rate, 4),
                 'riichi_rate': round(riichi_rate, 4),
-                'damaten_rate': round(damaten_rate, 4),
-                'avg_win_points': round(avg_win, 1),
-                'avg_deal_in_points': round(avg_deal_in, 1),
+                'avg_win_points': round(avg_win_pts, 1),
+                'avg_deal_in_points': round(avg_deal_pts, 1),
+                'avg_win_turn': round(avg_win_turn, 2),
+                'avg_placement': round(avg_placement + 1, 2),  # 1-4表示に
+                # 立直
+                'riichi_win_rate': round(riichi_win_rate, 4),
+                'riichi_deal_in_rate': round(riichi_deal_in_rate, 4),
+                'riichi_exhaustive_rate': round(riichi_exhaustive_rate, 4),
+                # 副露
+                'open_win_rate': round(open_win_rate, 4),
+                'deal_in_when_open_rate': round(deal_in_when_open_rate, 4),
+                # 対局
+                'bust_rate': round(bust_rate, 4),
+                'exhaustive_rate': round(exhaustive_rate, 4),
+                'tenpai_rate_in_exh': round(tenpai_rate_in_exh, 4),
+                # 派生
+                'point_efficiency': round(point_efficiency, 1),
+                'loss_from_deal_in': round(loss_from_deal_in, 1),
+                'adj_efficiency': round(adj_efficiency, 1),
+                'round_balance': round(round_balance, 1),
             }
         return result
 

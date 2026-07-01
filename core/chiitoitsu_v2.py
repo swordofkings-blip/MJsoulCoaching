@@ -106,14 +106,40 @@ def _is_high_quality_pair(state, tid: int) -> bool:
 
 
 def _tile_pair_quality(state, tid: int) -> int:
-    """@title 牌の対子としての質 (高いほど残したい)"""
+    """
+    @title 牌の対子としての質 (高いほど残したい)
+    @description 字牌の場見え枚数とドラ価値を反映し、超上級者のセオリー通りに評価する。
+    Why: 字牌の残り枚数によって対子としての価値が大きく変わる。
+         場に見えている枚数が少ないほど重なりやすく、多いほど安牌としての価値が高い。
+         4枚すべて見えている字牌は対子として絶対に成立しないため、即座に切る。
+    """
     quality = 0
     if is_honor(tid):
-        quality += 3
+        # Why: all_visible_counts() は手牌・河・副露・ドラ表示牌の合計を返す。
+        #      手牌に存在する牌を評価するため、最低でも1が返る。
+        visible = state.all_visible_counts()[tid]
+        if visible >= 4:
+            # 4枚すべて見えており、対子として絶対に成立しない → 即切り
+            quality -= 20
+        elif visible == 1:
+            # 場に0枚（手牌1枚のみ）。山に3枚残り、最も重なりやすい最強字牌
+            quality += 10
+        elif visible == 2:
+            # 場に1枚。重なりやすく安牌としても機能する優秀な字牌
+            quality += 8
+        elif visible == 3:
+            # 場に2枚。自力では重ならないが超安牌。
+            # テンパイ時の「地獄単騎」待ちとして最強であり、数牌より優先して残す
+            quality += 6
+        else:
+            # visible=0 は手牌にないため通常ここには来ないが、念のため
+            pass
     for d in state.doras:
         try:
             if tile_to_id(d) == tid:
-                quality += 5
+                # Why: +15（従来の+5から強化）。ドラを重ねると打点が+2翻確定し、
+                #      七対子では跳満〜倍満が見込めるため最大限の価値を持つ。
+                quality += 15
         except Exception:
             pass
     return quality

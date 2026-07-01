@@ -52,7 +52,7 @@ os.makedirs(MODEL_OUTPUT_DIR, exist_ok=True)
 
 
 class TacticalDataset(Dataset):
-    """@title numpyバッチからのデータセット読み込み
+    """@title numpyバッチからのデータセット読み込み（スタッツベクトル対応）
     @description メモリマップドで全データを効率的にロードする。
     """
 
@@ -70,17 +70,21 @@ class TacticalDataset(Dataset):
         all_inputs = []
         all_masks = []
         all_labels = []
+        all_stats = []
         for i in range(num_batches):
             inputs = np.load(os.path.join(self.npy_dir, f'input_ids_{i:04d}.npy'), mmap_mode='r')
             masks = np.load(os.path.join(self.npy_dir, f'attn_masks_{i:04d}.npy'), mmap_mode='r')
             labels = np.load(os.path.join(self.npy_dir, f'labels_{i:04d}.npy'), mmap_mode='r')
+            stats = np.load(os.path.join(self.npy_dir, f'stats_{i:04d}.npy'), mmap_mode='r')
             all_inputs.append(torch.from_numpy(inputs.copy()))
             all_masks.append(torch.from_numpy(masks.copy()))
             all_labels.append(torch.from_numpy(labels.copy()))
+            all_stats.append(torch.from_numpy(stats.copy()))
 
         inputs = torch.cat(all_inputs, dim=0)
         masks = torch.cat(all_masks, dim=0)
         labels = torch.cat(all_labels, dim=0)
+        stats = torch.cat(all_stats, dim=0)
 
         num = len(inputs)
         indices = torch.randperm(num)
@@ -90,41 +94,45 @@ class TacticalDataset(Dataset):
             self.inputs = inputs[indices[:split_idx]]
             self.masks = masks[indices[:split_idx]]
             self.labels = labels[indices[:split_idx]]
+            self.stats = stats[indices[:split_idx]]
         else:
             self.inputs = inputs[indices[split_idx:]]
             self.masks = masks[indices[split_idx:]]
             self.labels = labels[indices[split_idx:]]
+            self.stats = stats[indices[split_idx:]]
 
     def __len__(self) -> int:
         return len(self.labels)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return (self.inputs[idx], self.masks[idx], self.labels[idx].long())
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return (self.inputs[idx], self.masks[idx], self.labels[idx].long(), self.stats[idx])
 
 
-def collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """バッチ内で系列長が異なる場合のパディング"""
+def collate_fn(batch):
+    """バッチ内で系列長が異なる場合のパディング（スタッツベクトル含む）"""
     input_ids = torch.stack([b[0] for b in batch], dim=1)
     attn_masks = torch.stack([b[1] for b in batch], dim=0)
     labels = torch.stack([b[2] for b in batch])
-    return input_ids, attn_masks, labels
+    stats = torch.stack([b[3] for b in batch])
+    return input_ids, attn_masks, labels, stats
 
 
 def train_epoch(model: nn.Module, loader: DataLoader, optimizer: optim.Optimizer,
                 scheduler, device: torch.device) -> float:
-    """@title 1エポックの学習"""
+    """@title 1エポックの学習（スタッツベクトル対応）"""
     model.train()
     total_loss = 0.0
     num_batches = 0
     criterion = nn.CrossEntropyLoss()
 
-    for input_ids, attn_masks, labels in loader:
+    for input_ids, attn_masks, labels, stats_vec in loader:
         input_ids = input_ids.to(device)
         attn_masks = attn_masks.to(device)
         labels = labels.to(device)
+        stats_vec = stats_vec.to(device)
 
         optimizer.zero_grad()
-        logits = model(input_ids, attention_mask=attn_masks)
+        logits = model(input_ids, attention_mask=attn_masks, stats_features=stats_vec)
         loss = criterion(logits, labels)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -138,7 +146,7 @@ def train_epoch(model: nn.Module, loader: DataLoader, optimizer: optim.Optimizer
 
 
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> Tuple[float, float]:
-    """@title バリデーション評価
+    """@title バリデーション評価（スタッツベクトル対応）
     @returns {(float, float)} (平均損失, 正解率)
     """
     model.eval()
@@ -148,12 +156,13 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> Tupl
     criterion = nn.CrossEntropyLoss()
 
     with torch.no_grad():
-        for input_ids, attn_masks, labels in loader:
+        for input_ids, attn_masks, labels, stats_vec in loader:
             input_ids = input_ids.to(device)
             attn_masks = attn_masks.to(device)
             labels = labels.to(device)
+            stats_vec = stats_vec.to(device)
 
-            logits = model(input_ids, attention_mask=attn_masks)
+            logits = model(input_ids, attention_mask=attn_masks, stats_features=stats_vec)
             loss = criterion(logits, labels)
             total_loss += loss.item()
 
@@ -190,11 +199,13 @@ def train():
     print(f"[train] 学習サンプル: {len(train_dataset)}, 検証サンプル: {len(val_dataset)}")
     print(f"[train] 語彙サイズ: {train_dataset.meta['vocab_size']}")
 
+    n_stats = train_dataset.meta.get('num_stats_features', 21)
     model = build_model(
         vocab_size=train_dataset.meta['vocab_size'],
         num_classes=len(train_dataset.meta['mode_names']),
         dropout=DROPOUT,
         max_seq_len=train_dataset.meta['max_seq_len'],
+        num_stats_features=n_stats,
     )
     # Why: DirectML (AMD GPU) は model.to(device) の後に
     #      model = model.to(device) と再代入が必要な場合がある。
@@ -202,8 +213,10 @@ def train():
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"[train] モデルパラメータ数: {total_params:,}")
+    print(f"[train] スタッツ特徴量: {train_dataset.meta.get('num_stats_features', 21)}次元")
 
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+    # Why: SGD は DirectML でフルGPU動作する。AdamW は lerp が非対応で CPU フォールバックが発生する。
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE * 10, momentum=0.9, weight_decay=WEIGHT_DECAY)
     total_steps = len(train_loader) * NUM_EPOCHS
 
     def lambda_lr(step: int):
@@ -217,8 +230,30 @@ def train():
     patience_counter = 0
     best_model_path = os.path.join(MODEL_OUTPUT_DIR, 'tactical_llm_best.pt')
 
+    # レジューム(再開)引数の処理
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--resume', action='store_true', help='Resume from best checkpoint')
+    parser.add_argument('--start-epoch', type=int, default=1, help='Epoch to start from (e.g. 10)')
+    args, _ = parser.parse_known_args()
+
+    start_epoch = 1
+    if args.resume and os.path.exists(best_model_path):
+        print(f"[train] チェックポイント {best_model_path} から学習を再開します。")
+        try:
+            state_dict = torch.load(best_model_path, map_location=device)
+            model.load_state_dict(state_dict)
+            start_epoch = args.start_epoch
+            # スケジューラのステップを前回の分まで進める
+            initial_steps = len(train_loader) * (start_epoch - 1)
+            for _ in range(initial_steps):
+                scheduler.step()
+            print(f"[train]  ✓ 前回の進捗を復元: start_epoch={start_epoch}, steps={initial_steps}")
+        except Exception as e:
+            print(f"[train] チェックポイントのロードに失敗しました (最初から開始します): {e}")
+
     print("[train] 学習開始...")
-    for epoch in range(1, NUM_EPOCHS + 1):
+    for epoch in range(start_epoch, NUM_EPOCHS + 1):
         train_loss = train_epoch(model, train_loader, optimizer, scheduler, device)
         val_loss, val_acc = evaluate(model, val_loader, device)
         lr = optimizer.param_groups[0]['lr']

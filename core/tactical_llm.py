@@ -37,6 +37,8 @@ DEFAULT_DROPOUT = 0.1
 # Why: トークナイズ後の最大系列長は約189。余裕を持って256に設定。
 DEFAULT_MAX_SEQ_LEN = 256
 DEFAULT_NUM_CLASSES = 8  # Mode 列挙子の数
+# num_stats_features: 牌譜屋準拠の21項目のプレイヤースタッツベクトル
+DEFAULT_NUM_STATS = 21
 
 
 class PositionalEncoding(nn.Module):
@@ -94,7 +96,7 @@ class TacticalTransformer(nn.Module):
         dropout: float = DEFAULT_DROPOUT,
         max_seq_len: int = DEFAULT_MAX_SEQ_LEN,
         num_classes: int = DEFAULT_NUM_CLASSES,
-        num_stats_features: int = 7,
+        num_stats_features: int = DEFAULT_NUM_STATS,
     ):
         super().__init__()
         self.d_model = d_model

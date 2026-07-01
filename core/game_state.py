@@ -69,6 +69,13 @@ class GameState:
         self.tenhou_chiihou_locked: bool = False
         self.river_moqie: List[List[bool]] = [[], [], [], []]
         self.player_stats: Dict[str, Dict[str, float]] = {}
+        # 他家行動動的推測用カウンタ (対局通算)
+        self.game_kyoku_count: int = 0          # 通算局数
+        self.player_reach_counts: List[int] = [0, 0, 0, 0]   # 各席リーチ宣言回数
+        self.player_meld_counts: List[int] = [0, 0, 0, 0]    # 各席副露発生局数
+        self.player_dealt_in_counts: List[int] = [0, 0, 0, 0] # 各席放銃回数
+        self.current_kyoku_melded: List[bool] = [False, False, False, False] # 今局副露フラグ
+
         self.wall_seed: int = 0
         self.kyoku_count: int = 0
         self.all_hands: List[List[str]] = [[], [], [], []]
@@ -97,6 +104,12 @@ class GameState:
         # (ただし on_reset で完全に初期化される)
         if not hasattr(self, 'reach_states') or self.reach_states is None:
             self.reach_states = [ReachState() for _ in range(4)]
+        # 通算局数のカウントアップ (動的スタッツ推定用)
+        if not hasattr(self, 'game_kyoku_count'):
+            self.game_kyoku_count = 0
+        self.game_kyoku_count += 1
+        self.current_kyoku_melded = [False, False, False, False]
+
         self.last_discard_seat = -1
         self.last_discard_tile = None
         self.last_self_drawn = None

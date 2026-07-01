@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
 """
 @title ver.2 戦略モード判定
-@description Fuzzy 推論を完全廃止。カウントと if-else で純粋に判定。
-              7 つのモード: URGENT_ATTACK, ATTACK, BALANCED, DEFEND, FOLD, CHIITOITSU, YAKUMAN, KOKUSHI
+@description ルールベース + TacticalTransformer モデル推論のハイブリッド。
+               優先順位:
+                 1. 国士無双 / 役満 / 終盤4位 / 七対子 → ルールベース最優先
+                 2. TacticalTransformer 推論（モデルロード時）
+                 3. 従来の if-else フォールバック
 """
 from __future__ import annotations
+import json
+import os
+import warnings
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from core.shanten_v2 import ShantenCalculatorV2
 from core.chiitoitsu_v2 import chiitoitsu_mode_applicable
@@ -14,29 +20,215 @@ from core.yakuman_v2 import get_active_yakuman
 
 
 class Mode(Enum):
-    URGENT_ATTACK = "URGENT_ATTACK"  # 終盤 4 位
-    ATTACK = "ATTACK"               # 攻撃モード
-    BALANCED = "BALANCED"            # バランス
-    DEFEND = "DEFEND"                # 防御
-    FOLD = "FOLD"                    # オリ
-    CHIITOITSU = "CHIITOITSU"        # 七対子
-    YAKUMAN = "YAKUMAN"              # 役満 (国士以外)
-    KOKUSHI = "KOKUSHI"              # 国士無双
+    URGENT_ATTACK = "URGENT_ATTACK"
+    ATTACK = "ATTACK"
+    BALANCED = "BALANCED"
+    DEFEND = "DEFEND"
+    FOLD = "FOLD"
+    CHIITOITSU = "CHIITOITSU"
+    YAKUMAN = "YAKUMAN"
+    KOKUSHI = "KOKUSHI"
 
 
-def get_mode(state, current_turn: int, is_last_round: bool) -> Mode:
+# ──────────────────────────────────────────────
+# TacticalTransformer モデル推論 (lazy load)
+# ──────────────────────────────────────────────
+_MODEL = None
+_VOCAB = None
+_STATS_DB = None
+_DEVICE = None
+_MODEL_LOADED = False
+
+_STATS_FEATURE_KEYS = [
+    'win_rate', 'deal_in_rate', 'tsumo_rate', 'damaten_rate',
+    'meld_rate', 'riichi_rate', 'avg_win_points', 'avg_deal_in_points',
+    'avg_win_turn', 'avg_placement',
+    'riichi_win_rate', 'riichi_deal_in_rate', 'riichi_exhaustive_rate',
+    'open_win_rate', 'deal_in_when_open_rate',
+    'bust_rate', 'exhaustive_rate', 'tenpai_rate_in_exh',
+    'point_efficiency', 'loss_from_deal_in', 'adj_efficiency',
+]
+
+_DEFAULT_STATS_DICT = {
+    'win_rate': 0.25, 'deal_in_rate': 0.15, 'tsumo_rate': 0.0,
+    'damaten_rate': 0.35, 'meld_rate': 0.20, 'riichi_rate': 0.18,
+    'avg_win_points': 5000.0, 'avg_deal_in_points': 4000.0,
+    'avg_win_turn': 0.0, 'avg_placement': 2.5,
+    'riichi_win_rate': 0.0, 'riichi_deal_in_rate': 0.0,
+    'riichi_exhaustive_rate': 0.0, 'open_win_rate': 0.0,
+    'deal_in_when_open_rate': 0.0, 'bust_rate': 0.0,
+    'exhaustive_rate': 0.0, 'tenpai_rate_in_exh': 0.0,
+    'point_efficiency': 0.0, 'loss_from_deal_in': 0.0,
+    'adj_efficiency': 0.0,
+}
+
+_DEFAULT_STATS_VECTOR = [_DEFAULT_STATS_DICT[k] for k in _STATS_FEATURE_KEYS]
+
+
+def _resolve_rel(path: str) -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', path)
+
+
+def _ensure_loaded():
+    global _MODEL, _VOCAB, _STATS_DB, _DEVICE, _MODEL_LOADED
+    if _MODEL_LOADED:
+        return
+
+    vpath = _resolve_rel('data/vocab.json')
+    if os.path.exists(vpath):
+        try:
+            with open(vpath, 'r', encoding='utf-8') as f:
+                _VOCAB = json.load(f)
+        except Exception:
+            _VOCAB = None
+
+    dbpath = _resolve_rel('data/stats_db.json')
+    if os.path.exists(dbpath):
+        try:
+            with open(dbpath, 'r', encoding='utf-8') as f:
+                _STATS_DB = json.load(f).get('players', {})
+        except Exception:
+            _STATS_DB = {}
+
+    if _VOCAB is None:
+        return
+
+    try:
+        import torch
+    except ImportError:
+        return
+
+    ckpt = _resolve_rel('models/tactical_llm_best.pt')
+    if not os.path.exists(ckpt):
+        ckpt = _resolve_rel('models/tactical_llm_final.pt')
+    if not os.path.exists(ckpt):
+        return
+
+    try:
+        from core.tactical_llm import build_model
+        vsz = _VOCAB.get('vocab_size', 271)
+        ncls = len(_VOCAB.get('mode_names', [
+            'URGENT_ATTACK', 'ATTACK', 'BALANCED', 'DEFEND',
+            'FOLD', 'CHIITOITSU', 'YAKUMAN', 'KOKUSHI',
+        ]))
+        _DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = build_model(vocab_size=vsz, num_classes=ncls, dropout=0.0,
+                            num_stats_features=len(_STATS_FEATURE_KEYS))
+        warnings.filterwarnings('ignore', message='.*weights_only.*')
+        state_dict = torch.load(ckpt, map_location=_DEVICE)
+        saved_max_seq = state_dict.get('pos_encoder.pe', torch.zeros(256, 1, 64)).shape[0]
+        model = build_model(vocab_size=vsz, num_classes=ncls, dropout=0.0,
+                            max_seq_len=saved_max_seq,
+                            num_stats_features=len(_STATS_FEATURE_KEYS))
+        model.load_state_dict(state_dict, strict=False)
+        model.to(_DEVICE)
+        model.eval()
+        _MODEL = model
+        _MODEL_LOADED = True
+    except Exception:
+        _MODEL_LOADED = False
+
+
+def _tokenize_state(state, shanten: int, player_name: str) -> List[int]:
+    vocab = _VOCAB['vocab']
+    unk = vocab.get('[UNK]', 1)
+    score = state.scores[state.my_seat]
+    hand_norm = [
+        ('5' + t[1]) if (t[0] == '0' and len(t) >= 2) else t
+        for t in state.my_hand
+    ]
+    ids = [vocab.get('[CLS]', 2)]
+
+    def _sp():
+        ids.append(unk)
+
+    def _add(s: str):
+        i = 0
+        while i < len(s):
+            if s[i].isdigit():
+                j = i
+                while j < len(s) and s[j].isdigit():
+                    j += 1
+                for ch in s[i:j]:
+                    ids.append(vocab.get(ch, unk))
+                i = j
+                continue
+            if i + 2 <= len(s) and s[i:i+2] in vocab:
+                ids.append(vocab[s[i:i+2]])
+                i += 2
+                continue
+            ids.append(vocab.get(s[i], unk))
+            i += 1
+
+    _add('[PERSONA]'); _sp(); _add(player_name); _sp()
+    _add('[SCORE]'); _sp(); _add(str(score)); _sp()
+    _add('[SHANTEN]'); _sp(); _add(str(shanten)); _sp()
+    _add('[ARROW]'); _sp()
+    _add('[HAND]')
+    for t in hand_norm:
+        _sp(); ids.append(vocab.get(t, unk))
+    ids.append(vocab.get('[SEP]', 3))
+    return ids
+
+
+def _get_stats_vector(player_name: str) -> List[float]:
+    if _STATS_DB and player_name:
+        for pdata in _STATS_DB.values():
+            if pdata.get('nickname', '') == player_name:
+                return [pdata.get(k, 0.0) for k in _STATS_FEATURE_KEYS]
+    return list(_DEFAULT_STATS_VECTOR)
+
+
+def _predict_with_model(state, shanten: int, player_name: str):
+    if not _MODEL_LOADED:
+        return None
+    try:
+        import torch
+        tok = _tokenize_state(state, shanten, player_name)
+        sv = _get_stats_vector(player_name)
+        x = torch.tensor(tok, dtype=torch.long).view(-1, 1).to(_DEVICE)
+        sf = torch.tensor([sv], dtype=torch.float32).to(_DEVICE)
+        with torch.no_grad():
+            cid = _MODEL.forward(x, stats_features=sf).argmax(dim=-1).item()
+        modes = _VOCAB.get('mode_names', [])
+        return Mode[modes[cid]] if 0 <= cid < len(modes) else None
+    except Exception:
+        return None
+
+
+def _count_visible_dora(state) -> int:
     """
-    @title 戦略モード判定
-    @description 優先順位:
-                1. 国士無双進行中 → KOKUSHI
-                2. 役満進行中 → YAKUMAN
-                3. 終盤 4 位 → URGENT_ATTACK
-                4. 七対子モード条件 → CHIITOITSU
-                5. 2 リーチ + テンパイ未満 → FOLD
-                6. 1 リーチ + テンパイ未満 → DEFEND
-                7. テンパイ + 1 向聴 → ATTACK
-                8. その他 → BALANCED
+    @title 見えているドラ総数（赤ドラ含む）
+    @description state.doras の各牌（ドラ表示牌）の見え枚数と、
+                 赤5（0m, 0p, 0s）の見え枚数を合計する。
+    Why: ドラが多く見えている＝他家のドラ持ちが少ない＝リーチ打点が低い。
+         攻めて良い指標として使う。
+    @param state - GameState（all_visible_counts, doras を参照）
+    @returns {int} 見えているドラ総数
     """
+    total = 0
+    visible = state.all_visible_counts()
+    # ドラ表示牌ごとの見え枚数を合計
+    for d in state.doras:
+        try:
+            from str_converter import tile_to_id
+            tid = tile_to_id(d)
+            if 0 <= tid < 34:
+                total += visible[tid]
+        except Exception:
+            pass
+    # 赤ドラ（0m=4, 0p=13, 0s=22）の見え枚数も加算
+    for aka_id in [4, 13, 22]:
+        total += visible[aka_id]
+    return total
+
+
+# ──────────────────────────────────────────────
+# Public API
+# ──────────────────────────────────────────────
+
+def get_mode(state, current_turn: int, is_last_round: bool,
+             player_name: Optional[str] = None) -> Mode:
     my_counts = state.my_hand_counts()
     open_meld_count = sum(1 for m in state.my_melds if m.is_open)
     if open_meld_count == 0:
@@ -53,43 +245,49 @@ def get_mode(state, current_turn: int, is_last_round: bool) -> Mode:
         and state.reach_states[s].is_reach
     )
 
-    # 1. 国士無双
+    # 1. 国士無双 (最優先ルール)
     yakuman = get_active_yakuman(state)
     if yakuman == 'kokushi':
         return Mode.KOKUSHI
 
-    # 2. 役満
+    # 2. 役満 (最優先ルール)
     if yakuman is not None and yakuman != 'kokushi':
         return Mode.YAKUMAN
 
-    # 3. 終盤 4 位
+    # 3. 終盤 4 位 (最優先ルール)
     if is_last_round and rank == 3:
         return Mode.URGENT_ATTACK
 
-    # 4. 七対子
+    # 4. 七対子 (最優先ルール)
     if chiitoitsu_mode_applicable(state, current_turn):
         return Mode.CHIITOITSU
 
-    # 5. 2 リーチ + テンパイ未満
-    if n_reach >= 2 and not is_tenpai:
-        return Mode.FOLD
-
-    # 6. 1 リーチ + テンパイ未満
-    if n_reach >= 1 and not is_tenpai:
-        return Mode.DEFEND
-
-    # 7. テンパイ or 1 向聴
-    if shanten <= 1:
+    # 4b. ドラ見え時の強気押し返し
+    # Why: 自分からドラが大量に見えている＝他家のドラ持ちが少ない＝他家リーチの打点が低い。
+    #      テンパイor一シャンテンならオリる理由がなく、強気に押す。
+    visible_dora = _count_visible_dora(state)
+    if visible_dora >= 3 and shanten <= 1:
         return Mode.ATTACK
 
-    # 8. その他
+    # 5. TacticalTransformer 推論
+    _ensure_loaded()
+    if _MODEL_LOADED:
+        name = player_name or getattr(state, 'player_name', None) or 'player'
+        predicted = _predict_with_model(state, shanten, name)
+        if predicted is not None:
+            return predicted
+
+    # 6. フォールバック: 従来の if-else
+    if n_reach >= 2 and not is_tenpai:
+        return Mode.FOLD
+    if n_reach >= 1 and not is_tenpai:
+        return Mode.DEFEND
+    if shanten <= 1:
+        return Mode.ATTACK
     return Mode.BALANCED
 
 
 def _my_score_rank(state) -> int:
-    """
-    @title 自分の順位 (0=トップ, 3=ラス)
-    """
     my_score = state.scores[state.my_seat]
     sorted_scores = sorted(state.scores, reverse=True)
     return sorted_scores.index(my_score)
