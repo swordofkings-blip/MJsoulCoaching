@@ -52,6 +52,63 @@ class EvaluatorV2:
         self._mode_cache = None
         self._dfs_cache = {}
 
+    def get_tuple_labels(self, tile: str) -> list[str]:
+        """
+        @title 7Dタプル動的ラベル名解決
+        @description 現在の戦術モードおよび向聴数における7次元タプルの各スロットのラベル名を返す。
+        """
+        mode = self.get_mode()
+        if mode == Mode.FOLD:
+            return ['安全度', '向聴数', '戦術ランク', '予備', '予備', '予備', '予備']
+
+        hand_counts = list(self.state.my_hand_counts())
+        discard_id = tile_to_id(tile)
+        if 0 <= discard_id < 34:
+            hand_counts[discard_id] = max(0, hand_counts[discard_id] - 1)
+
+        open_meld_count = sum(1 for m in self.state.my_melds if m.is_open)
+        if open_meld_count == 0:
+            shanten_after = ShantenCalculatorV2.calculate_closed_effective(hand_counts)
+        else:
+            shanten_after = ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count)
+
+        if shanten_after <= 1:
+            if mode == Mode.RIICHI_ATTACK:
+                return ['向聴数', '危険パターン', '手役補正(DFS)', 'ドラ/赤打点', '戦術ランク', '安全度', '予備']
+            if mode == Mode.OPEN_ATTACK:
+                return ['向聴数', '危険パターン', '手役補正(DFS)', '戦術ランク', 'ドラ/赤打点', '安全度', '予備']
+            if mode == Mode.DAMA_ATTACK:
+                return ['向聴数', '危険パターン', '安全度', '手役補正(DFS)', 'ドラ/赤打点', '戦術ランク', '予備']
+            if mode == Mode.URGENT_ATTACK:
+                return ['向聴数', '手役補正(DFS)', 'ドラ/赤打点', '戦術ランク', '予備', '予備', '予備']
+            if mode == Mode.HONITSU_DEFEND:
+                return ['向聴数', '安全度', '染め色補正', '戦術ランク', '手役補正(DFS)', '予備', '予備']
+            if mode == Mode.CHANTA_DEFEND:
+                return ['向聴数', '安全度', '端牌補正', '戦術ランク', '手役補正(DFS)', '予備', '予備']
+            if mode == Mode.DEFEND:
+                return ['向聴数', '安全度', '手役補正(DFS)', '戦術ランク', 'ドラ/赤打点', '予備', '予備']
+            # BALANCED
+            return ['向聴数', '手役補正(DFS)', '戦術ランク', 'ドラ損失期待値', '安全度', '予備', '予備']
+        else:
+            # 2シャンテン以上 (good/bad 受入枚数ルート)
+            if mode == Mode.RIICHI_ATTACK:
+                return ['向聴数', '危険パターン', '良形受入', '愚形受入', 'ドラ/赤打点', '戦術ランク', '安全度']
+            if mode == Mode.OPEN_ATTACK:
+                return ['向聴数', '危険パターン', '総受入数', '戦術ランク', 'ドラ/赤打点', '安全度', '予備']
+            if mode == Mode.DAMA_ATTACK:
+                return ['向聴数', '危険パターン', '安全度', '良形受入', '愚形受入', 'ドラ/赤打点', '戦術ランク']
+            if mode == Mode.URGENT_ATTACK:
+                return ['向聴数', '良形受入', '愚形受入', 'ドラ/赤打点', '戦術ランク', '予備', '予備']
+            if mode == Mode.HONITSU_DEFEND:
+                return ['向聴数', '安全度', '染め色補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値']
+            if mode == Mode.CHANTA_DEFEND:
+                return ['向聴数', '安全度', '端牌補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値']
+            if mode == Mode.DEFEND:
+                return ['向聴数', '安全度', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値', '予備']
+            # BALANCED
+            return ['向聴数', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値', '安全度', '予備']
+
+
     def get_mode(self) -> Mode:
         if self._mode_cache is not None:
             return self._mode_cache
