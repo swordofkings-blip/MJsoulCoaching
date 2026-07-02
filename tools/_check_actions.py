@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title 天鳳アクション確認スクリプト
+@description 天鳳DB から抽出したアクションログを簡易確認するためのデバッグツール。
+"""
 import sys, sqlite3
 sys.path.insert(0, '.')
 from tools.tenhou_xml_to_actions import tenhou_blob_to_actions

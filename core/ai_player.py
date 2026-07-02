@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title v1 AIプレイヤー
+@description GameState を受け取り、v1 Evaluator を用いて打牌・副露・リーチ判断を行う AI エントリポイント。
+"""
 from __future__ import annotations
 from typing import List, Optional, TYPE_CHECKING
 

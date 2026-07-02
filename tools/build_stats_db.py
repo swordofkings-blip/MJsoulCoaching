@@ -1,23 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-@title プレイヤースタッツ集計スクリプト
-@description data/ 以下の牌譜 (record_*_trimmed.json) および
-              天鳳 XML (mjlog) を解析し、プレイヤーごとの主要5大指標
-              （和了率、放銃率、副露率、立直率、ダマ率、平均打点、平均銃点）を
-              集計して stats_db.json に出力する。
-
-Why: 戦術LLMの条件付き入力（ペルソナ）として使用するため。
-     プレイヤーの打ち筋を数値化することで、パーソナライズドな戦術モード予測が可能になる。
-
-出力形式 (stats_db.json):
-{
-  "players": {
-    "69375101": {
-      "nickname": "earth527",
-      "account_id": 69375101,
-      "total_hands": 100,
-      "win_rate": 0.25,
-      "deal_in_rate": 0.15,
+@title プレイヤースタッツ集計ツール
+@description 天鳳のXMLログ（mjlog）やローカル牌譜を解析し、プレイヤーごとの主要5大指標
+              （和了率・放銃率・副露率・立直率・平均打点など）を stats_db.json に集計出力します。
+"""
       "meld_rate": 0.35,
       "riichi_rate": 0.22,
       "damaten_rate": 0.30,

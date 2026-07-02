@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title 対戦相手モデル
+@description 他家の仕掛け・リーチ・打牌傾向から手牌強度・危険度を推定するベイズ的モデル。
+"""
 from __future__ import annotations
 from typing import List, Tuple, Optional
 

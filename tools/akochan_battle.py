@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title Akochan 単体バトルランナー
+@description MJAI プロトコルで Akochan を起動し、v1/v2 AI との対戦を実行するレガシーバトラー。
+"""
 from __future__ import annotations
 import json
 import os

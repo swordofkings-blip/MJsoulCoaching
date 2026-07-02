@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title v1 戦略マネージャー
+@description v1 時代の戦術モード管理・トランジション制御。v2 では strategy_v2 に移行。
+"""
 from __future__ import annotations
 from functools import lru_cache
 from typing import List, Tuple, Set

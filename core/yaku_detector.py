@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title 役判定エンジン
+@description 手牌・副露構成から麻雀の全役（一翻～役満）を判定し、成立役一覧と打点を返す。
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple

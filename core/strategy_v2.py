@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-@title ver.2 戦略モード判定
-@description ルールベース + TacticalTransformer モデル推論のハイブリッド。
-               優先順位:
-                 1. 国士無双 / 役満 / 終盤4位 / 七対子 → ルールベース最優先
-                 2. TacticalTransformer 推論（モデルロード時）
-                 3. 従来の if-else フォールバック
+@title ver.2 戦術決定モジュール
+@description ルールベース（オーラスラス・ドラ3強気等）と TacticalTransformer モデル推論を併用し、
+              現在の局面（手牌・スタッツ・場況）に応じた最適な戦術モードを決定します。
 """
 from __future__ import annotations
 import json

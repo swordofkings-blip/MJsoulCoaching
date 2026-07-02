@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title 符計算・点数計算
+@description 麻雀の符計算ロジックと翻数に基づく点数計算（子・親）を行う。
+"""
 from __future__ import annotations
 from typing import List, Tuple, Optional
 

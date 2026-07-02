@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-@title 戦術LLM 学習スクリプト
-@description tokenized_npy からデータを読み込み、TacticalTransformer を学習する。
-
-ロードマップ位置: ③ LLM学習 (PyTorch)
-  ① スタッツDB作成 → ② トークナイズ → ③ ★ここ → ④ 戦術モード予測統合
-
-Why: ルールベース (core/strategy_v2.py) では表現できない
-     プレイヤー個人の打ち筋や癖を学習し、パーソナライズドな戦術選択を可能にする。
+@title 戦術LLM (TacticalTransformer) 学習スクリプト
+@description 前処理済みのトークンデータを用いて、PyTorchによる
+              戦術決定極小Transformerモデルの学習、バリデーション、およびウェイト保存を行います。
 """
 from __future__ import annotations
 import json

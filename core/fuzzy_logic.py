@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title ファジー論理エンジン
+@description パラメータ調整用の簡易ファジー推論器。あいまいな状態（高い・低い等）を
+              メンバシップ関数で評価し、ルールベースの出力値を算出する。
+"""
 
 class FuzzyLogicEngine:
     def __init__(self, params: dict):

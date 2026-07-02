@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title 牌変換ユーティリティ
+@description 牌の文字列表現 ↔ 内部ID変換、么九牌・字牌判定、スジ牌計算など、
+              全モジュールから利用される基礎関数群。
+"""
 from __future__ import annotations
 from typing import List, Tuple, Iterable
 

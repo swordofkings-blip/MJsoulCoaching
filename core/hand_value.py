@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title v1 手牌評価（打点計算）
+@description 手牌の符計算・翻数・打点推計を行う。v2 では hand_value_v2 に移行。
+"""
 from __future__ import annotations
 from typing import List, Tuple
 

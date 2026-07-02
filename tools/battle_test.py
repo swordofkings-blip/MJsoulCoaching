@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title v2 vs Akochan 対局テストランナー
+@description ver.2 AI と Akochan を指定人数・回数で対局させ、成績（順位・スコア）を計測する。
+"""
 from __future__ import annotations
 import argparse
 import json

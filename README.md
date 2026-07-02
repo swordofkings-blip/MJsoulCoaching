@@ -1,157 +1,183 @@
-# 雀魂コーチングくん
+# 雀魂コーチングくん (MJsoulCoaching)
 
-雀魂 (Mahjong Soul) の牌譜をリアルタイムにキャプチャし、ブラウザで再生・AI 相談できるツール。
-麻雀 AI コア (押しオリ判断・牌選択) も同梱。
+雀魂 (Mahjong Soul) の対局データをリアルタイムにキャプチャし、ブラウザ上でAIによる「打牌・ベタオリ判断のコーチング（何切る相談）」を提供する、非公式の研究・開発者向けツールです。
 
-## 機能
+> [!WARNING]
+> **免責事項 (Disclaimer)**
+> 本ツールは個人による研究および学習目的で作成された非公式のオープンソースソフトウェアです。
+> 雀魂の利用規約（外部ツールの使用禁止、リバースエンジニアリング・パケット解析の禁止等）に抵触する可能性があるため、本ツールの使用によって生じたゲームアカウントの停止（BAN）、その他いかなる不利益や損害についても、開発者は一切の責任を負いません。
+> 本ソフトウェアの導入および使用は、すべてユーザー自身の自己責任において行ってください。
+> チート行為はありませんが、BANされる危険性は排除できないので、牌譜のDLはサブ垢を使うことを推奨します。
 
-### エンドユーザー向け
-- **牌譜キャプチャ**: Tampermonkey + forwarder.exe で雀魂の対局を自動記録
-- **ブラウザ再生**: 保存した牌譜を 1 打ずつ再生
-- **AI 相談プロンプト**: 任意の手番で「何切る」相談用プロンプトをクリップボードにコピー
-- **コーチング UI**: 直近の手番に対する AI 判断 (ベタオリ・押し・他) の解説表示
+---
 
-### 開発者向け
-- **麻雀 AI コア**: 牌選択・押しオリ判断・役判定 (Akochan 互換 MJAI プロトコル対応)
-- **天鳳ログ解析**: 78,504 件のベタオリ局面・鳴き判断の人間データセット同梱
-- **Akochan バトル**: ローカルの Akochan と AI を対戦させて強さを測定
-- **GA パラメータ調整**: 遺伝的アルゴリズムで AI パラメータを最適化
+## 🚀 主な機能
 
-## クイックスタート (エンドユーザー)
+### エンドユーザー・プレイヤー向け
+- **リアルタイム牌譜キャプチャ**: 
+  ブラウザ拡張機能 `Tampermonkey` を使用し、雀魂の牌譜を自動的にローカルサーバーへ転送して保存・記録します（プロキシ設定や難しいネットワーク解析設定は不要です）。
+- **ビジュアル牌譜シミュレータ**: 
+  保存した牌譜データを、1打ずつ巻き戻し・早送りしながらブラウザ上で視覚的に再生できます。
+- **AIリアルタイムコーチング UI**: 
+  任意の局面において、AIが「何を切るべきか」「今押すべきかオリるべきか（押し引き）」を7次元の評価タプルと日本語の戦術的根拠（理由説明）付きで解説します。
+- **何切る相談プロンプト**: 
+  盤面データをGPTなどのLLMへ一発で相談できる形式でクリップボードにコピー可能です。
+- **超簡易な使い方説明**:
+  ブラウザに Tampermonkey 拡張機能をインストール ➡ Pythonをインストール ➡ python server/forwarder.py でサーバーを起動 ➡ サーバーのページ右上の Tampermonkey スクリプトを導入 ➡ 雀魂を起動 ➡ DLしたい牌譜を開くとローカルに保存される ➡ 評価が終わるまで待ってから、見たい牌譜をクリックして開く
 
-1. `build/forwarder.exe` を実行
-2. ブラウザで `http://localhost:8080/` を開く
-3. 「🔧 Tampermonkey スクリプトを導入」ボタンをクリック
-4. 雀魂で牌譜を確認
-5. ブラウザで `http://localhost:8080/` を再訪 → 牌譜一覧から再生
+### 開発者・研究者向け
+- **同梱AIモデルとの対局テスト**: 
+  `akochan` などの強豪AIとMJAIプロトコルを介してローカル対局テストを実行可能。
+- **戦術LLMの自力学習**: 
+  天鳳の公開ログデータを用いて、プレイヤーの打牌傾向に応じた戦術判断モデルをスクラッチで学習可能。
 
-詳細は [`docs/README.txt`](docs/README.txt) を参照。
+---
 
-## クイックスタート (開発者)
+## 🤖 同梱されている麻雀AIモデルについて
 
-### 麻雀 AI をローカルで対戦させる
+本プロジェクトには、設計思想の異なる **2つのAIモデル** が同梱されており、設定によって切り替えが可能です。
+
+### 1. ver.1 (旧AI)
+*   **特徴**: 天鳳の一般対局データに基づき、人間の打牌一致率（特に標準的な門前牌効率や平均的な押し引き）を再現することを優先した、初期のルールベース＋ファジィ推論ベースのAIモデル。
+
+### 2. ver.2 (新AI - 推奨)
+*   **特徴**: 現代麻雀の勝率を最大化するために徹底的にチューニングされた強力なハイブリッドAI。
+    *   **他家放銃警戒度 (opponent model)**: 他家の仕掛け（3副露、2副露＋ドラ）やリーチ状況から危険度をリアルタイム数値化。
+    *   **クランプ回し打ち (DEFEND)**: 安全な牌（スジ・現物）がある時のみシャンテン戻しをして迂回し、危険牌しかない場合は押す、メリハリのある守備ロジック。
+    *   **役満（国士無双）粘り制御**: 他家に危険な気配があっても、安全な不要牌（中張牌や、手牌に重複している余剰麼九牌）がある限りは国士の手牌維持を粘り、安全な不要牌が尽きた時点で麼九牌を崩してベタオリ（FOLD）する高度な戦術。
+    *   **戦術決定LLM**: 深層学習モデル `TacticalTransformer` が、同卓者のスタッツ（打牌傾向）と手牌と場況に応じて最適な戦術モードを動的に選択。
+
+---
+
+## 🛠️ 動作原理 (System Architecture)
+
+```mermaid
+graph TD
+    A[雀魂クライアント] -->|WebSocket| B[Tampermonkey フックスクリプト]
+    B -->|HTTP POST| C[ローカルサーバー forwarder.py]
+    C -->|Protobufデコード| D[GameState 構築]
+    D -->|EvaluatorV2 / AIコア| E[7次元戦術タプル計算]
+    C -->|静的ファイルサーブ| F[ブラウザ UI :8080]
+    F -->|表示| G[シミュレータ & コーチング画面]
+```
+
+1. **キャプチャ**: 雀魂起動時に `majsoul_hook.js` が WebSocket 送受信データを横取りします。
+2. **転送**: キャプチャした Protobuf データをローカルの `forwarder.py` (Port: 8080) に送信。
+3. **パース**: `majsoul_wrapper` に内包された `liqi.py` と Protobuf 解析定義を用いて JSON 形式にデコード・変換し、牌譜ログとして保存します。
+4. **評価**: 盤面を再現したシミュレータ画面からAPI経由で `EvaluatorV2` を呼び出し、各打牌の評価タプルと日本語の解説をリアルタイムで出力します。
+
+---
+
+## 💻 クイックスタート (開発環境セットアップ)
+
+### 1. 依存関係のインストール
+動作には Python 3.10 以上が必要です。
 
 ```bash
-# Akochan Docker イメージを準備
-docker pull akochan-docker-app
-
-# Akochan vs 3 つの遺伝子 (4 シード × 4 局 = 16 試合)
-python tools/mjai_battle_genes.py 4 1 1
+# 必要なライブラリをインストール
+pip install -r requirements.txt
 ```
 
-### ベタオリ判断の精度テスト
+### 2. ローカルサーバーの起動
+```bash
+python server/forwarder.py
+```
+起動すると、`http://localhost:8080/` で Web サーバーが立ち上がります。
+
+### 3. フックスクリプトのブラウザ導入
+1. ブラウザで `http://localhost:8080/` にアクセスします。
+2. 画面上の **「🔧 Tampermonkey スクリプトを導入」** ボタンをクリックし、拡張機能にスクリプトをインストールします。
+3. 雀魂にログインして、牌譜や対局を開始します。自動的に `server/data/` 以下にキャプチャされた牌譜データが保存されます。
+4. 対局終了後、`http://localhost:8080/` を開くと、保存された牌譜一覧からシミュレータを再生できます。
+
+---
+
+## 🤖 開発者向け機能の使い方
+
+### 1. AI と Akochan のローカル対局シミュレーション
+AIの強さや勝率統計を測定するため、ローカルの `akochan` と対局を実行します。
+
+> [!IMPORTANT]
+> このシミュレーションを実行するには、事前にローカルの Docker 環境で **`mjai-server` (対局管理サーバー)** および **`akochan-docker-app` (対戦相手の Akochan 本体)** のコンテナをビルド・起動しておく必要があります。
 
 ```bash
-python test_local_betari.py
-```
-
-### GA でパラメータを最適化
-
-```bash
-python tools/ga_akochan.py
-```
-
-## ディレクトリ構成
-
-```
-雀魂コーチングくん/
-├── README.md                    # 本ファイル
-├── LICENSE                      # MIT License
-├── .gitignore
-│
-├── docs/                        # ドキュメント
-│   ├── README.txt               # エンドユーザー向け導入マニュアル
-│   ├── mjai_gateway_setup.md    # 天鳳 MJAI 接続設定 (開発者向け)
-│   └── img/                     # 画像
-│
-├── forwarder.exe                # 牌譜キャプチャサーバー (配布バイナリ)
-│
-├── majsoul_wrapper/             # 雀魂 WebSocket パケット解析 (MIT, 3rd party)
-├── server/                      # 牌譜再生・AI 相談 Web UI
-│   ├── templates/
-│   └── logs/                    # 自動生成 (.gitignore)
-│
-├── core/                        # 麻雀 AI コア
-│   ├── ai_player.py             # メイン AI エントリ
-│   ├── evaluator.py             # 牌評価
-│   ├── strategy_manager.py      # 戦略モード管理 (押しオリ)
-│   ├── fuzzy_logic.py           # ファジィ推論
-│   ├── game_state.py            # ゲーム状態
-│   ├── opponent_model.py        # 相手モデル
-│   ├── hand_value.py            # 手牌価値計算
-│   ├── yakuman_evaluator.py     # 役満評価
-│   └── manue/                   # 別実装の麻雀 AI
-│
-├── bots/                        # ボットエントリポイント
-├── config/                      # AI パラメータ
-│   └── config_parameters.json
-├── gene_variants/               # チューニング済み遺伝子
-│   ├── gene_0.json              # Akochan に強い (推奨)
-│   ├── gene_1.json
-│   ├── gene_2.json
-│   └── gene_best.json
-│
-├── tools/                       # 補助ツール
-│   ├── mjai_battle.py           # Akochan バトル (基本)
-│   ├── mjai_battle_genes.py     # 遺伝子別 Akochan バトル
-│   ├── mjai_battle_away.py      # Akochan バトル (Away モード)
-│   ├── mjai_client.py           # MJAI クライアント
-│   ├── mjai_protocol.py         # MJAI プロトコル
-│   ├── tenhou_battle.py         # 天鳳バトル
-│   ├── tenhou_xml_to_actions.py # 天鳳ログ → アクション変換
-│   ├── tenhou_match_rate.py     # 天鳳牌譜一致率測定
-│   ├── akochan_battle.py        # 旧 Akochan バトル
-│   ├── battle_test.py           # バトルテスト
-│   ├── evaluate_parameter_fitness.py  # パラメータ評価
-│   ├── mahjong_simulator.py     # 麻雀シミュレーター
-│   ├── monitor_game.py          # ゲームモニター
-│   ├── package.py               # パッケージング
-│   ├── run_test.py              # テストランナー
-│   └── tune_loop.py             # パラメータ調整ループ
-│
-├── build/                       # ビルド成果物
-├── dist/                        # 配布物
-├── share/                       # サンプル牌譜
-├── data/                        # サンプルデータ
-└── logs/                        # 実行ログ (自動生成, .gitignore)
-```
-
-## AI の性能
-
-- **Akochan とのバトル**: gene_0 で Akochan に **+36.5pt** (4 シード × 4 局 = 16 試合平均)
-- **人間ベタオリ一致率**: 90.1% (78,504 局面テスト)
-
-## 開発
-
-### 依存関係
-
-- Python 3.10+
-- 詳細は `requirements.txt` (未同梱) を参照
-
-### テスト
-
-```bash
-# ベタオリ精度テスト
-python test_local_betari.py
-
-# Akochan バトル
+# 準備が完了した状態で対局シミュレーションを開始
 python tools/mjai_battle.py
 ```
 
-## ライセンス
+---
 
-このプロジェクトは MIT License で公開されています。
-詳細は [`LICENSE`](LICENSE) を参照。
+### 2. 戦術LLM (TacticalTransformer) の学習手順
+プレイヤーのスタッツに応じた最適な戦術モード予測を行う深層学習モデルを、天鳳のログデータから再学習させる手順です。
 
-### サードパーティ
+#### 📥 データセットのダウンロードと配置
+1. 天鳳の公開ログアーカイブ（`mjlog` 形式）から、XML形式の牌譜データをダウンロードします。
+2. ダウンロードしたファイルを、プロジェクト内の `data/raw/tenhou_xml/` ディレクトリ配下に配置します。
 
+#### 🏋️ 学習パイプラインの実行
+```bash
+# ① プレイヤーごとのスタッツDB (stats_db.json) の構築
+python tools/build_stats_db.py
+
+# ② 天鳳ログのトークナイズ前処理 (tokenized_data.json の生成)
+python tools/tokenize_tactical_data.py
+
+# ③ PyTorch による TacticalTransformer の学習
+python tools/train_tactical_llm.py
+```
+学習が正常に完了すると、`models/` ディレクトリ以下に重み（ウェイトファイル）が出力され、`strategy_v2.py` による推論時に自動でロードされるようになります。
+
+---
+
+## 📂 リポジトリ構成
+
+```
+MJsoulCoaching/
+├── README.md                    # 本ファイル
+├── LICENSE                      # MIT License
+├── requirements.txt             # 依存モジュールリスト
+│
+├── core/                        # 麻雀 AI コア (ver.2)
+│   ├── ai_player.py             # メインエントリ
+│   ├── evaluator_v2.py          # 7D評価器 & モード遷移
+│   ├── strategy_v2.py           # 戦術決定 (TacticalTransformer)
+│   ├── defense_v2.py            # 安全度計算 & 他家警戒度判定
+│   ├── yakuman_v2.py            # 役満(国士無双含む)専用タプル & 粘り制御
+│   └── game_state.py            # ゲーム状態管理
+│
+├── server/                      # コーチング Web サーバー
+│   ├── forwarder.py             # HTTP API & 静的ファイルサーブ
+│   ├── templates/
+│   │     └── simulator_v2.html  # シミュレータ HTML
+│   └── static/                  # リファクタリング済み静的リソース
+│         ├── css/
+│         │    └── simulator_v2.css  # UIスタイル
+│         └── js/
+│              ├── simulator_v2_utils.js  # 描画・変換関数群
+│              └── simulator_v2_main.js   # 再生コアロジック & API通信
+│
+├── majsoul_wrapper/             # 雀魂 Protobuf パケット解析コア
+├── tools/                       # シミュレーション・天鳳データ前処理・モデル学習スクリプト群
+└── config/                      # 戦術パラメータ (GA調整対象)
+```
+
+---
+
+## ⚖️ ライセンス & クレジット
+
+本プロジェクトは **MIT License** で公開されています。詳細は [`LICENSE`](LICENSE) を参照してください。
+
+### サードパーティライブラリ
 - **`majsoul_wrapper/`**: Copyright (c) 2020 Yue Qin, MIT License
-  - 雀魂 WebSocket パケット解析エンジン
+  - 雀魂 WebSocket パケットのバイナリデコードに活用しています。
+- **`core/manue/`**: Copyright (c) 2014 tubuann, MIT License
+  - 対戦比較の検証用麻雀AIとして同梱しています。
 
-## 謝辞
-
-麻雀 AI の研究において、数多くの先駆者の研究成果を参考にしました。
-特に以下のプロジェクトには多大な影響を受けています:
-- [Akochan](https://github.com/Akagi201/akochan) - 牌譜解析 AI
-- [mjai-gateway](https://github.com/tomohxx/mjai-gateway) - 天鳳 → MJAI 変換
-- [Cryolite](https://github.com/smly/Cryolite) - 麻雀 AI ライブラリ
+### 謝辞
+本ツールの開発にあたり、多くの先駆的な麻雀AI研究・ライブラリを参考にさせていただきました。
+- [Akochan](https://github.com/Akagi201/akochan) - コーチングAIのチューニングのための対戦相手
+- [mjai-gateway](https://github.com/tomohxx/mjai-gateway) - AI同士の対戦環境用
+- [Cryolite](https://github.com/smly/Cryolite) - 天鳳ログ（XML形式のmjlog）を解析・パースして、学習用データセットを生成するための基礎ライブラリとしての参考
+- [mahjong-soul-wrapper](https://github.com/mjsoul/mahjong-soul-wrapper) - 雀魂のプロトコル解析およびパケット傍受ロジックのベース
+- [雀魂牌譜屋 (Amae-Koromo / Koromo Portal)](https://amae-koromo.sapk.ch/) - プレイヤー統計（スタッツ）項目およびデータ構造設計の参考
+- [manue](https://github.com/tubuann/manue) - 対戦比較・検証用として活用させていただいたオープンソース麻雀AI

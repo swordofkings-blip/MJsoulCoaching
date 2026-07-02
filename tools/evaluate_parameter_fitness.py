@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title パラメータ適応度評価スクリプト
+@description 遺伝的アルゴリズムで生成されたパラメータセットの適応度を
+              人間打牌一致率で評価する。
+"""
 from __future__ import annotations
 import argparse
 import glob

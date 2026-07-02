@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title 麻雀シミュレーター
+@description モンテカルロシミュレーション用の簡易麻雀ゲームエンジン。
+              ランダムツモ・打牌・あがりの試行を高速実行する。
+"""
 from __future__ import annotations
 import random
 from dataclasses import dataclass, field

@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title 役満評価器 (v1 補完)
+@description 役満手の進行状態を管理し、v2 yakuman_v2 の補助として
+              特殊タプル生成に必要な情報を提供する。
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple

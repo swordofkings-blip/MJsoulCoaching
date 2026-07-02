@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title Manue AI 対戦バトルランナー
+@description Manue ベース AI と Akochan の対戦を実行し、成績を計測する。
+"""
 from __future__ import annotations
 import argparse
 import json

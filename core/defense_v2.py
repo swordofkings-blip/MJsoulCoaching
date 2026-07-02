@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-@title ver.2 防御評価
-@description 平沢麻雀パターン理論 (ver.1 の `_tile_remaining_weights` を純化移植) による
-              牌の安全度評価。電将パターンとは別物 (user 確認済み)。
-
-重要: 4 枚見え (ノーチャンス) の扱いに注意
-- 字牌 (Winds/Dragons): 4 枚見え = 100% 安全 (シーケンス作れないのでロンされない)
-- 数牌 (数牌): 4 枚見えでも両面/カンチャン待ちでロンされ得る (100% ではない)
-
-@returns 0-1000 (高い程安全)
+@title ver.2 放銃警戒 & 安全度評価
+@description 他家の仕掛け（リーチ、多副露、ドラポン）から放銃警戒度をリアルタイムに集計し、
+              現物・スジ・無筋等の個別危険重みを合算して各牌の安全スコアを算出します。
 """
 from __future__ import annotations
 from typing import List

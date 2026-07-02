@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+@title ベイズ聴牌確率推定
+@description 模擬打牌履歴（摸切か手出しか）と副露数から、
+              他家の聴牌確率をベイズ的に推定する簡易関数。
+"""
+
 def estimate_tenpai_prob(moqie, damaten_rate: float = 0.15, open_melds: int = 0) -> float:
     tedashi = sum(1 for m in moqie if not m)
     total = len(moqie)

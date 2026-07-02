@@ -1,19 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 @title 戦術LLM トークナイズ前処理スクリプト
-@description 牌譜データを解析し、戦術モード予測Transformer用の
-             トークン系列に変換する。
-
-入力トークン形式:
-  [Persona: <nickname>] [Stats: wr=0.25 dir=0.15 mr=0.35 rr=0.22 dmr=0.30 awp=5200 adp=3800]
-  [Score: 25000] [Shanten: 1] -> [1m 2m 3m 4z 5z 6s 7s 8s 9s 1p 1p 2p 3p]
-
-出力:
-  - tokenized_data.json: { "examples": [ { "tokens": [...], "label": <mode_id> } ] }
-  - vocab.json: { "token_str": token_id, ... }
-
-Why: ルールベース (core/strategy_v2.py) とニューラルモデルの両方を併用する
-     ハイブリッド構成を取るため、牌譜データから学習可能な形式に変換する必要がある。
+@description 牌譜データからプレイヤースタッツ・手牌・場況を解析し、
+              戦術モード予測モデル（TacticalTransformer）学習用のトークン系列データに変換します。
 """
 from __future__ import annotations
 import json

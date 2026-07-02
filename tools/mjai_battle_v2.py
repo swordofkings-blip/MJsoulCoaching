@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Orchestrate MJAI server + akochan + ver.2 AI battle in parallel."""
+"""
+@title ver.2 MJAI対戦バトルランナー
+@description Docker上の mjai-server および akochan と通信し、
+              ver.2 AI の自動並列対局を実行して対戦成績（平均順位・期待値pt）を測定します。
+"""
 import os
 import subprocess
 import sys

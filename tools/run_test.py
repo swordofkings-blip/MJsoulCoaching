@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title モジュール単体テストランナー
+@description core モジュールの特定テストケースを実行するための簡易エントリポイント。
+"""
 import sys
 import os
 

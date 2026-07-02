@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title v1 評価器 (legacy)
+@description 5,169行の大規模評価器。打牌候補の辞書式比較、DFS 1シャンテン先読み、
+              副露判断などを一元管理。ver.2 への移行完了に伴い保守モード。
+"""
 from __future__ import annotations
 from typing import List, Optional, Tuple
 

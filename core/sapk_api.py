@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+@title SAPK（雀魂API）クライアント
+@description 雀魂サーバーの内部 API (SAPK) と通信し、牌譜取得・アカウント情報取得を行う。
+"""
 import time
 from typing import Dict, Optional
 

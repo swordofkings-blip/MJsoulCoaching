@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+@title ゲーム状態定義
+@description 麻雀の局単位の全状態（手牌・副露・ドラ・スコア・河・他家情報）を
+              管理するデータクラス群。v1/v2 両方で使用される共通基盤。
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple

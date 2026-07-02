@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-@title ver.2 役満モード
-@description 役満進行中の特殊タプル。
-              国士無双は特殊、他の役満はグループ化 (字牌系/幺九系/一色系)。
+@title ver.2 役満モード評価
+@description 国士無双等の役満進行時の特殊評価タプルを算出し、他家危険時の
+              「安全な不要牌（中張牌＋重複么九牌）での粘り」および「完全撤退（FOLD）」を制御します。
 """
 from __future__ import annotations
 from typing import Tuple, Optional
