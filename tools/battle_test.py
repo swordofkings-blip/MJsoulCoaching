@@ -504,7 +504,7 @@ def main():
             print(f'\n=== 牌譜ファイル (data/ に {len(new_files)}個) ===')
             for f in sorted(new_files):
                 base = os.path.basename(f).replace('record_', '').replace('_trimmed.json', '')
-                print(f'  simulator.html?uuid={base}')
+                print(f'  /simulator?uuid={base}')
     elif manue_base_dir or manue_test_dir:
         print(f'\n牌譜保存: --mjson logs を付けると data/ に保存されます')
 

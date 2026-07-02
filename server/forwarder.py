@@ -1937,7 +1937,7 @@ class PacketHandler(BaseHTTPRequestHandler):
         if path.startswith('/static/'):
             try:
                 rel_path = path.lstrip('/')
-                filepath = os.path.join(_FW_ROOT, rel_path)
+                filepath = os.path.join(os.path.dirname(__file__), rel_path)
                 if os.path.exists(filepath) and os.path.isfile(filepath):
                     if path.endswith('.css'):
                         content_type = 'text/css; charset=utf-8'
@@ -1993,7 +1993,7 @@ class PacketHandler(BaseHTTPRequestHandler):
                 self.wfile.write(content.encode('utf-8'))
             except Exception as e:
                 err_msg = str(e).encode('ascii', 'replace').decode('ascii')
-                self.send_error(500, f"Error reading simulator.html: {err_msg}")
+                self.send_error(500, f"Error reading simulator_v2.html: {err_msg}")
 
         elif path == '/simulator_v2':
             try:
