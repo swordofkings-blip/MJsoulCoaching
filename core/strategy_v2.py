@@ -249,6 +249,51 @@ def get_mode(state, current_turn: int, is_last_round: bool,
     # 1. 国士無双 (最優先ルール)
     yakuman = get_active_yakuman(state)
     if yakuman == 'kokushi':
+        # 他家放銃警戒度の最大値を取得
+        try:
+            from core.hand_value_v2 import compute_full_5d
+            h5 = compute_full_5d(state)
+            max_threat = h5.get('b_risk_max', 0.0)
+        except Exception:
+            max_threat = 0.0
+        is_last_rank4 = is_last_round and rank == 3
+        is_tenpai = shanten <= 0
+        if max_threat > 0.30 and not is_last_rank4 and not is_tenpai:
+            from str_converter import tile_to_id, is_honor, is_terminal
+            from core.defense_v2 import safety_score
+            hand_ids = [tile_to_id(t) for t in state.my_hand]
+            yaochu_ids = {0, 8, 9, 17, 18, 26} | set(range(27, 34))
+            yaochu_counts = {}
+            for tid in hand_ids:
+                if tid in yaochu_ids:
+                    yaochu_counts[tid] = yaochu_counts.get(tid, 0) + 1
+            head_tid = None
+            max_cnt = 1
+            for tid, count in yaochu_counts.items():
+                if count > max_cnt:
+                    max_cnt = count
+                    head_tid = tid
+            keep_limits = {tid: 1 for tid in yaochu_counts}
+            if head_tid is not None:
+                keep_limits[head_tid] = 2
+            current_keep = {}
+            has_safe_garbage = False
+            for tile in state.my_hand:
+                tid = tile_to_id(tile)
+                is_garbage = False
+                if tid not in yaochu_ids:
+                    is_garbage = True
+                else:
+                    current_keep[tid] = current_keep.get(tid, 0) + 1
+                    if current_keep[tid] > keep_limits[tid]:
+                        is_garbage = True
+                if is_garbage:
+                    saf = safety_score(state, tile)
+                    if saf >= 600:
+                        has_safe_garbage = True
+                        break
+            if not has_safe_garbage:
+                return Mode.FOLD
         return Mode.KOKUSHI
 
     # 2. 役満 (最優先ルール)

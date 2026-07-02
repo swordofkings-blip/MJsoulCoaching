@@ -1933,6 +1933,36 @@ class PacketHandler(BaseHTTPRequestHandler):
         path = parsed_path.path
         query = urllib.parse.parse_qs(parsed_path.query)
 
+        # 静的ファイル (static/ 配下の css, js) のサーブ
+        if path.startswith('/static/'):
+            try:
+                rel_path = path.lstrip('/')
+                filepath = os.path.join(_FW_ROOT, rel_path)
+                if os.path.exists(filepath) and os.path.isfile(filepath):
+                    if path.endswith('.css'):
+                        content_type = 'text/css; charset=utf-8'
+                    elif path.endswith('.js'):
+                        content_type = 'application/javascript; charset=utf-8'
+                    else:
+                        content_type = 'application/octet-stream'
+                    with open(filepath, 'rb') as f:
+                        content = f.read()
+                    self.send_response(200)
+                    self._set_cors_headers()
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    self.send_header('Pragma', 'no-cache')
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                else:
+                    self.send_error(404, f"File not found: {path}")
+                    return
+            except Exception as e:
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"Error serving static file: {err_msg}")
+                return
+
         if path == '/':
             # 牌譜一覧画面のHTMLを返す
             try:

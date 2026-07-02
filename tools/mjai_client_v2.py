@@ -169,10 +169,29 @@ class OurMjaiClientV2:
                     self._send({"type": "dahai", "pai": pai_mjai, "tsumogiri": True})
                     return
 
-                # 0. 九種九牌
+                # 0. 九種九牌による流局判定
                 for act in msg.get("possible_actions", []):
                     if act.get("type") == "ryukyoku":
-                        if self._count_yaochu_types() >= 9:
+                        # コーチング(forwarder.py)と同じ高度な流局/続行判定を適用
+                        from str_converter import hand_to_counts
+                        hand_counts = hand_to_counts(self.state.my_hand)
+                        yaochu_ids = [0, 8, 9, 17, 18, 26] + list(range(27, 34))
+                        yaochu_types = sum(1 for i in yaochu_ids if hand_counts[i] >= 1)
+                        yaochu_total = sum(hand_counts[i] for i in yaochu_ids)
+                        should_ryukyoku = False
+                        if yaochu_types == 9 and yaochu_total == 9:
+                            should_ryukyoku = True
+                        elif yaochu_types == 10:
+                            if yaochu_total == 10:
+                                if self.state.my_score_rank() == 3:
+                                    should_ryukyoku = False
+                                else:
+                                    should_ryukyoku = True
+                            else:
+                                should_ryukyoku = False
+                        elif yaochu_types >= 11:
+                            should_ryukyoku = False
+                        if should_ryukyoku:
                             self._send({"type": "ryukyoku"})
                             return
                         break

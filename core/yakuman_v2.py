@@ -166,7 +166,30 @@ def yakuman_tuple(state, tile: str, yakuman_type: str) -> Tuple:
     detected = detect_yakumans(state)
     progress = detected.get(yakuman_type, {}).get('progress', 0)
 
-    return (shanten, -ukeire, -int(progress * 100), yakuman_garbage, dora_loss, -saf)
+    # 危険状況の検知 (他家警戒度の最大値が 0.3 超え)
+    max_threat = 0.0
+    try:
+        from core.hand_value_v2 import compute_full_5d
+        h5 = compute_full_5d(state)
+        max_threat = h5.get('b_risk_max', 0.0)
+    except Exception:
+        pass
+    is_danger = (max_threat > 0.30)
+    if is_danger:
+        # 危険状況下: 危険度レベルを最優先にして安全に粘る
+        if saf >= 950:
+            danger_level = 0.0  # 現物
+        elif saf >= 800:
+            danger_level = 0.5  # 片スジなど
+        elif saf >= 600:
+            danger_level = 1.0  # スジ・安全な字牌
+        else:
+            danger_level = 3.0  # 危険牌 (上限クランプ)
+        # 7次元固定長: 危険度レベル, 向聴数, 不要度, 受入枚数, ドラ危険度(放銃警戒), 安全度, 予備
+        return (danger_level, shanten, yakuman_garbage, -ukeire, dora_loss, -saf, 0.0)
+    else:
+        # 通常進行時: アガリ速度(向聴数)最優先、ドラ損失は役満に無関係なので0.0
+        return (shanten, -ukeire, -int(progress * 100), yakuman_garbage, 0.0, -saf, 0.0)
 
 
 def _yakuman_garbage_rank(state, tile_id: int, yakuman_type: str) -> int:

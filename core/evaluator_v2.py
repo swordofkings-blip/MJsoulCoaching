@@ -59,8 +59,19 @@ class EvaluatorV2:
         @description 現在の戦術モードおよび向聴数における7次元タプルの各スロットのラベル名を返す。
         """
         mode = self.get_mode()
+        if mode in (Mode.KOKUSHI, Mode.YAKUMAN):
+            max_threat = 0.0
+            try:
+                from core.hand_value_v2 import compute_full_5d
+                h5 = compute_full_5d(self.state)
+                max_threat = h5.get('b_risk_max', 0.0)
+            except Exception:
+                pass
+            if max_threat > 0.30:
+                return ['危険度レベル', '向聴数', '役満不要度', '受入枚数', 'ドラ危険度', '安全度', '予備']
+            else:
+                return ['向聴数', '受入枚数', '進行度', '役満不要度', '予備', '安全度', '予備']
         if mode == Mode.FOLD:
-            # 危険パターン、現物種別を優先する順に修正
             return ['危険パターン', '現物種別', '安全度', '向聴数', '戦術ランク', '予備', '予備']
 
         hand_counts = list(self.state.my_hand_counts())
@@ -127,6 +138,18 @@ class EvaluatorV2:
         @description _normal_tuple の各 return 文のタプル順序と一致させる。
         """
         mode = self.get_mode()
+        if mode in (Mode.KOKUSHI, Mode.YAKUMAN):
+            max_threat = 0.0
+            try:
+                from core.hand_value_v2 import compute_full_5d
+                h5 = compute_full_5d(self.state)
+                max_threat = h5.get('b_risk_max', 0.0)
+            except Exception:
+                pass
+            if max_threat > 0.30:
+                return ['危険度レベル', '向聴数', '役満不要度', '受入枚数', 'ドラ危険度', '安全度', '予備']
+            else:
+                return ['向聴数', '受入枚数', '進行度', '役満不要度', '予備', '安全度', '予備']
         if mode == Mode.FOLD:
             return ['危険パターン', '現物種別', '安全度', '向聴数', '戦術ランク', '予備', '予備']
 
@@ -759,8 +782,15 @@ def _explain_difference(chosen: str, other: str, layer: int, a, b, layer_name: s
             return f"{num_str}{layer_name}: {chosen} は安全度指標 {val_a:.1f} (高い)。{other} は {val_b:.1f}。{chosen} のほうが安全なので切ります。"
         else:
             return f"{num_str}{layer_name}: {other} のほうが安全 ({other}={val_b:.1f}, {chosen}={val_a:.1f})。{chosen} は温存します。"
-    # F. ドラ損失 / ドラ/赤打点
+    # F. ドラ損失 / ドラ/赤打点 / ドラ危険度
     elif 'ドラ' in layer_name:
+        if '危険' in layer_name:
+            val_a = abs(a)
+            val_b = abs(b)
+            if a < b:
+                return f"{num_str}{layer_name}: {chosen} はドラ牌ではないため安全に切れます (指標 {val_a:.0f})。{other} はドラ牌 ({val_b:.0f}) で放銃危険。"
+            else:
+                return f"{num_str}{layer_name}: {other} はドラ牌でなく安全 ({val_b:.0f})。{chosen} はドラ牌 ({val_a:.0f}) で放銃の危険があるため温存します。"
         val_a = abs(a)
         val_b = abs(b)
         if a < b:
