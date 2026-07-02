@@ -771,6 +771,31 @@ def evaluate_state_v2(payload: dict) -> dict:
     else:
         recommended = evaluations[0]["tile"] if evaluations else None
 
+    # === ツモ切り・手出し(空切り偽装) 判定 ===
+    tsumo_pai = state.last_self_drawn
+    recommended_tsumogiri = False
+    karagiri_reason = ""
+    if recommended and tsumo_pai and recommended == tsumo_pai:
+        recommended_tsumogiri = True
+        from core.str_converter import tile_to_id
+        tid = tile_to_id(recommended)
+        if state.my_hand_counts()[tid] >= 2:
+            is_reach = state.reach_states[my_seat].is_reach
+            if not is_reach:
+                open_meld_count = sum(1 for m in state.my_melds if m.is_open)
+                from core.shanten_v2 import ShantenCalculatorV2
+                if open_meld_count == 0:
+                    shanten = ShantenCalculatorV2.calculate_closed_effective(state.my_hand_counts())
+                else:
+                    shanten = ShantenCalculatorV2.calculate_open(state.my_hand_counts(), open_meld_count)
+                current_turn = (state.tsumo_count - 1) // 4 + 1
+                if shanten == 0:
+                    recommended_tsumogiri = False
+                    karagiri_reason = "【手出し推奨】ダマテンの気配を隠蔽し、他家の警戒を緩めてロン牌を出やすくするための空切り（手出し）です。"
+                elif shanten == 1 and current_turn >= 10:
+                    recommended_tsumogiri = False
+                    karagiri_reason = "【手出し推奨】ツモ切り連発による手の停滞を見破られるのを防ぎ、テンパイ間近と見せて他家を牽制するための空切り（手出し）です。"
+
     # v2 立直判定
     riichi_data = _build_riichi_data_v2(state, ev2, is_riichi_active, recommended, evaluations)
     kyushu_data = _build_kyushu_kyuhai_data(state)
@@ -791,7 +816,9 @@ def evaluate_state_v2(payload: dict) -> dict:
             "tsumo_count": state.tsumo_count,
             "my_seat": my_seat,
             "open_meld_count": sum(1 for m in state.my_melds if m.is_open),
-        }
+        },
+        "recommended_tsumogiri": recommended_tsumogiri,
+        "karagiri_reason": karagiri_reason,
     }
     return result
 

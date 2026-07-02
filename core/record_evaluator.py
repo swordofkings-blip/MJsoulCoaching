@@ -358,9 +358,7 @@ class RecordReplayer:
         return state
 
     def _evaluate_discard(self, seat: int, actual_tile: str, return_display: bool = False):
-        """AI に打牌を評価させ、実際の打牌との一致度 (0-100) を返す (v2 7Dタプル版)。
-        各打牌の 7D タプルを多層指数加重で 1 次元スカラー化し、比率マッピングする。
-        """
+        """AI に打牌を評価させ、実際の打牌との一致度 (0-100) を返す (v2 辞書式順位ベース版)。"""
         try:
             state = self._build_state_for_seat(seat)
             evaluator = EvaluatorV2(state, self.params)
@@ -371,27 +369,26 @@ class RecordReplayer:
             for tile in unique_tiles:
                 try:
                     tup = evaluator.evaluate_tile(tile)
-                    score = sum(v * (100 ** (len(tup) - 1 - i)) for i, v in enumerate(tup))
-                    evals.append((tile, score))
+                    evals.append((tup, tile))
                 except Exception:
-                    evals.append((tile, -9999999999.0))
-            evals.sort(key=lambda x: -x[1])
+                    evals.append(((99, 99, 99, 99, 99, 99, 99), tile))
+            evals.sort(key=lambda x: x[0])
             if not evals:
                 return (0.0, None) if return_display else 0.0
-            best_score = evals[0][1]
-            worst_score = evals[-1][1]
-            if best_score == worst_score:
+
+            n_choices = len(evals)
+            if n_choices <= 1:
                 match = 100.0
             else:
-                actual_score = None
-                for t, s in evals:
-                    if t == actual_tile:
-                        actual_score = s
+                actual_rank_idx = -1
+                for idx, (tup, tile) in enumerate(evals):
+                    if tile == actual_tile:
+                        actual_rank_idx = idx
                         break
-                if actual_score is None:
+                if actual_rank_idx == -1:
                     match = 0.0
                 else:
-                    match = (actual_score - worst_score) / (best_score - worst_score) * 100.0
+                    match = (1.0 - (actual_rank_idx / (n_choices - 1))) * 100.0
             match = max(0.0, min(100.0, match))
 
             display_data = None
@@ -400,19 +397,15 @@ class RecordReplayer:
                     v2_mode = evaluator.get_mode()
                     from server.forwarder import MODE_V2_JP, TIER_NAMES_7D
                     mode_jp = MODE_V2_JP.get(v2_mode, v2_mode.value)
-                    recommended_tile = evals[0][0]
-                    near_tiles = [t for t, _ in evals[:6]]
+                    recommended_tile = evals[0][1]
+                    near_tiles = [t for _, t in evals[:6]]
                     evaluations = []
-                    for tile, _ in evals[:8]:
-                        try:
-                            tup = evaluator.evaluate_tile(tile)
-                            tup_list = [round(float(v), 2) for v in tup[:7]]
-                        except Exception:
-                            tup_list = []
+                    for tup, tile in evals[:8]:
+                        score_val = round(float(tup[0]), 1) if tup else 0.0
                         evaluations.append({
                             'tile': tile,
-                            'score': round(float(tup_list[0] if tup_list else 0), 1),
-                            'tuple_values': tup_list,
+                            'score': score_val,
+                            'tuple_values': [round(float(v), 2) for v in tup[:7]] if tup else [],
                         })
                     display_data = {
                         'seat': seat,

@@ -60,7 +60,8 @@ class EvaluatorV2:
         """
         mode = self.get_mode()
         if mode == Mode.FOLD:
-            return ['安全度', '向聴数', '戦術ランク', '予備', '予備', '予備', '予備']
+            # 危険パターン、現物種別を優先する順に修正
+            return ['危険パターン', '現物種別', '安全度', '向聴数', '戦術ランク', '予備', '予備']
 
         hand_counts = list(self.state.my_hand_counts())
         discard_id = tile_to_id(tile)
@@ -87,7 +88,8 @@ class EvaluatorV2:
             if mode == Mode.CHANTA_DEFEND:
                 return ['向聴数', '安全度', '端牌補正', '戦術ランク', '手役補正(DFS)', '予備', '予備']
             if mode == Mode.DEFEND:
-                return ['向聴数', '安全度', '手役補正(DFS)', '戦術ランク', 'ドラ/赤打点', '予備', '予備']
+                # DEFENDの第1次元を危険度レベルに修正
+                return ['危険度レベル', '向聴数', '手役補正(DFS)', '戦術ランク', 'ドラ/赤打点', '予備', '予備']
             # BALANCED
             return ['向聴数', '手役補正(DFS)', '戦術ランク', 'ドラ損失期待値', '安全度', '予備', '予備']
         else:
@@ -105,9 +107,10 @@ class EvaluatorV2:
             if mode == Mode.CHANTA_DEFEND:
                 return ['向聴数', '安全度', '端牌補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値']
             if mode == Mode.DEFEND:
-                return ['向聴数', '安全度', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値', '予備']
-            # BALANCED
-            return ['向聴数', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値', '安全度', '予備']
+                # DEFENDの第1次元を危険度レベルに修正
+                return ['危険度レベル', '向聴数', '戦術ランク', '良形受入', '愚形受入', 'ドラ/赤打点', '予備']
+            # BALANCED (安牌温存を追加した新しい順序に修正)
+            return ['向聴数', '安牌温存', '良形受入', '愚形受入', 'ドラ損失期待値', '戦術ランク', '安全度']
 
 
     def get_mode(self) -> Mode:
@@ -125,43 +128,43 @@ class EvaluatorV2:
         """
         mode = self.get_mode()
         if mode == Mode.FOLD:
-            return ['安全度', '向聴数', '戦術ランク', '', '', '', '']
+            return ['危険パターン', '現物種別', '安全度', '向聴数', '戦術ランク', '予備', '予備']
 
         if shanten_after <= 1:
             if mode == Mode.RIICHI_ATTACK:
-                return ['向聴数', '危険パターン', 'DFS期待値', 'ドラ損失', '戦術ランク', '安全度', '']
+                return ['向聴数', '危険パターン', '手役補正(DFS)', 'ドラ/赤打点', '戦術ランク', '安全度', '予備']
             if mode == Mode.OPEN_ATTACK:
-                return ['向聴数', '危険パターン', 'DFS期待値', '戦術ランク', 'ドラ損失', '安全度', '']
+                return ['向聴数', '危険パターン', '手役補正(DFS)', '戦術ランク', 'ドラ/赤打点', '安全度', '予備']
             if mode == Mode.DAMA_ATTACK:
-                return ['向聴数', '危険パターン', '安全度', 'DFS期待値', 'ドラ損失', '戦術ランク', '']
+                return ['向聴数', '危険パターン', '安全度', '手役補正(DFS)', 'ドラ/赤打点', '戦術ランク', '予備']
             if mode == Mode.URGENT_ATTACK:
-                return ['向聴数', 'DFS期待値', 'ドラ損失', '戦術ランク', '', '', '']
+                return ['向聴数', '手役補正(DFS)', 'ドラ/赤打点', '戦術ランク', '予備', '予備', '予備']
             if mode == Mode.HONITSU_DEFEND:
-                return ['向聴数', '安全度', '染め手補正', '戦術ランク', 'DFS期待値', '', '']
+                return ['向聴数', '安全度', '染め色補正', '戦術ランク', '手役補正(DFS)', '予備', '予備']
             if mode == Mode.CHANTA_DEFEND:
-                return ['向聴数', '安全度', 'チャンタ補正', '戦術ランク', 'DFS期待値', '', '']
+                return ['向聴数', '安全度', '端牌補正', '戦術ランク', '手役補正(DFS)', '予備', '予備']
             if mode == Mode.DEFEND:
-                return ['向聴数', '安全度', 'DFS期待値', '戦術ランク', 'ドラ損失', '', '']
+                return ['危険度レベル', '向聴数', '手役補正(DFS)', '戦術ランク', 'ドラ/赤打点', '予備', '予備']
             # BALANCED
-            return ['向聴数', 'DFS期待値', '戦術ランク', 'ドラ損失', '安全度', '', '']
+            return ['向聴数', '手役補正(DFS)', '戦術ランク', 'ドラ損失期待値', '安全度', '予備', '予備']
 
         # shanten_after >= 2
         if mode == Mode.RIICHI_ATTACK:
-            return ['向聴数', '危険パターン', '良形受入', '愚形受入', 'ドラ損失', '戦術ランク', '安全度']
+            return ['向聴数', '危険パターン', '良形受入', '愚形受入', 'ドラ/赤打点', '戦術ランク', '安全度']
         if mode == Mode.OPEN_ATTACK:
-            return ['向聴数', '危険パターン', '総受入数', '戦術ランク', 'ドラ損失', '安全度', '']
+            return ['向聴数', '危険パターン', '総受入数', '戦術ランク', 'ドラ/赤打点', '安全度', '予備']
         if mode == Mode.DAMA_ATTACK:
-            return ['向聴数', '危険パターン', '安全度', '良形受入', '愚形受入', 'ドラ損失', '戦術ランク']
+            return ['向聴数', '危険パターン', '安全度', '良形受入', '愚形受入', 'ドラ/赤打点', '戦術ランク']
         if mode == Mode.URGENT_ATTACK:
-            return ['向聴数', '良形受入', '愚形受入', 'ドラ損失', '戦術ランク', '', '']
+            return ['向聴数', '良形受入', '愚形受入', 'ドラ/赤打点', '戦術ランク', '予備', '予備']
         if mode == Mode.HONITSU_DEFEND:
-            return ['向聴数', '安全度', '染め手補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失']
+            return ['向聴数', '安全度', '染め色補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値']
         if mode == Mode.CHANTA_DEFEND:
-            return ['向聴数', '安全度', 'チャンタ補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失']
+            return ['向聴数', '安全度', '端牌補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失期待値']
         if mode == Mode.DEFEND:
-            return ['向聴数', '安全度', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失', '']
+            return ['危険度レベル', '向聴数', '戦術ランク', '良形受入', '愚形受入', 'ドラ/赤打点', '予備']
         # BALANCED
-        return ['向聴数', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失', '安全度', '']
+        return ['向聴数', '安牌温存', '良形受入', '愚形受入', 'ドラ損失期待値', '戦術ランク', '安全度']
 
     def evaluate_tile(self, tile: str) -> Tuple:
         """
@@ -339,9 +342,22 @@ class EvaluatorV2:
         # 7D固定長タプル補助: (a, b, c, d, e, f, g)
         # ====================================================
 
-        # --- FOLD: 安全度最優先、向聴数無視 ---
+        # --- FOLD: 危険度最優先、危険度同数の場合は個別現物→共通現物→非現物 の順で切る ---
         if mode == Mode.FOLD:
-            return (-saf, shanten_after, rank, 0.0, 0.0, 0.0, 0.0)
+            pcount, rcount = self._count_danger_patterns(tile)
+            danger = pcount * 10.0 + rcount * 1.0
+            reach_seats = [s for s in range(4) if s != self.state.my_seat
+                           and self.state.reach_states[s] is not None
+                           and self.state.reach_states[s].is_reach]
+            n_reach = len(reach_seats)
+            gen_count = sum(1 for s in reach_seats if self._is_genbutsu_for(tile, s))
+            if n_reach == 0 or gen_count == 0:
+                gen_priority = 2  # 非現物
+            elif gen_count < n_reach:
+                gen_priority = 0  # 個別現物 (部分カバー) → 先に切る
+            else:
+                gen_priority = 1  # 共通現物 (全カバー) → 後で切る
+            return (danger, gen_priority, -saf, shanten_after, rank, 0.0, 0.0)
 
         if shanten_after <= 1:
             dfs = self._get_dfs(tile)
@@ -360,7 +376,15 @@ class EvaluatorV2:
             if mode == Mode.CHANTA_DEFEND:
                 return (shanten_after, -saf, -self._chanta_score(tile), rank, -dfs, 0.0, 0.0)
             if mode == Mode.DEFEND:
-                return (shanten_after, -saf, -dfs, rank, dora_loss, 0.0, 0.0)
+                if saf >= 1000:
+                    danger_level = 0.0  # 共通現物
+                elif saf >= 900:
+                    danger_level = 1.0  # 特定現物
+                elif saf >= 600:
+                    danger_level = 2.0  # スジ・壁など
+                else:
+                    danger_level = 3.0  # 片スジ・無筋 (上限クランプして無駄なシャンテン戻しを防ぐ)
+                return (danger_level, shanten_after, -dfs, rank, dora_loss, 0.0, 0.0)
             # BALANCED
             return (shanten_after, -dfs, rank, dora_loss, -saf, 0.0, 0.0)
 
@@ -380,9 +404,48 @@ class EvaluatorV2:
             if mode == Mode.CHANTA_DEFEND:
                 return (shanten_after, -saf, -self._chanta_score(tile), rank, -good, -bad, dora_loss)
             if mode == Mode.DEFEND:
-                return (shanten_after, -saf, rank, -good, -bad, dora_loss, 0.0)
-            # BALANCED
-            return (shanten_after, rank, -good, -bad, dora_loss, -saf, 0.0)
+                if saf >= 1000:
+                    danger_level = 0.0  # 共通現物
+                elif saf >= 900:
+                    danger_level = 1.0  # 特定現物
+                elif saf >= 600:
+                    danger_level = 2.0  # スジ・壁など
+                else:
+                    danger_level = 3.0  # 片スジ・無筋 (上限クランプして無駄なシャンテン戻しを防ぐ)
+                return (danger_level, shanten_after, rank, -good, -bad, dora_loss, 0.0)
+            # BALANCED (安牌キープ→受入優先)
+            safest = self._find_safest_tile()
+            has_safe = 0.0 if tile == safest else -1.0
+            return (shanten_after, has_safe, -good, -bad, dora_loss, rank, -saf)
+
+    def _danger_score(self, tile: str) -> float:
+        """1牌の危険度スコア (パターン理論: 大きい=危険)"""
+        try:
+            pcount, rcount = self._count_danger_patterns(tile)
+            return pcount * 10.0 + rcount * 1.0
+        except Exception:
+            return 30.0
+
+    def _is_genbutsu_for(self, tile: str, seat: int) -> bool:
+        try:
+            tid = tile_to_id(tile)
+            for t in self.state.river[seat]:
+                if tile_to_id(t) == tid:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _find_safest_tile(self) -> str:
+        """手牌中でパターン理論の危険度が最小の牌を1枚返す (安牌キープ対象)"""
+        best_tile = None
+        best_danger = float('inf')
+        for t in self.state.my_hand:
+            danger = self._danger_score(t)
+            if danger < best_danger:
+                best_danger = danger
+                best_tile = t
+        return best_tile
 
     def _get_dfs(self, tile: str) -> float:
         """@title DFS 期待値 (キャッシュ付き)"""

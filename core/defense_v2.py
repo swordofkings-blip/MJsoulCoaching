@@ -20,20 +20,25 @@ from str_converter import (
 )
 
 
+def is_dora_tile(state, tile_str: str) -> bool:
+    """牌がドラまたは赤ドラか判定"""
+    if tile_str and tile_str[0] == '0':
+        return True
+    from core.str_converter import dora_indicator_to_dora
+    for d in state.doras:
+        try:
+            if dora_indicator_to_dora(d) == tile_str:
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def safety_score(state, tile: str) -> int:
     """
     @title 平沢麻雀パターンによる安全度スコア
-    @description リーチ者への放銃リスクを 0-1000 で評価。
+    @description 他家放銃警戒度 (リーチ者・多副露者) への放銃リスクを 0-1000 で評価。
                 1000=絶対安全, 0=現時点で最も危険。
-
-                絶対安全 (1000) は 2 通り:
-                1. 現物 (フリテン現物): リーチ者の河にその牌がある
-                2. 4 枚見えの字牌: 単騎/双碰/国士無双待ちにもできない
-
-                4 枚見えの数牌は:
-                - 単騎/双碰 は除外
-                - 両面/カンチャン待ちではロンされ得る (安全ではない)
-                - 端牌 (1, 9) はペンチャン待ちでもロンされ得る
     """
     try:
         tile_id = tile_to_id(tile)
@@ -45,22 +50,39 @@ def safety_score(state, tile: str) -> int:
     my_count = my_counts[tile_id]
 
     # === 1. ノーチャンス判定: 字牌のみ 1000 ===
-    # 字牌は 4 枚見えならシーケンス系待ちが存在しないため完全安全
     if is_honor(tile_id) and visible[tile_id] >= 4:
         return 1000
 
-    # === 2. リーチ者の現物 (フリテン現物) 判定 ===
-    # リーチしている他家全員の河にその牌があるなら絶対安全 (数牌・字牌共通)
-    reach_seats = []
+    # === 2. 他家放銃警戒度 (alert_seats) の判定 ===
+    # リーチ者、および3副露以上、または2副露+ドラ鳴きの他家を警戒対象とする
+    alert_seats = []
     for s in range(4):
         if s == state.my_seat:
             continue
+        
+        # 2-1. リーチしている他家
         if state.reach_states[s] is not None and state.reach_states[s].is_reach:
-            reach_seats.append(s)
+            alert_seats.append(s)
+            continue
+            
+        # 2-2. 鳴き（副露）が多い他家のチェック
+        open_meld_count = 0
+        has_dora_in_melds = False
+        for m in state.melds[s]:
+            open_meld_count += 1
+            for tile_str in getattr(m, 'tiles', []):
+                if is_dora_tile(state, tile_str):
+                    has_dora_in_melds = True
 
-    if reach_seats:
+        # 3副露以上、または2副露かつドラを含んでいる場合は警戒対象とする
+        if open_meld_count >= 3 or (open_meld_count >= 2 and has_dora_in_melds):
+            alert_seats.append(s)
+
+    # === 3. 警戒対象の現物判定 ===
+    # 警戒対象全員にとって現物（絶対安全）であれば 1000 を返す
+    if alert_seats:
         is_genbutsu_all = True
-        for seat in reach_seats:
+        for seat in alert_seats:
             river_ids = set()
             for t in state.river[seat]:
                 try:
@@ -71,19 +93,18 @@ def safety_score(state, tile: str) -> int:
                 is_genbutsu_all = False
                 break
         if is_genbutsu_all:
-            return 1000  # 全リーチ者の現物 = 絶対安全
+            return 1000  # 共通現物 = 絶対安全 (最優先で温存)
 
-    # === 3. それ以外の危険度評価 ===
-    if not reach_seats:
-        # リーチ者なし: 行列マトリクス or スジ判定
+    # === 4. それ以外の危険度評価 ===
+    if not alert_seats:
         public_count = visible[tile_id] - my_count
         return _non_reach_safety(state, tile_id, my_count, public_count)
 
-    # リーチ者あり: 待ち重みを計算
-    weights = _tile_remaining_weights(state, reach_seats, visible, my_counts)
+    # 警戒対象あり: 各警戒対象に対する個別重みを合算して評価
+    weights = _tile_remaining_weights(state, alert_seats, visible, my_counts)
     total = sum(weights)
     if total == 0:
-        return 1000  # 全部 0 重み = 安全
+        return 1000  # 全員に対して安全
 
     danger = weights[tile_id] / total
     score = int(1000 * (1.0 - danger))
@@ -123,31 +144,19 @@ def _non_reach_safety(state, tile_id: int, my_count: int, public_count: int) -> 
     return 150
 
 
-def _tile_remaining_weights(state, reach_seats: List[int], visible: List[int], my_counts: List[int]) -> List[float]:
+def _tile_remaining_weights(state, alert_seats: List[int], visible: List[int], my_counts: List[int]) -> List[float]:
     """
     @title 平沢麻雀パターン: 各牌の「待ち重み」算出
-    @description リーチ者の待ちとして残りうる牌の重みを牌種ごとに算出。
-                重み = 待ちの形ごとの残り枚数。
-
-                重要な待ちの種類:
-                - 単騎 (Tanki): 1 枚残りで待ち
-                - 双碰 (Shanpon): 2 枚残りで待ち
-                - 両面 (Ryanmen): 隣接牌どちらかの残り枚数
-                - カンチャン (Kanchan): 両隣 1 つずつの残り枚数
-                - ペンチャン (Penchan): 端牌 2, 8 の残り枚数
-
-                4 枚見え (visible[tid] >= 4) の場合:
-                - 字牌: シーケンス系待ちが存在しない → 0 (絶対安全)
-                - 数牌: 単騎/双碰 は除外、シーケンス系のみ残る
-
-    平沢麻雀パターン (ユーザー確認済) での判定:
-                - 4 枚見えの 5m: 上サイド両面 ◯, 下サイド両面 ◯, カンチャン ◯, ペンチャン ✗, 単騎 ✗, シャボ ✗
-                - 4 枚見えの 9m: ペンチャン ◯ (1-2-3 順子の 3 待ちは無関係, 7-8-9 順子の 7 待ち), 単騎 ✗, シャボ ✗
+    @description 各警戒対象に対する個別の待ち重みを算出し、それらの合計を返す。
+                個別重み = 各警戒対象に対するロン待ち確率の指標。
     """
-    weights = [1.0] * 34  # 初期値 1.0 (現物のみ後で 0.0 に)
+    total_weights = [0.0] * 34
 
-    # 現物 (フリテン含む) は重み 0
-    for seat in reach_seats:
+    for seat in alert_seats:
+        # この人単体に対する初期の重み
+        seat_weights = [1.0] * 34
+
+        # 現物 (フリテン含む) はこの人に対しては重み 0
         genbutsu = set()
         for t in state.river[seat]:
             try:
@@ -156,68 +165,50 @@ def _tile_remaining_weights(state, reach_seats: List[int], visible: List[int], m
                 continue
         for tid in range(34):
             if tid in genbutsu:
-                weights[tid] = 0.0
+                seat_weights[tid] = 0.0
 
-    for tid in range(34):
-        if weights[tid] == 0.0:
-            continue  # 現物はスキップ
+        for tid in range(34):
+            if seat_weights[tid] == 0.0:
+                continue
 
-        is_h = is_honor(tid)
-        no_chance = (visible[tid] >= 4)  # 4 枚すべて見えている
+            is_h = is_honor(tid)
+            no_chance = (visible[tid] >= 4)
 
-        if is_h:
-            # 字牌: 単騎 + 双碰 のみ
+            if is_h:
+                # 字牌: 単騎 + 双碰 のみ
+                if no_chance:
+                    seat_weights[tid] = 0.0
+                else:
+                    seat_weights[tid] = 1.0 + 2.0
+                continue
+
+            # 数牌
+            base = (tid // 9) * 9
+            off = tid - base
+
             if no_chance:
-                # 4 枚見え → 単騎/双碰 不可、国士無双以外は完全安全
-                # 簡略化のため 0 とする (国士無双は特殊処理が必要だが頻度低い)
-                weights[tid] = 0.0
+                tanki_shanpon = 0.0
             else:
-                weights[tid] = 1.0 + 2.0  # 単騎 + 双碰
-            continue
+                tanki_shanpon = 1.0 + 2.0
 
-        # 数牌: 待ちの形ごとに重みを設定
-        base = (tid // 9) * 9
-        off = tid - base
+            if off == 0 or off == 8:
+                penchan = 3.0
+                seat_weights[tid] = penchan + tanki_shanpon
+            elif off == 1 or off == 7:
+                kanchan = 3.0
+                ryanmen = 10.0
+                seat_weights[tid] = kanchan + ryanmen + tanki_shanpon
+            elif off == 2 or off == 6:
+                kanchan = 3.0
+                penchan = 3.0
+                ryanmen = 10.0
+                seat_weights[tid] = kanchan + penchan + ryanmen + tanki_shanpon
+            else:
+                kanchan = 3.0
+                ryanmen = 10.0 + 10.0
+                seat_weights[tid] = kanchan + ryanmen + tanki_shanpon
 
-        if no_chance:
-            # 4 枚見え → 単騎 (1.0) と 双碰 (2.0) は除外
-            tanki_shanpon = 0.0
-        else:
-            tanki_shanpon = 1.0 + 2.0  # 単騎 + 双碰
-
-        if off == 0 or off == 8:
-            # 端牌 (1, 9): ペンチャン + 単騎
-            # ペンチャン: 1-2-3 (off=0, 端牌 1) や 7-8-9 (off=8, 端牌 9) の待ちは 1m or 9m 自身
-            # 4 枚見えでも 1m/9m が単騎/双碰 対象になるかは visibility 次第
-            # ここでは保守的にペンチャン残す
-            penchan = 3.0  # ペンチャン (1 or 9 待ち)
-            weights[tid] = penchan + tanki_shanpon
-        elif off == 1 or off == 7:
-            # 2, 8: カンチャン + 両面
-            # カンチャン: 1-3 待ち (off=1), 7-9 待ち (off=7)
-            kanchan = 3.0
-            # 両面: 2-3-4 (off=1, 3 待ち) や 7-8-9 (off=7, 6 待ち) は隣接牌側の重み
-            # 厳密には上サイド (1 待ち) と下サイド (3 or 6 待ち) で別
-            # 簡略化: 両面合計 10.0 とする
-            ryanmen = 10.0
-            weights[tid] = kanchan + ryanmen + tanki_shanpon
-        elif off == 2 or off == 6:
-            # 3, 7: カンチャン + ペンチャン + 両面
-            kanchan = 3.0
-            penchan = 3.0
-            ryanmen = 10.0
-            weights[tid] = kanchan + penchan + ryanmen + tanki_shanpon
-        else:
-            # 4, 5, 6: カンチャン + 両面 (両方向)
-            kanchan = 3.0
-            ryanmen = 10.0 + 10.0  # 上下両方向
-            weights[tid] = kanchan + ryanmen + tanki_shanpon
-
-    # ── 序盤捨て牌端安全度補正（危険度段階減衰） ──
-    # Why: 2切り→1, 8切り→9 は1段目(1-5巡)まで高い安全度を維持。
-    #      7切り→9, 3切り→1, 1切り→2, 9切り→8 も超序盤(1-3巡)は安全。
-    #      これらの捨て牌はその数字の外側/内側の牌が待ちになりづらいことを利用する。
-    for seat in reach_seats:
+        # ── 序盤捨て牌端安全度補正（この人の河の捨て牌に対してのみ適用） ──
         river_list = state.river[seat]
         for idx, discard_str in enumerate(river_list):
             try:
@@ -231,26 +222,30 @@ def _tile_remaining_weights(state, reach_seats: List[int], visible: List[int], m
 
             # A. 2切り→1, 8切り→9 (1〜5巡目、危険度70%減)
             if idx < 5:
-                if off == 1:  # 2切り→安全性1へ
+                if off == 1:
                     target = base + 0
-                    weights[target] *= 0.3
-                elif off == 7:  # 8切り→安全性9へ
+                    seat_weights[target] *= 0.3
+                elif off == 7:
                     target = base + 8
-                    weights[target] *= 0.3
+                    seat_weights[target] *= 0.3
 
             # B, C. 3切り→1, 7切り→9, 1切り→2, 9切り→8 (1〜3巡目、危険度25%減)
             if idx < 3:
-                if off == 2:  # 3切り→安全性1へ
+                if off == 2:
                     target = base + 0
-                    weights[target] *= 0.75
-                elif off == 6:  # 7切り→安全性9へ
+                    seat_weights[target] *= 0.75
+                elif off == 6:
                     target = base + 8
-                    weights[target] *= 0.75
-                elif off == 0:  # 1切り→安全性2へ
+                    seat_weights[target] *= 0.75
+                elif off == 0:
                     target = base + 1
-                    weights[target] *= 0.75
-                elif off == 8:  # 9切り→安全性8へ
+                    seat_weights[target] *= 0.75
+                elif off == 8:
                     target = base + 7
-                    weights[target] *= 0.75
+                    seat_weights[target] *= 0.75
 
-    return weights
+        # この人に対する重みを全体の合計に加算
+        for tid in range(34):
+            total_weights[tid] += seat_weights[tid]
+
+    return total_weights

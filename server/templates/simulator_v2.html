@@ -102,6 +102,7 @@
             align-items: center;
             padding: 1rem;
             position: relative;
+            overflow: hidden;
         }
 
         /* 左列（盤面 + 下部コントロール） */
@@ -2656,12 +2657,33 @@
 
                 // 初期状態の描画
                 jumpToAction(0);
+                fitMahjongTable();
 
             } catch (err) {
                 console.error(err);
                 alert(`初期化エラー: ${err.message}`);
             }
         }
+
+        function fitMahjongTable() {
+            const pane = document.querySelector('.simulator-pane');
+            const table = document.querySelector('.mahjong-table');
+            if (!pane || !table) return;
+            const availW = pane.clientWidth;
+            const availH = pane.clientHeight;
+            const designW = table.offsetWidth;
+            const designH = table.offsetHeight;
+            const scale = Math.min(availW / designW, availH / designH, 1.0);
+            table.style.transform = scale < 1.0 ? `scale(${scale})` : '';
+        }
+
+        const _paneResizeObserver = new ResizeObserver(() => fitMahjongTable());
+        // 要素ができたら監視開始
+        (function watchPane() {
+            const pane = document.querySelector('.simulator-pane');
+            if (pane) { _paneResizeObserver.observe(pane); return; }
+            setTimeout(watchPane, 100);
+        })();
 
         /**
          * @title タイムライン特定位置ジャンプ関数
@@ -3714,6 +3736,7 @@ ${riversStr}
          * @param {string} text - 表示テキスト
          */
         let _activeTile = null;
+        let _karagiriReason = '';
 
         function renderReasonForTile(text) {
             const box = document.getElementById('botCoachReason');
@@ -3749,7 +3772,11 @@ ${riversStr}
             ev._decidingLayer = layerMatch ? (layerMap[layerMatch[0]] !== undefined ? layerMap[layerMatch[0]] : -1) : -1;
             renderTuplePanel(ev);
 
-            renderReasonForTile(reasonText || `「${ev.tile}」を打牌した場合 (評価値 ${ev.score.toFixed(0)})`);
+            let reasonTextFinal = reasonText || `「${ev.tile}」を打牌した場合 (評価値 ${ev.score.toFixed(0)})`;
+            if (_karagiriReason) {
+                reasonTextFinal += '<br>' + _karagiriReason;
+            }
+            renderReasonForTile(reasonTextFinal);
         }
 
         /**
@@ -3792,6 +3819,7 @@ ${riversStr}
                 document.getElementById('botCoachStrategy').style.display = 'none';
                 document.getElementById('botCoachEvalList').innerHTML = '';
             } else {
+                _karagiriReason = data.karagiri_reason || '';
                 document.getElementById('botCoachStatus').innerHTML = `手番: ${data.summary ? data.summary.tsumo_count : 0} / 推奨: <strong>${getTileText(data.recommended) || '-'}</strong>`;
 
                 const recBox = document.getElementById('botCoachRecommend');
@@ -3986,10 +4014,15 @@ ${riversStr}
                         const layerMap = {'①': 0, '②': 1, '③': 2, '④': 3, '⑤': 4, '⑥': 5};
                         recEntry._decidingLayer = reasonMatch ? (layerMap[reasonMatch[0]] !== undefined ? layerMap[reasonMatch[0]] : -1) : -1;
                         renderTuplePanel(recEntry);
-                        renderReasonForTile(recEntry.reason || `「${getTileText(data.recommended)}」推奨 (総合スコア最高)。`);
+                        let reasonText = recEntry.reason || `「${getTileText(data.recommended)}」推奨 (総合スコア最高)。`;
+                        if (_karagiriReason) {
+                            reasonText += '<br>' + _karagiriReason;
+                        }
+                        renderReasonForTile(reasonText);
                     }
                 }
             } else {
+                _karagiriReason = data.karagiri_reason || '';
                 if (data.can_kan) {
                     renderReasonForTile(data.kan_reason);
                 } else {
@@ -4049,18 +4082,23 @@ ${riversStr}
                 kyushu_kyuhai: pre.kyushu_kyuhai || null,
                 sufutsusenru: pre.sufutsusenru || null,
                 summary: pre.summary || null,
+                recommended_tsumogiri: pre.recommended_tsumogiri || false,
+                karagiri_reason: pre.karagiri_reason || '',
             };
             renderBotCoachUI(data);
             // Why: 推奨理由は evaluations[0].reason (= 最良候補の理由) に格納されている。
             //      evaluate_state() の _build_decision_reason() で生成される。
             const recommendedEval = (pre.evaluations || []).find(e => e.tile === pre.recommended);
-            const reasonText = recommendedEval && recommendedEval.reason
+            let reasonText = recommendedEval && recommendedEval.reason
                 ? recommendedEval.reason
                 : (pre.reason || `「${pre.recommended}」推奨`);
+            if (data.karagiri_reason) {
+                reasonText += '<br>' + data.karagiri_reason;
+            }
             renderReasonForTile(reasonText);
             window.__lastCoachRecommended = data.recommended;
             window.__lastCoachNear = pre.near_tiles;
-            highlightRecommendedTile(data.recommended, pre.near_tiles);
+            highlightRecommendedTile(data.recommended, pre.near_tiles, data.recommended_tsumogiri);
             return true;
         }
         function requestBotCoachEvaluation() {
@@ -4114,7 +4152,7 @@ ${riversStr}
                     renderBotCoachUI(data);
                     window.__lastCoachRecommended = data.recommended || null;
                     window.__lastCoachNear = data.near_tiles || [];
-                    highlightRecommendedTile(data.recommended || null, data.near_tiles);
+                    highlightRecommendedTile(data.recommended || null, data.near_tiles, data.recommended_tsumogiri || false);
                 })
                 .catch(err => {
                     if (err && err.name === 'AbortError') return;
@@ -4287,22 +4325,52 @@ ${riversStr}
          * @description 現在の手牌描画のうち、推奨牌に .tile-recommended クラスを付与する。
          * @param {string|null} tile - 推奨牌文字列
          */
-        function highlightRecommendedTile(tile, nearTiles) {
+        function highlightRecommendedTile(tile, nearTiles, tsumogiri) {
             const handEl = document.getElementById('hand' + perspectiveSeat);
             if (!handEl) return;
             handEl.querySelectorAll('.tile-recommended').forEach(el => el.classList.remove('tile-recommended'));
             handEl.querySelectorAll('.tile-near').forEach(el => el.classList.remove('tile-near'));
             if (!tile) return;
             const nearSet = new Set((nearTiles || []).map(t => getTileText(t)));
-            handEl.querySelectorAll('.tile').forEach(el => {
-                if (el.classList.contains('tile-back') || el.classList.contains('tsumo-gap')) return;
+
+            let foundGap = false;
+            let highlighted = false;
+
+            handEl.querySelectorAll('*').forEach(el => {
+                if (el.classList.contains('tsumo-gap')) {
+                    foundGap = true;
+                    return;
+                }
+                if (!el.classList.contains('tile') || el.classList.contains('tile-back')) return;
+
                 const txt = el.innerText;
+                const isTsumoTile = foundGap;
+
                 if (txt === getTileText(tile)) {
-                    el.classList.add('tile-recommended');
+                    if (tsumogiri) {
+                        if (isTsumoTile) {
+                            el.classList.add('tile-recommended');
+                            highlighted = true;
+                        }
+                    } else {
+                        if (!isTsumoTile) {
+                            el.classList.add('tile-recommended');
+                            highlighted = true;
+                        }
+                    }
                 } else if (nearSet.has(txt)) {
                     el.classList.add('tile-near');
                 }
             });
+
+            if (!highlighted) {
+                handEl.querySelectorAll('.tile').forEach(el => {
+                    if (el.classList.contains('tile-back') || el.classList.contains('tsumo-gap')) return;
+                    if (el.innerText === getTileText(tile)) {
+                        el.classList.add('tile-recommended');
+                    }
+                });
+            }
         }
 
         function _find_ankan_tile(hand) {
