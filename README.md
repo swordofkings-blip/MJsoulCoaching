@@ -181,3 +181,8 @@ MJsoulCoaching/
 - [mahjong-soul-wrapper](https://github.com/mjsoul/mahjong-soul-wrapper) - 雀魂のプロトコル解析およびパケット傍受ロジックのベース
 - [雀魂牌譜屋 (Amae-Koromo / Koromo Portal)](https://amae-koromo.sapk.ch/) - プレイヤー統計（スタッツ）項目およびデータ構造設計の参考
 - [manue](https://github.com/tubuann/manue) - 対戦比較・検証用として活用させていただいたオープンソース麻雀AI
+
+## 🎁 開発の支援について (Support / Donation)
+本プロジェクトは個人による完全無償のオープンソースとして開発・維持されています。
+もし本ツールが役に立ったり、今後の開発（AIのさらなる強化やシミュレーターの改善など）を応援したいと感じていただけましたら、以下の窓口よりご支援（ファンレター・投げ銭）をいただけますと大変励みになります！
+- **[OFUSE (オフセ) 支援窓口](https://ofuse.me/19b2911e)**
