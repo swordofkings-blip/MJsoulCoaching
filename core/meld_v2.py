@@ -126,9 +126,6 @@ def score_ukeire(state, call_type, tiles, params) -> Tuple[float, str]:
     w = get_weights(params)
     hand_after, _, _ = simulate_meld(state.my_hand, call_type, tiles)
     counts = hand_to_counts(hand_after)
-    # 簡易受け入れ計算: 面子/塔子/雀頭候補を足す
-    # (詳細計算は ukeire_v2.count_ukeire を呼ぶ)
-    from core.ukeire_v2 import count_ukeire
     ukeire_good, ukeire_bad = count_ukeire_after_meld(counts, state, hand_after)
     score = w['MELD_W_UKEIRE'] * (ukeire_good + 0.3 * ukeire_bad)
     return score, f"受け入れ {ukeire_good}+{ukeire_bad}枚"
@@ -136,11 +133,10 @@ def score_ukeire(state, call_type, tiles, params) -> Tuple[float, str]:
 
 def count_ukeire_after_meld(counts, state, hand_after) -> Tuple[int, int]:
     """@title 鳴いた後の受け入れ枚数 (良形/愚形)"""
-    # 簡易計算: 各牌種について +1/+2/+3/+4 牌が見えたら枚数を加算
-    # (詳細: ukeire_v2.count_ukeire を使う)
     try:
-        from core.ukeire_v2 import count_ukeire
-        return count_ukeire(state, 'meld_after')
+        from core.ukeire_v2 import count_good_bad_ukeire
+        good, bad = count_good_bad_ukeire(state, "")
+        return good, bad
     except Exception:
         return 8, 4
 
@@ -385,7 +381,9 @@ def score_yaku_loss(state, call_type, tiles, params) -> Tuple[float, str]:
 def score_honitsu_warning(state, call_type, tiles, params) -> Tuple[float, str]:
     """@title 9. 染め手警戒度上昇 (他家から警戒される)"""
     w = get_weights(params)
-    target_id = tile_to_id(tiles[0]) if tiles else -1
+    if not tiles or not isinstance(tiles[0], str):
+        return 0.0, ""
+    target_id = tile_to_id(tiles[0]) if tiles[0] else -1
     if not (0 <= target_id <= 26):  # 数牌以外
         return 0.0, "字牌 (染め手警戒低)"
     suit = target_id // 9
@@ -408,7 +406,7 @@ def score_honitsu_warning(state, call_type, tiles, params) -> Tuple[float, str]:
 def score_visible_count(state, tiles, params) -> Tuple[float, str]:
     """@title 10. 鳴く牌の見え枚数 (少ないほど安全)"""
     w = get_weights(params)
-    if not tiles:
+    if not tiles or not isinstance(tiles[0], str):
         return 0.0, ""
     target_id = tile_to_id(tiles[0]) if tiles[0] else -1
     if target_id < 0:
@@ -708,7 +706,7 @@ SCORERS = [
     ('6.副露残数', score_meld_remaining, ('state', 'call_type', 'tiles', 'params')),
     ('7.役確定', score_yaku_fixed, ('state', 'call_type', 'tiles', 'params')),
     ('8.門前役消滅', score_yaku_loss, ('state', 'call_type', 'tiles', 'params')),
-    ('9.染め手警戒', score_honitsu_warning, ('call_type', 'tiles', 'params')),
+    ('9.染め手警戒', score_honitsu_warning, ('state', 'call_type', 'tiles', 'params')),
     ('10.見え枚数', score_visible_count, ('state', 'tiles', 'params')),
     ('11.山残り', score_yama_remain, ('state', 'call_type', 'tiles', 'params')),
     ('12.上家affinity', score_kamicha_affinity, ('state', 'call_type', 'from_seat', 'params')),
@@ -745,17 +743,41 @@ def score_meld(state, call_type: int, tiles: List[str], from_seat: int, params: 
     return total, breakdown
 
 
-def should_call_meld(state, call_type: int, tiles: List[str], from_seat: int, params: dict) -> Tuple[bool, str]:
+def _mode_meld_penalty(total: float, mode, params: dict, breakdown: list) -> float:
+    """モードに応じた門前崩しペナルティを適用"""
+    if mode is None:
+        return total
+    try:
+        from core.strategy_v2 import Mode
+        if mode in (Mode.RIICHI_ATTACK, Mode.DAMA_ATTACK):
+            penalty = 9999.0
+            total -= penalty
+            breakdown.append(("24.モード整合性", -penalty, f"モード({mode.value})では門前維持が方針のため強制スキップ"))
+    except Exception:
+        pass
+    return total
+
+
+def should_call_meld(state, call_type: int, tiles: List[str], from_seat: int, params: dict, mode=None) -> Tuple[bool, str]:
     """
-    @title 副露すべきか (ver.2 加減算モデル)
+    @title 副露すべきか (ver.2 加減算モデル + モード同期)
     @returns (鳴くべきか, 理由文字列)
     """
     w = get_weights(params)
     total, breakdown = score_meld(state, call_type, tiles, from_seat, params)
+    total = _mode_meld_penalty(total, mode, params, breakdown)
     threshold = w['MELD_THRESHOLD']
     decision = total > threshold
-    # 主要な要素を 3 つまで表示
-    top_items = sorted(breakdown, key=lambda x: -abs(x[1]))[:3]
-    reason_parts = [f"{n}({v:+.0f})" for n, v, _ in top_items]
-    reason = f"meld_score={total:+.0f} {' > ' if decision else ' <= '}threshold={threshold} | top: " + " ".join(reason_parts)
+    top_items = sorted([b for b in breakdown if abs(b[1]) > 5], key=lambda x: -abs(x[1]))[:3]
+    reasons = []
+    for n, v, _ in top_items:
+        label = n.split('.', 1)[-1] if '.' in n else n
+        reasons.append(f"{label}({v:+.0f})")
+    if decision:
+        reason = "、".join(reasons) + " などのメリットが大きいため、鳴きを推奨します。"
+    else:
+        if reasons:
+            reason = "、".join(reasons) + " などの要因から、スキップ（門前維持）を推奨します。"
+        else:
+            reason = "総合的に見てスキップ（門前維持）を推奨します。"
     return decision, reason

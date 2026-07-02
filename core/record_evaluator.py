@@ -21,7 +21,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from core.game_state import GameState, Meld, ReachState
-from core.evaluator import Evaluator
+from core.evaluator_v2 import EvaluatorV2
 
 
 def _load_params() -> dict:
@@ -358,41 +358,31 @@ class RecordReplayer:
         return state
 
     def _evaluate_discard(self, seat: int, actual_tile: str, return_display: bool = False):
-        """AI に打牌を評価させ、実際の打牌との一致度 (0-100) を返す。
-        比率スコアリング: 1位を 100点、最悪手を 0点として線形補間。
-        例: 1位=1000, 2位=950, 3位=500, 最悪=-500
-            → 2位 = (950-(-500))/(1000-(-500)) * 100 = 96.7 点
-            → 3位 = (500-(-500))/(1000-(-500)) * 100 = 66.7 点
-
-        return_display=True の場合は (match_score, display_data) を返す。
-        display_data には推奨打牌・候補評価・戦略詳細など UI 表示用データを含める。
+        """AI に打牌を評価させ、実際の打牌との一致度 (0-100) を返す (v2 7Dタプル版)。
+        各打牌の 7D タプルを多層指数加重で 1 次元スカラー化し、比率マッピングする。
         """
         try:
             state = self._build_state_for_seat(seat)
-            evaluator = Evaluator(state, self.params)
-            # 重複なし牌を列挙
+            evaluator = EvaluatorV2(state, self.params)
             unique_tiles = list(dict.fromkeys(state.my_hand))
             if not unique_tiles:
                 return (0.0, None) if return_display else 0.0
             evals = []
             for tile in unique_tiles:
                 try:
-                    score = evaluator.evaluate_tile(tile)
+                    tup = evaluator.evaluate_tile(tile)
+                    score = sum(v * (100 ** (len(tup) - 1 - i)) for i, v in enumerate(tup))
                     evals.append((tile, score))
                 except Exception:
-                    evals.append((tile, -99999))
-            # スコア順にソート (降順)
+                    evals.append((tile, -9999999999.0))
             evals.sort(key=lambda x: -x[1])
             if not evals:
                 return (0.0, None) if return_display else 0.0
-            # 1位のスコアと最悪手のスコアを取得
             best_score = evals[0][1]
             worst_score = evals[-1][1]
-            # 1位と最悪手が同じ場合は全員 100 点
             if best_score == worst_score:
                 match = 100.0
             else:
-                # 実際の打牌のスコアを探す
                 actual_score = None
                 for t, s in evals:
                     if t == actual_tile:
@@ -401,34 +391,41 @@ class RecordReplayer:
                 if actual_score is None:
                     match = 0.0
                 else:
-                    # 比率スコアリング: (actual - worst) / (best - worst) * 100
                     match = (actual_score - worst_score) / (best_score - worst_score) * 100.0
             match = max(0.0, min(100.0, match))
 
             display_data = None
             if return_display:
                 try:
-                    strategy_details = evaluator.strategy.get_strategy_details()
-                    # Why: 牌譜一覧/シミュレーターでの即時表示のため、推奨打牌と候補評価を
-                    # eval_tile の結果から構築（evaluate_state() を呼ばずに済む）。
+                    v2_mode = evaluator.get_mode()
+                    from server.forwarder import MODE_V2_JP, TIER_NAMES_7D
+                    mode_jp = MODE_V2_JP.get(v2_mode, v2_mode.value)
                     recommended_tile = evals[0][0]
                     near_tiles = [t for t, _ in evals[:6]]
-                    # evaluations 候補リスト (上位N件)
                     evaluations = []
-                    for tile, score in evals[:8]:
+                    for tile, _ in evals[:8]:
+                        try:
+                            tup = evaluator.evaluate_tile(tile)
+                            tup_list = [round(float(v), 2) for v in tup[:7]]
+                        except Exception:
+                            tup_list = []
                         evaluations.append({
                             'tile': tile,
-                            'score': round(score, 1),
+                            'score': round(float(tup_list[0] if tup_list else 0), 1),
+                            'tuple_values': tup_list,
                         })
                     display_data = {
                         'seat': seat,
                         'recommended': recommended_tile,
                         'near_tiles': near_tiles,
                         'evaluations': evaluations,
-                        'push_score': round(float(evaluator.strategy.compute_push_score()), 3),
-                        'strategy_details': strategy_details,
-                        # 軽量な推奨理由（クライアントで詳細展開はしない。フル理由は /api/evaluate 経由）
-                        'reason': f"「{recommended_tile}」を推奨 (スコア {evals[0][1]:.0f}・手牌価値 {strategy_details.get('base_attack', 0):.2f}・場の脅威 {strategy_details.get('max_threat', 0):.2f})",
+                        'push_score': 0.0,
+                        'strategy_details': {
+                            'v2_mode': v2_mode.value,
+                            'v2_mode_jp': mode_jp,
+                            'v2_tier_names': list(TIER_NAMES_7D),
+                        },
+                        'reason': f"「{recommended_tile}」を推奨 (v2 mode: {mode_jp})",
                     }
                 except Exception as e:
                     print(f"[Warning] display data build failed: {e}")
@@ -454,24 +451,23 @@ class RecordReplayer:
         # Why: forwarder.py の既存 evaluate_state / evaluate_meld を直接呼ぶことで、
         # 独自実装のバグ (「鳴き禁止条件に該当する (具体的な理由は判定中)」) を回避し、
         # API 経由と完全同一の出力を eval.json に保存する。
-        # forwarder.py の import は循環参照回避のため関数内で行う。
-        from server.forwarder import evaluate_state, evaluate_meld
+        from server.forwarder import evaluate_state_v2, evaluate_meld_v2
 
         discard_seat = data.get('seat')
         discard_tile = data.get('tile')
         if discard_seat is None or not discard_tile:
             return
 
-        # 1. 打牌者の局面評価 (立直/九種九牌/四風子連打/暗槓含む) - 打牌前の状態で評価
+        # 1. 打牌者の局面評価 (v2)
         discarder_payload = self._build_payload_for_seat(
             discard_seat,
-            include_discard_tile=discard_tile,  # 打牌前の手牌 = 捨牌を手牌に戻す
+            include_discard_tile=discard_tile,
         )
-        discarder_result = evaluate_state(discarder_payload)
+        discarder_result = evaluate_state_v2(discarder_payload)
         if discarder_result.get('status') == 'ok':
             self.precomputed_displays[str(action_idx)] = discarder_result
 
-        # 2. 他家 (3名) の副露判断
+        # 2. 他家 (3名) の副露判断 (v2)
         meld_decisions: Dict[str, dict] = {}
         for other_seat in range(4):
             if other_seat == discard_seat:
@@ -481,17 +477,13 @@ class RecordReplayer:
                     other_seat,
                     include_discard_tile=None,
                 )
-                # 副露候補を組み立てて evaluate_meld に渡す
                 meld_candidates = self._build_meld_candidates_for_seat(
                     other_seat, discard_tile, discard_seat
                 )
-                # Why: skip のみ (副露候補なし) の場合は evaluate_meld を呼ばない。
-                # skip だけの評価は self.precomputed_displays (打牌者の評価) と
-                # 内容が重複するため省略して、eval.json サイズと処理時間を削減する。
                 if not meld_candidates or all(c.get('type') == 'skip' for c in meld_candidates):
                     continue
                 other_payload['meld_candidates'] = meld_candidates
-                meld_result = evaluate_meld(other_payload)
+                meld_result = evaluate_meld_v2(other_payload)
                 if meld_result.get('status') == 'ok' and meld_result.get('candidates'):
                     meld_decisions[str(other_seat)] = meld_result
             except Exception as e:

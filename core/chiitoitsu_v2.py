@@ -78,8 +78,8 @@ def chiitoitsu_tuple(state, tile: str) -> Tuple:
     pair_quality = _tile_pair_quality(state, discard_id)
     dora_loss = _dora_loss(state, discard_id)
     from core.tactical_rank_v2 import tactical_discard_rank
-    rank = tactical_discard_rank(state, tile)
-    return (chiitoi_shanten, -ukeire, -pair_quality, rank, dora_loss)
+    rank_val, _ = tactical_discard_rank(state, tile)
+    return (chiitoi_shanten, -ukeire, -pair_quality, rank_val, dora_loss)
 
 
 def _count_ryanmen_taatsu(hand_counts) -> int:

@@ -36,7 +36,7 @@ SANGEN_IDS = (31, 32, 33)
 KAZE_IDS = (27, 28, 29, 30)
 
 
-def tactical_discard_rank(state, tile: str) -> int:
+def tactical_discard_rank(state, tile: str):
     """
     @title 戦術的切りやすさランク (0-99)
     @description 牌の「切りやすさ」を 0-99 の整数で評価。
@@ -45,15 +45,15 @@ def tactical_discard_rank(state, tile: str) -> int:
 
     @param state - GameState
     @param tile - 評価対象の牌 ('1m', '5z' など)
-    @returns int (0-99)
+    @returns Tuple[int, str] (ランク値, 日本語理由)
     """
     try:
         tile_id = tile_to_id(tile)
     except Exception:
-        return 50
+        return 50, "エラー"
 
     if not (0 <= tile_id < 34):
-        return 50
+        return 50, "エラー"
 
     is_red = is_red_five(tile)
     is_h = is_honor(tile_id)
@@ -71,85 +71,66 @@ def tactical_discard_rank(state, tile: str) -> int:
     # === 段 1: 3 枚以上 (暗刻) は絶対残す (rank 99) ===
     if my_count >= 3:
         if is_dora:
-            return 99  # ドラ暗刻は絶対残す
-        return 95  # 暗刻も基本残す
+            return 99, "ドラ暗刻"
+        return 95, "一般暗刻"
 
     # === 段 2: 2 枚 (雀頭) ===
     if my_count == 2:
-        # ドラ雀頭 (rank 75)
         if is_dora:
-            return 75
-        # ドラでない雀頭
+            return 75, "ドラ対子"
         if is_h:
-            return 55  # 字牌の雀頭 (役牌以外は切る)
+            return 55, "字牌の雀頭"
         elif is_term:
-            return 52  # 端牌の雀頭
+            return 52, "端牌の雀頭"
         elif is_28:
-            return 51  # 28 雀頭
+            return 51, "28牌の雀頭"
         else:
-            return 50  # 中張雀頭
+            return 50, "中張雀頭"
 
-    # === 段 3: 1 枚 (ここから先、孤立 or 搭子) ===
+    # === 段 3: 1 枚 ===
 
     # === 段 3-1: 字牌 ===
     if is_h:
-        # ドラ字牌 (rank 78)
         if is_dora:
-            return 78
-        # 役牌 (rank 55-65)
+            return 78, "ドラ字牌"
         if is_yakuhai:
-            # 全 4 枚見え (= 残 0 枚) → 刻子が作れない (rank 4)
             if public_count + my_count >= 4:
-                return 4
-            # 残あり → 刻子狙いなので残す (rank 60)
-            return 60
-        # 客風 (オタ風)
-        # 2 枚以上見え → 真っ先に切る (rank 0)
+                return 4, "役牌(枯れ)"
+            return 60, "役牌(刻子狙い)"
         if public_count >= 2:
-            return 0
-        # 1 枚見え → 早く切る (rank 1)
+            return 0, "2枚見え客風"
         if public_count == 1:
-            return 1
-        # 生牌 → 重なるリスクあり (rank 2)
-        return 2
+            return 1, "1枚見え客風"
+        return 2, "生牌客風"
 
     # === 段 3-2: ドラ・赤ドラ ===
     if is_dora:
-        return 85
+        return 85, "ドラ"
     if is_red:
-        return 80
+        return 80, "赤ドラ"
 
     # === 段 3-3: 端牌 (1, 9) ===
     if is_term:
-        # ドラ隣接 (両面変化あり) → 残す (rank 35)
         if _is_adjacent_to_dora(state, tile_id):
-            return 35
-        # 孤立端牌 → 真っ先に切る (rank 10)
+            return 35, "端牌(ドラ隣)"
         if not _has_adjacent_tiles(state, my_counts, tile_id):
-            return 10
-        # 端牌でも隣接あり → 搭子扱い (rank 50)
-        return 50
+            return 10, "孤立端牌(1,9)"
+        return 50, "端牌搭子"
 
     # === 段 3-4: 2, 8 牌 ===
     if is_28:
-        # ドラ隣接 (rank 38)
         if _is_adjacent_to_dora(state, tile_id):
-            return 38
-        # 孤立 28 → 切る (rank 20)
+            return 38, "28牌(ドラ隣)"
         if not _has_adjacent_tiles(state, my_counts, tile_id):
-            return 20
-        # 28 でも隣接あり → 搭子扱い (rank 45)
-        return 45
+            return 20, "孤立28牌"
+        return 45, "28牌搭子"
 
     # === 段 3-5: 中張牌 (3-7) ===
-    # ドラ隣接 (rank 40)
     if _is_adjacent_to_dora(state, tile_id):
-        return 40
-    # 孤立中張 → 残す価値あり (rank 30)
+        return 40, "中張(ドラ隣)"
     if not _has_adjacent_tiles(state, my_counts, tile_id):
-        return 30
-    # 中張搭子 → 手作り核心 (rank 60)
-    return 60
+        return 30, "孤立中張牌(3-7)"
+    return 60, "中張搭子"
 
 
 # ============================================================

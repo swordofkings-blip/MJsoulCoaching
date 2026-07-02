@@ -51,6 +51,7 @@ class EvaluatorV2:
         self.is_last_round = state.is_last_round() if hasattr(state, 'is_last_round') else False
         self._mode_cache = None
         self._dfs_cache = {}
+        self.rank_reasons: dict = {}
 
     def get_tuple_labels(self, tile: str) -> list[str]:
         """
@@ -112,12 +113,55 @@ class EvaluatorV2:
     def get_mode(self) -> Mode:
         if self._mode_cache is not None:
             return self._mode_cache
-        # Why: config_parameters.json の target_persona で模倣対象ペルソナを指定。
-        #      未指定(None)の場合は従来通りルールベース or デフォルトstatsで動作。
         persona = self.params.get('target_persona', None)
         self._mode_cache = get_mode(self.state, self.current_turn, self.is_last_round,
                                      player_name=persona)
         return self._mode_cache
+
+    def _tier_labels_for_mode(self, shanten_after: int) -> list:
+        """
+        @title 現在のモード・向聴数に対応する7Dタプルの層名を返す
+        @description _normal_tuple の各 return 文のタプル順序と一致させる。
+        """
+        mode = self.get_mode()
+        if mode == Mode.FOLD:
+            return ['安全度', '向聴数', '戦術ランク', '', '', '', '']
+
+        if shanten_after <= 1:
+            if mode == Mode.RIICHI_ATTACK:
+                return ['向聴数', '危険パターン', 'DFS期待値', 'ドラ損失', '戦術ランク', '安全度', '']
+            if mode == Mode.OPEN_ATTACK:
+                return ['向聴数', '危険パターン', 'DFS期待値', '戦術ランク', 'ドラ損失', '安全度', '']
+            if mode == Mode.DAMA_ATTACK:
+                return ['向聴数', '危険パターン', '安全度', 'DFS期待値', 'ドラ損失', '戦術ランク', '']
+            if mode == Mode.URGENT_ATTACK:
+                return ['向聴数', 'DFS期待値', 'ドラ損失', '戦術ランク', '', '', '']
+            if mode == Mode.HONITSU_DEFEND:
+                return ['向聴数', '安全度', '染め手補正', '戦術ランク', 'DFS期待値', '', '']
+            if mode == Mode.CHANTA_DEFEND:
+                return ['向聴数', '安全度', 'チャンタ補正', '戦術ランク', 'DFS期待値', '', '']
+            if mode == Mode.DEFEND:
+                return ['向聴数', '安全度', 'DFS期待値', '戦術ランク', 'ドラ損失', '', '']
+            # BALANCED
+            return ['向聴数', 'DFS期待値', '戦術ランク', 'ドラ損失', '安全度', '', '']
+
+        # shanten_after >= 2
+        if mode == Mode.RIICHI_ATTACK:
+            return ['向聴数', '危険パターン', '良形受入', '愚形受入', 'ドラ損失', '戦術ランク', '安全度']
+        if mode == Mode.OPEN_ATTACK:
+            return ['向聴数', '危険パターン', '総受入数', '戦術ランク', 'ドラ損失', '安全度', '']
+        if mode == Mode.DAMA_ATTACK:
+            return ['向聴数', '危険パターン', '安全度', '良形受入', '愚形受入', 'ドラ損失', '戦術ランク']
+        if mode == Mode.URGENT_ATTACK:
+            return ['向聴数', '良形受入', '愚形受入', 'ドラ損失', '戦術ランク', '', '']
+        if mode == Mode.HONITSU_DEFEND:
+            return ['向聴数', '安全度', '染め手補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失']
+        if mode == Mode.CHANTA_DEFEND:
+            return ['向聴数', '安全度', 'チャンタ補正', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失']
+        if mode == Mode.DEFEND:
+            return ['向聴数', '安全度', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失', '']
+        # BALANCED
+        return ['向聴数', '戦術ランク', '良形受入', '愚形受入', 'ドラ損失', '安全度', '']
 
     def evaluate_tile(self, tile: str) -> Tuple:
         """
@@ -261,7 +305,9 @@ class EvaluatorV2:
         else:
             shanten_after = ShantenCalculatorV2.calculate_open(hand_counts, open_meld_count)
 
-        rank = tactical_discard_rank(self.state, tile)
+        rank_val, rank_reason = tactical_discard_rank(self.state, tile)
+        self.rank_reasons[tile] = rank_reason
+        rank = rank_val
         dora_loss = _dora_loss(self.state, tile)
         saf = safety_score(self.state, tile)
         mode = self.get_mode()
@@ -404,17 +450,26 @@ class EvaluatorV2:
                 break
 
         if chosen_tuple is None:
-            return f"{chosen} を切ります。"
+            return f"{_to_japanese(chosen)} を切ります。"
+
+        # 現在のモード・向聴数に対応した層名を取得
+        shanten_after = int(chosen_tuple[0]) if len(chosen_tuple) > 0 else 99
+        layer_names = self._tier_labels_for_mode(shanten_after)
 
         for t, t_str in scored:
             if t_str == chosen:
                 continue
             for i, (a, b) in enumerate(zip(chosen_tuple, t)):
                 if a != b:
-                    layer_names = TIER_NAMES_7D
                     layer_name = layer_names[i] if i < len(layer_names) else f'層{i+1}'
-                    return _explain_difference(chosen, t_str, i, a, b, layer_name)
-        return f"{chosen} を切ります (タイ)。"
+                    cr = self.rank_reasons.get(chosen, "")
+                    or_ = self.rank_reasons.get(t_str, "")
+                    chosen_jp = _to_japanese(chosen)
+                    other_jp = _to_japanese(t_str)
+                    return _explain_difference(chosen_jp, other_jp, i, a, b, layer_name,
+                                               chosen_reason=cr, other_reason=or_)
+        chosen_jp = _to_japanese(chosen)
+        return f"{chosen_jp} を切ります (タイ)。"
 
     def _is_winning(self) -> bool:
         """@title 和了形かどうか"""
@@ -502,13 +557,13 @@ class EvaluatorV2:
 
     def should_call_meld(self, call_type: int, tiles: List[str], from_seat: int) -> bool:
         """
-        @title 鳴き判定 (ver.2 加減算モデル)
-        @description 22 要素の加重スコアで判定、ver.1 よりも明示的・調整可能
-        @returns (鳴くべきか, 理由)
+        @title 鳴き判定 (ver.2 加減算モデル + モード同期)
+        @description 22 要素の加重スコア + 現在の戦術モードに応じた門前崩しペナルティ
         """
         from core.meld_v2 import should_call_meld as _should_call_meld_v2
         try:
-            decision, reason = _should_call_meld_v2(self.state, call_type, tiles, from_seat, self.params)
+            mode = self.get_mode()
+            decision, reason = _should_call_meld_v2(self.state, call_type, tiles, from_seat, self.params, mode=mode)
             self.last_meld_reason = reason
             return decision
         except Exception as e:
@@ -593,70 +648,67 @@ def _to_japanese(tile: str) -> str:
     return honors[tid - 27]
 
 
-def _explain_difference(chosen: str, other: str, layer: int, a, b, layer_name: str) -> str:
+def _explain_difference(chosen: str, other: str, layer: int, a, b, layer_name: str,
+                         chosen_reason: str = "", other_reason: str = "") -> str:
     """
     @title 差分説明
-    @description layer 番目で a vs b の大小で勝敗が決まった理由を日本語で。
-                a が chosen の値、b が other の値。
+    @description layer_name に応じた日本語理由テキストを動的に生成する。
     """
-    if layer == 0:  # 向聴数
+    layer_num = layer + 1
+    num_str = {1: '①', 2: '②', 3: '③', 4: '④', 5: '⑤', 6: '⑥', 7: '⑦'}.get(layer_num, f'層{layer_num}')
+    # A. 向聴数
+    if layer_name == '向聴数':
         if a < b:
-            return f"①向聴数: {chosen} を切ると {a} 向聴、{other} を切ると {b} 向聴。前進するので {chosen} を切ります。"
+            return f"{num_str}向聴数: {chosen} を切ると {a} 向聴、{other} を切ると {b} 向聴。前進するので {chosen} を切ります。"
         else:
-            return f"①向聴数: {other} を切ったほうが前進 ({a} < {b})。{chosen} は温存します。"
-
-    if layer == 1:  # 戦術ランク or DFS
-        if layer_name == 'DFS期待値':
-            if a < b:  # a が chosen の DFS (反転してるので a < b = chosen の方が DFS 高い)
-                return f"②DFS期待値: {chosen} を切ると良形×打点期待値 {-a} (高い)。{other} は {-b}。{chosen} のほうが良形変化や高打点が見込めます。"
-            else:
-                return f"②DFS期待値: {other} のほうが DFS 期待値が高い ({other}={-b}, {chosen}={-a})。{chosen} は温存します。"
-        else:  # 戦術ランク
-            if a < b:
-                return f"②戦術ランク: {chosen} は {a} (切りやすい)、{other} は {b} (残したい)。まず {chosen} から切ります。"
-            else:
-                return f"②戦術ランク: {other} は {b} (切りやすい)、{chosen} は {a} (残したい)。{chosen} は温存します。"
-
-    if layer == 2:  # 良形受入 or 戦術ランク
-        if layer_name == '戦術ランク':
-            if a < b:
-                return f"③戦術ランク: {chosen} は {a} (切りやすい)、{other} は {b} (残したい)。まず {chosen} から切ります。"
-            else:
-                return f"③戦術ランク: {other} は {b} (切りやすい)、{chosen} は {a} (残したい)。{chosen} は温存します。"
-        else:  # 良形受入
-            if a < b:
-                return f"③良形受入: {chosen} を切ると良形受け入れが {-a} 枚。{other} を切ると {-b} 枚。{chosen} のほうが良形受入が増えます。"
-            else:
-                return f"③良形受入: {other} のほうが良形受入が多い ({other}={-b}, {chosen}={-a})。{chosen} は温存します。"
-
-    if layer == 3:  # 愚形受入 or ドラ損失
-        if layer_name == '愚形受入':
-            if a < b:
-                return f"④愚形受入: {chosen} を切ると愚形受け入れが {-a} 枚。{other} を切ると {-b} 枚。"
-            else:
-                return f"④愚形受入: {other} のほうが愚形受入が多い。"
-        else:  # ドラ損失
-            if a < b:
-                return f"④ドラ損失: {chosen} を切るとドラ {a} 枚失う。{other} を切ると {b} 枚失う。{chosen} のほうがドラを残せます。"
-            else:
-                return f"④ドラ損失: {other} のほうがドラを残せる ({other}={b}, {chosen}={a})。{chosen} は温存します。"
-
-    if layer == 4:  # ドラ損失 or 安全度
-        if layer_name == 'ドラ損失':
-            if a < b:
-                return f"⑤ドラ損失: {chosen} を切るとドラ {a} 枚失う。{other} を切ると {b} 枚失う。"
-            else:
-                return f"⑤ドラ損失: {other} のほうがドラを残せる。"
-        else:  # 安全度
-            if a < b:
-                return f"⑤安全度: {chosen} は安全度 {-a} (高い)。{other} は {-b}。{chosen} のほうが安全なので切ります。"
-            else:
-                return f"⑤安全度: {other} のほうが安全 ({other}={-b}, {chosen}={-a})。{chosen} は温存します。"
-
-    if layer == 5:  # 安全度
+            return f"{num_str}向聴数: {other} を切ったほうが前進 ({a} < {b})。{chosen} は温存します。"
+    # B. DFS期待値 / 手役補正(DFS)
+    elif 'DFS' in layer_name or '手役' in layer_name:
         if a < b:
-            return f"⑥安全度: {chosen} は安全度 {-a} (高い)。{other} は {-b}。{chosen} のほうが安全なので切ります。"
+            return f"{num_str}{layer_name}: {chosen} を切ると手役/打点期待値 {-a:.2f} (高い)。{other} は {-b:.2f}。{chosen} のほうが良形変化や高打点が見込めます。"
         else:
-            return f"⑥安全度: {other} のほうが安全 ({other}={-b}, {chosen}={-a})。{chosen} は温存します。"
-
-    return f"層{layer+1} ({layer_name}) で {chosen} (={a}) vs {other} (={b}) の比較結果、{chosen} を選びます。"
+            return f"{num_str}{layer_name}: {other} のほうが手役/打点期待値が高い ({other}={-b:.2f}, {chosen}={-a:.2f})。{chosen} は温存します。"
+    # C. 戦術ランク
+    elif '戦術ランク' in layer_name:
+        cr = f"({chosen_reason})" if chosen_reason else ""
+        or_ = f"({other_reason})" if other_reason else ""
+        if a < b:
+            return f"{num_str}{layer_name}: {chosen} は {a:.0f} {cr}で切りやすい、{other} は {b:.0f} {or_}で残したい。まず {chosen} から切ります。"
+        else:
+            return f"{num_str}{layer_name}: {other} は {b:.0f} {or_}で切りやすい、{chosen} は {a:.0f} {cr}で残したい。{chosen} は温存します。"
+    # D. 良形受入 / 総受入数 / 受入
+    elif '受入' in layer_name or '枚数' in layer_name:
+        try:
+            val_a = -int(a)
+            val_b = -int(b)
+        except Exception:
+            val_a = abs(a)
+            val_b = abs(b)
+        if a < b:
+            return f"{num_str}{layer_name}: {chosen} を切ると受け入れが {val_a} 枚。{other} を切ると {val_b} 枚。{chosen} のほうが受け入れが増えます。"
+        else:
+            return f"{num_str}{layer_name}: {other} のほうが受け入れが多い ({other}={val_b}枚, {chosen}={val_a}枚)。{chosen} は温存します。"
+    # E. 安全度
+    elif '安全度' in layer_name or '安全' in layer_name:
+        val_a = abs(a)
+        val_b = abs(b)
+        if a < b:
+            return f"{num_str}{layer_name}: {chosen} は安全度指標 {val_a:.1f} (高い)。{other} は {val_b:.1f}。{chosen} のほうが安全なので切ります。"
+        else:
+            return f"{num_str}{layer_name}: {other} のほうが安全 ({other}={val_b:.1f}, {chosen}={val_a:.1f})。{chosen} は温存します。"
+    # F. ドラ損失 / ドラ/赤打点
+    elif 'ドラ' in layer_name:
+        val_a = abs(a)
+        val_b = abs(b)
+        if a < b:
+            return f"{num_str}{layer_name}: {chosen} はドラ損失/打点指標 {val_a:.1f} (有利)。{other} は {val_b:.1f}。{chosen} のほうがドラを活かせます。"
+        else:
+            return f"{num_str}{layer_name}: {other} のほうがドラを活かせる ({other}={val_b:.1f}, {chosen}={val_a:.1f})。{chosen} は温存します。"
+    # G. 危険パターン / 危険度
+    elif '危険' in layer_name or 'パターン' in layer_name:
+        if a < b:
+            return f"{num_str}{layer_name}: {chosen} は危険パターン {a:.1f} (低い)。{other} は {b:.1f}。{chosen} のほうが放銃パターンが少ないため切ります。"
+        else:
+            return f"{num_str}{layer_name}: {other} のほうが危険パターンが少ない ({other}={b:.1f}, {chosen}={a:.1f})。{chosen} は温存します。"
+    # H. その他・デフォルト
+    return f"{num_str} {layer_name} で {chosen} (={a:.2f}) vs {other} (={b:.2f}) の比較結果、{chosen} を選びます。"

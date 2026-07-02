@@ -24,6 +24,7 @@ from core.sapk_api import fetch_player_stats
 from majsoul_wrapper.liqi import LiqiProto
 from core.game_state import GameState, Meld, ReachState
 from core.evaluator import Evaluator
+from core.evaluator_v2 import EvaluatorV2, TIER_NAMES_7D, Mode as ModeV2
 from core.str_converter import validate_tiles, hand_to_counts
 from majsoul_wrapper.proto import liqi_pb2 as pb
 
@@ -435,6 +436,617 @@ def evaluate_state(payload: dict) -> dict:
         _eval_cache.popitem(last=False)
     _eval_cache[cache_key] = result
     return result
+
+
+# ──────────────────────────────────────────────
+# v2 evaluate helpers
+# ──────────────────────────────────────────────
+
+MODE_V2_JP = {
+    ModeV2.RIICHI_ATTACK: "門前立直",
+    ModeV2.OPEN_ATTACK: "副露鳴き",
+    ModeV2.DAMA_ATTACK: "門前ダマ",
+    ModeV2.URGENT_ATTACK: "全力押し",
+    ModeV2.BALANCED: "バランス",
+    ModeV2.DEFEND: "回し打ち",
+    ModeV2.FOLD: "完全ベタオリ",
+    ModeV2.HONITSU_DEFEND: "混一色防御",
+    ModeV2.CHANTA_DEFEND: "チャンタ防御",
+    ModeV2.CHIITOITSU: "七対子",
+    ModeV2.YAKUMAN: "役満",
+    ModeV2.KOKUSHI: "国士無双",
+}
+
+
+def _build_evaluation_entry_v2(ev2: 'EvaluatorV2', tile: str, all_scored: list) -> dict:
+    """
+    @title v2 個別牌評価エントリ生成
+    @description EvaluatorV2 の 7D タプルを使い、ランク射影スコア・タプル内訳を生成。
+    """
+    try:
+        raw_tuple = ev2.evaluate_tile(tile)
+    except Exception:
+        raw_tuple = (99, 0, 0, 0, 0, 0, 0)
+
+    # ランク射影: タプル辞書式順序での順位 → ダミースコア
+    rank = 0
+    for t, _ in all_scored:
+        if t == raw_tuple:
+            break
+        rank += 1
+    dummy_score = 1000.0 - rank * 10.0
+
+    # タプル内訳 (先頭7要素をfloat化)
+    tuple_values = [float(v) for v in raw_tuple[:7]]
+    while len(tuple_values) < 7:
+        tuple_values.append(0.0)
+
+    # シャンテン数はタプル第1要素
+    shanten = int(raw_tuple[0]) if len(raw_tuple) > 0 else 99
+
+    # 説明生成
+    try:
+        hand = list(ev2.state.my_hand)
+        reason = ev2.explain_discard(hand, tile)
+    except Exception:
+        reason = ""
+
+    safety_desc = ""
+    attack_desc = ""
+    if shanten <= -1:
+        attack_desc = "和了"
+    elif shanten == 0:
+        attack_desc = "聴牌"
+    else:
+        attack_desc = f"{shanten}向聴"
+
+    return {
+        "tile": tile,
+        "score": round(dummy_score, 2),
+        "tuple_values": tuple_values,
+        "tier_names": ev2.get_tuple_labels(tile),
+        "shanten": shanten,
+        "safety_desc": safety_desc,
+        "attack_desc": attack_desc,
+        "reason": reason,
+        "is_blunder": False,
+        "blunder_score": 0,
+        "rating": 0,
+    }
+
+
+def _build_v2_strategy_details(state, ev2, params) -> dict:
+    """v2 戦略詳細の構築"""
+    try:
+        v2_mode = ev2.get_mode()
+        v2_mode_str = v2_mode.value
+        v2_mode_jp = MODE_V2_JP.get(v2_mode, v2_mode_str)
+    except Exception:
+        v2_mode_str = "UNKNOWN"
+        v2_mode_jp = "不明"
+
+    try:
+        from core.hand_value_v2 import compute_full_5d
+        h5 = compute_full_5d(state)
+        speed = h5['speed']
+        value = h5['value']
+        base_attack = round(speed * 0.5 + value * 0.5, 3)
+        max_threat = h5['b_risk_max']
+        threat_reason = _v2_threat_reason(state, h5)
+        opp_risks_raw = [round(r, 3) for r in h5.get('b_risk_all', [0,0,0])]
+        pressure = round(h5.get('pressure', 0.5), 3)
+        profile = [round(p, 3) for p in h5.get('profile', [0]*5)]
+    except Exception:
+        speed = 0.5; value = 0.5; base_attack = 0.5
+        max_threat = 0.3; threat_reason = ""
+        opp_risks_raw = [0, 0, 0]; pressure = 0.5
+        profile = [0, 0, 0, 0, 0]
+
+    # opp_risks_raw = [seat1, seat2, seat3] in seat-idx order.
+    # Reorder to [下家, 対面, 上家] relative to my_seat.
+    my_seat = state.my_seat
+    seat_order = [(my_seat + 1) % 4, (my_seat + 2) % 4, (my_seat + 3) % 4]
+    seat_to_idx = {}
+    idx = 0
+    for s in range(4):
+        if s == my_seat:
+            continue
+        seat_to_idx[s] = idx
+        idx += 1
+    opp_risks_reordered = [
+        opp_risks_raw[seat_to_idx[seat_order[0]]],  # 下家
+        opp_risks_raw[seat_to_idx[seat_order[1]]],  # 対面
+        opp_risks_raw[seat_to_idx[seat_order[2]]],  # 上家
+    ]
+
+    push_score = _v2_compute_push_score(state, v2_mode)
+
+    try:
+        from core.push_fold_v2 import get_tobi_risk
+        risk_lv, risk_msg = get_tobi_risk(state)
+    except Exception:
+        risk_lv, risk_msg = 0, ""
+
+    fly_risk = _compute_fly_risk_v2(state)
+
+    return {
+        "v2_mode": v2_mode_str,
+        "v2_mode_jp": v2_mode_jp,
+        "v2_tier_names": list(TIER_NAMES_7D),
+        "push_score": round(push_score, 3),
+        "threat_reason": threat_reason,
+        "fly_risk": fly_risk,
+        # v2 詳細診断データ
+        "v2_hand_speed": round(speed, 3),
+        "v2_hand_value": round(value, 3),
+        "v2_base_attack": base_attack,
+        "v2_opp_risks": opp_risks_reordered,
+        "v2_pressure": pressure,
+        "v2_profile": profile,
+        "v2_tobi_risk_level": risk_lv,
+        "v2_tobi_risk_msg": risk_msg,
+        # フロント UI 互換フィールド
+        "base_attack": base_attack,
+        "max_threat": max_threat,
+        "fuzzy_inputs": {
+            "shanten_speed": round(speed, 2),
+            "hand_value": round(value, 2),
+        },
+        "opponents_threat": opp_risks_reordered,
+        "rank_pressure": pressure,
+        "hand_features": {
+            "pair_ratio": profile[0],
+            "honor_ratio": profile[1],
+            "suit_bias": profile[2],
+            "yaochu_ratio": profile[3],
+            "ukeire_eff": profile[4],
+        },
+    }
+
+
+def _v2_compute_push_score(state, mode) -> float:
+    """v2 モードから押し引きスコア (0-1) を推定"""
+    push_map = {
+        ModeV2.RIICHI_ATTACK: 0.85,
+        ModeV2.OPEN_ATTACK: 0.80,
+        ModeV2.DAMA_ATTACK: 0.75,
+        ModeV2.URGENT_ATTACK: 0.95,
+        ModeV2.BALANCED: 0.55,
+        ModeV2.DEFEND: 0.35,
+        ModeV2.FOLD: 0.05,
+        ModeV2.HONITSU_DEFEND: 0.40,
+        ModeV2.CHANTA_DEFEND: 0.40,
+        ModeV2.CHIITOITSU: 0.65,
+        ModeV2.YAKUMAN: 0.70,
+        ModeV2.KOKUSHI: 0.70,
+    }
+    base = push_map.get(mode, 0.5)
+    # 飛びリスクで減算
+    try:
+        from core.push_fold_v2 import get_tobi_risk
+        risk_lv, _ = get_tobi_risk(state)
+        if risk_lv >= 2:
+            base *= 0.3
+        elif risk_lv >= 1:
+            base *= 0.7
+    except Exception:
+        pass
+    return max(0.0, min(1.0, base))
+
+
+def _v2_threat_reason(state, h5: dict) -> str:
+    """v2 脅威度理由"""
+    parts = []
+    B = h5.get('b_risk_all', [])
+    for i, r in enumerate(B):
+        if r >= 0.5:
+            seat_names = ['対面', '下家', '上家']
+            if i < len(seat_names):
+                parts.append(f"{seat_names[i]} 脅威 {r:.0%}")
+    return ", ".join(parts) if parts else "特になし"
+
+
+def _build_riichi_data_v2(state, ev2, is_riichi_active, recommended, evaluations) -> dict:
+    """v2 立直判定"""
+    should_riichi = None
+    riichi_reason = ""
+    if not is_riichi_active and recommended and evaluations:
+        rec_shanten = evaluations[0]["shanten"] if evaluations else 99
+        open_meld_count = sum(1 for m in state.my_melds if m.is_open)
+        if rec_shanten == 0 and open_meld_count == 0:
+            try:
+                from core.riichi_v2 import score_riichi
+                _score, reason = score_riichi(state, ev2.params if hasattr(ev2, 'params') else {})
+                should_riichi = _score > 0
+                riichi_reason = reason
+            except Exception:
+                pass
+    return {"should_riichi": should_riichi, "riichi_reason": riichi_reason}
+
+
+def _compute_fly_risk_v2(state) -> dict:
+    """v2 飛びリスク天秤"""
+    my_score = state.scores[state.my_seat]
+    try:
+        from core.push_fold_v2 import get_tobi_risk
+        risk_lv, risk_msg = get_tobi_risk(state)
+    except Exception:
+        risk_lv, risk_msg = 0, ""
+
+    try:
+        from core.hand_value_v2 import compute_value, compute_speed
+        hand_val = compute_value(state)
+        hand_speed = compute_speed(state)
+    except Exception:
+        hand_val = 0.3
+        hand_speed = 0.5
+
+    # 推定放銃打点 (親なら12000、子なら8000)
+    estimated_loss = 8000
+    for s in range(4):
+        if s == state.my_seat:
+            continue
+        if state.reach_states[s] is not None and state.reach_states[s].is_reach:
+            dealer = getattr(state, 'dealer_seat', -1)
+            if s == dealer:
+                estimated_loss = 12000
+                break
+
+    kyoku = getattr(state, 'kyoku', 0)
+    is_hanchan = kyoku >= 5 or getattr(state, 'chang', 0) >= 1
+    max_rounds = 8 if is_hanchan else 4
+    rem_rounds = max(0, max_rounds - kyoku)
+
+    # 手牌期待値 (点数の大雑把な推定)
+    my_win_score = 2500.0 + hand_val * 8000.0
+
+    adjust = 0.0
+    rank = state.my_score_rank()
+    if rank == 3 and my_score < estimated_loss and rem_rounds >= 1 and my_win_score < 4000:
+        adjust = -0.3 * (rem_rounds / max_rounds) * (1.0 - min(my_win_score, 4000) / 4000.0)
+
+    return {
+        "my_score": my_score,
+        "rank": rank,
+        "estimated_loss": estimated_loss,
+        "rem_rounds": rem_rounds,
+        "max_rounds": max_rounds,
+        "my_win_score": round(my_win_score, 1),
+        "adjust": round(adjust, 4),
+        "is_hanchan": is_hanchan,
+        "risk_level": risk_lv,
+        "risk_message": risk_msg,
+    }
+
+
+def evaluate_state_v2(payload: dict) -> dict:
+    """
+    @title v2 局面評価エントリポイント
+    @description EvaluatorV2 (7D タプル) で評価し、v2 固有の可視化データを返す。
+    """
+    state = _restore_game_state(payload)
+    params = payload.get("params", None)
+    if params is None:
+        import json
+        config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters.json')
+        if os.path.exists(config_path):
+            with open(config_path, encoding='utf-8') as f:
+                params = json.load(f)
+        else:
+            params = {}
+
+    my_seat = state.my_seat
+    hand = list(state.my_hand)
+
+    total_tiles = len(hand) + sum(len(m.tiles) for m in state.my_melds)
+    if total_tiles < 13 or total_tiles > 15 or len(hand) < 1:
+        return {
+            "status": "not_your_turn",
+            "recommended": None,
+            "strategy_details": None,
+            "evaluations": [],
+            "summary": {"hand_size": len(hand), "tsumo_count": state.tsumo_count}
+        }
+
+    ev2 = EvaluatorV2(state, params=params)
+    is_riichi_active = state.reach_states[my_seat].is_reach
+
+    # v2 戦略詳細
+    strategy_details = _build_v2_strategy_details(state, ev2, params)
+
+    unique_tiles = list(dict.fromkeys(hand))
+    scored = []
+    for tile in unique_tiles:
+        t = ev2.evaluate_tile(tile)
+        scored.append((t, tile))
+    scored.sort(key=lambda x: x[0])
+
+    evaluations = []
+    for t, tile in scored:
+        entry = _build_evaluation_entry_v2(ev2, tile, scored)
+        evaluations.append(entry)
+
+    if is_riichi_active:
+        recommended = state.last_self_drawn
+    else:
+        recommended = evaluations[0]["tile"] if evaluations else None
+
+    # v2 立直判定
+    riichi_data = _build_riichi_data_v2(state, ev2, is_riichi_active, recommended, evaluations)
+    kyushu_data = _build_kyushu_kyuhai_data(state)
+
+    result = {
+        "status": "ok",
+        "recommended": recommended,
+        "near_tiles": [],
+        "push_score": strategy_details["push_score"],
+        "strategy_details": strategy_details,
+        "evaluations": evaluations,
+        "is_riichi_active": is_riichi_active,
+        "should_riichi": riichi_data["should_riichi"],
+        "riichi_reason": riichi_data["riichi_reason"],
+        "kyushu_kyuhai": kyushu_data,
+        "summary": {
+            "hand_size": len(hand),
+            "tsumo_count": state.tsumo_count,
+            "my_seat": my_seat,
+            "open_meld_count": sum(1 for m in state.my_melds if m.is_open),
+        }
+    }
+    return result
+
+
+def evaluate_meld_v2(payload: dict) -> dict:
+    """
+    @title v2 副露判断評価
+    @description EvaluatorV2 + meld_v2 で副露候補を評価する。
+    """
+    state = _restore_game_state(payload)
+    state.my_hand = _normalize_hand_red_five(state.my_hand)
+    import json
+    config_path = os.path.join(_FW_ROOT, 'config', 'config_parameters.json')
+    if os.path.exists(config_path):
+        with open(config_path, encoding='utf-8') as f:
+            params = json.load(f)
+    else:
+        params = {}
+
+    candidates = payload.get("meld_candidates", [])
+    results = []
+
+    # skip 評価 (v2)
+    from core.evaluator_v2 import EvaluatorV2
+    ev2 = EvaluatorV2(state, params=params)
+    hand = list(state.my_hand)
+    unique_tiles = list(dict.fromkeys(hand))
+    scored = []
+    for tile in unique_tiles:
+        t = ev2.evaluate_tile(tile)
+        scored.append((t, tile))
+    scored.sort(key=lambda x: x[0])
+    skip_entries = []
+    for t, tile in scored:
+        skip_entries.append(_build_evaluation_entry_v2(ev2, tile, scored))
+    skip_best = skip_entries[0] if skip_entries else None
+    skip_best_score = skip_best["score"] if skip_best else -99999
+
+    skip_item = {
+        "type": "skip",
+        "label": "スキップ",
+        "best_discard": skip_best["tile"] if skip_best else None,
+        "best_score": skip_best_score,
+        "best_eval": skip_best,
+        "shanten": skip_best["shanten"] if skip_best else 99,
+        "reason": "【見送り】打牌を続行",
+        "meld_breakdowns": [],
+    }
+    results.append(skip_item)
+    best_meld_reason = None
+    best_meld_total = -99999
+
+    for cand in candidates:
+        if cand.get("type") == "skip":
+            continue
+
+        import copy
+        st = copy.deepcopy(state)
+        ctype = cand["type"]
+        tiles = cand.get("tiles", [])
+        froms = cand.get("froms", [])
+
+        for t in tiles:
+            if t in st.my_hand:
+                st.my_hand.remove(t)
+
+        if ctype == "pon":
+            meld_type = 1
+        elif ctype == "chi":
+            meld_type = 0
+        elif ctype in ("daiminkan", "kakan"):
+            meld_type = 2
+        elif ctype == "ankan":
+            meld_type = 3
+        else:
+            continue
+
+        # 鳴き許可判定 (v2) + 加減点内訳
+        from core.game_state import Meld
+        from core.meld_v2 import should_call_meld as should_call_meld_v2
+        from core.meld_v2 import score_meld, _mode_meld_penalty
+        meld_breakdowns = []
+        meld_tile_strs = [str(t) if not isinstance(t, str) else t for t in tiles]
+        # --- モード取得 (両方の try で共用) ---
+        try:
+            ev2_mode = EvaluatorV2(state, params=params).get_mode()
+        except Exception:
+            ev2_mode = None
+        # --- スコア計算 (try を分離して total_score を確実に保持) ---
+        total_score = 0.0
+        try:
+            ts, breakdowns = score_meld(state, meld_type, meld_tile_strs, froms[0] if froms else state.my_seat, params)
+            total_score = ts
+            if ev2_mode is not None:
+                total_score = _mode_meld_penalty(total_score, ev2_mode, params, breakdowns)
+            meld_breakdowns = [{"name": name, "score": round(sc, 2), "reason": r} for name, sc, r in breakdowns]
+        except Exception:
+            pass
+        # --- 鳴き可否判定 (別 try) ---
+        try:
+            can_meld, meld_reason = should_call_meld_v2(state, meld_type, meld_tile_strs, froms[0] if froms else state.my_seat, params, mode=ev2_mode)
+        except Exception:
+            can_meld, meld_reason = True, ""
+
+        # 最もスコアの高い鳴き候補の理由を記録
+        if total_score > best_meld_total:
+            best_meld_total = total_score
+            best_meld_reason = meld_reason
+
+        if not can_meld:
+            results.append({
+                "type": ctype, "label": cand.get("label", ctype),
+                "tiles": tiles, "best_discard": None, "best_score": -99999,
+                "best_eval": None, "shanten": 99,
+                "forbidden": True, "forbidden_reason": meld_reason or "鳴き不許可",
+                "reason": f"❌ {meld_reason or '鳴き不許可'}",
+                "meld_breakdowns": meld_breakdowns,
+            })
+            continue
+
+        if ctype == "kakan":
+            kakan_tile = list(tiles)[0] if tiles else None
+            found_meld = False
+            for m in st.my_melds:
+                if m.type == 1 and m.tiles and m.tiles[0] == kakan_tile:
+                    m.tiles.append(kakan_tile); m.type = meld_type
+                    found_meld = True; break
+            if not found_meld:
+                st.my_melds.append(Meld(type=meld_type, tiles=list(tiles), froms=list(froms), tile_states=[]))
+        else:
+            st.my_melds.append(Meld(type=meld_type, tiles=list(tiles), froms=list(froms), tile_states=[]))
+
+        # 槓以外: 結果状態を v2 評価
+        if ctype in ("kakan", "ankan"):
+            shanten_after = 99
+            if st.my_hand:
+                from core.strategy_manager import ShantenCalculator
+                from core.str_converter import hand_to_counts
+                open_cnt = sum(1 for m in st.my_melds if m.is_open)
+                cnts = hand_to_counts(st.my_hand)
+                shanten_after = ShantenCalculator.calculate_open(cnts, open_cnt)
+            kan_allowed = False
+            if ctype == "ankan":
+                kan_allowed = ev2.should_ankan()
+            elif ctype == "kakan":
+                kakan_tile = list(tiles)[0] if tiles else None
+                if kakan_tile:
+                    kan_allowed = ev2.should_kakan(kakan_tile)
+            kan_score = (skip_best_score + 1) if kan_allowed else -9999
+            results.append({
+                "type": ctype, "label": cand.get("label", ctype),
+                "tiles": tiles, "best_discard": None,
+                "best_score": kan_score, "best_eval": None,
+                "shanten": shanten_after,
+                "reason": f"v2 槓判定: {'許可' if kan_allowed else '不許可'} ({meld_reason})",
+                "meld_breakdowns": meld_breakdowns,
+            })
+        else:
+            ev2_st = EvaluatorV2(st, params=params)
+            hand_after = list(st.my_hand)
+            unique_after = list(dict.fromkeys(hand_after))
+            scored_after = []
+            for tile in unique_after:
+                t = ev2_st.evaluate_tile(tile)
+                scored_after.append((t, tile))
+            scored_after.sort(key=lambda x: x[0])
+
+            best_score = -99999
+            best_tile = None
+            best_eval = None
+            for t, tile in scored_after:
+                entry = _build_evaluation_entry_v2(ev2_st, tile, scored_after)
+                if entry["score"] > best_score:
+                    best_score = entry["score"]
+                    best_tile = tile
+                    best_eval = entry
+
+            meld_total = 1000 + total_score
+            reason = f"【推奨】{meld_reason}" if can_meld else f"【見送り】{meld_reason}"
+            results.append({
+                "type": ctype, "label": cand.get("label", ctype),
+                "tiles": tiles, "best_discard": best_tile,
+                "best_score": round(meld_total, 2),
+                "best_eval": best_eval,
+                "shanten": best_eval["shanten"] if best_eval else 99,
+                "reason": reason,
+                "meld_breakdowns": meld_breakdowns,
+            })
+
+    # スキップ推奨時は理由を最もスコアの高い鳴き候補の却下理由に差し替え
+    if best_meld_reason and skip_item in results:
+        skip_item["reason"] = best_meld_reason
+
+    if not results:
+        return {"status": "error", "message": "No candidates provided"}
+    best = max(results, key=lambda x: x.get("best_score", 0))
+    return {"status": "ok", "candidates": results, "recommended": best["type"] if best else None}
+
+
+def _compute_fly_risk_debug(state) -> dict:
+    """
+    @title 飛びリスクデバッグ値の計算
+    @description strategy_manager._apply_fly_risk_adjust と同じロジックで中間変数を露出。
+    """
+    my_score = state.scores[state.my_seat]
+    rank = state.my_score_rank()
+    estimated_loss = 8000
+    for s in range(4):
+        if s == state.my_seat:
+            continue
+        if state.reach_states[s] is not None and state.reach_states[s].is_reach:
+            dealer = getattr(state, 'dealer_seat', -1)
+            if s == dealer:
+                estimated_loss = 12000
+                break
+
+    kyoku = getattr(state, 'kyoku', 0)
+    is_hanchan = kyoku >= 5 or getattr(state, 'chang', 0) >= 1
+    max_rounds = 8 if is_hanchan else 4
+    rem_rounds = max(0, max_rounds - kyoku)
+
+    # 手牌期待値 (簡易)
+    my_win_score = _estimate_win_score_simple(state)
+
+    adjust = 0.0
+    if rank == 3 and my_score < estimated_loss and rem_rounds >= 1 and my_win_score < 4000:
+        adjust = -0.3 * (rem_rounds / max_rounds) * (1.0 - min(my_win_score, 4000) / 4000.0)
+
+    return {
+        "my_score": my_score,
+        "rank": rank,
+        "estimated_loss": estimated_loss,
+        "rem_rounds": rem_rounds,
+        "max_rounds": max_rounds,
+        "my_win_score": round(my_win_score, 1),
+        "adjust": round(adjust, 4),
+        "is_hanchan": is_hanchan,
+    }
+
+
+def _estimate_win_score_simple(state) -> float:
+    """
+    @title 簡易手牌期待値
+    """
+    try:
+        from core.hand_value_v2 import estimate_hand_value
+        return estimate_hand_value(state)
+    except Exception:
+        pass
+    try:
+        from core.evaluator import HandValueCalculator
+        hvc = HandValueCalculator(state)
+        return float(hvc.estimate_final_score())
+    except Exception:
+        return 2500.0
 
 
 def _normalize_hand_red_five(hand):
@@ -1310,9 +1922,9 @@ class PacketHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"Error reading index.html: {err_msg}")
 
         elif path == '/simulator':
-            # シミュレーター画面のHTMLを返す
+            # v2 シミュレーター画面のHTMLを返す
             try:
-                filepath = os.path.join(os.path.dirname(__file__), 'templates', 'simulator.html')
+                filepath = os.path.join(os.path.dirname(__file__), 'templates', 'simulator_v2.html')
                 with open(filepath, 'r', encoding='utf-8') as f:
                     content = f.read()
                 self.send_response(200)
@@ -1325,6 +1937,22 @@ class PacketHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 err_msg = str(e).encode('ascii', 'replace').decode('ascii')
                 self.send_error(500, f"Error reading simulator.html: {err_msg}")
+
+        elif path == '/simulator_v2':
+            try:
+                filepath = os.path.join(os.path.dirname(__file__), 'templates', 'simulator_v2.html')
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.send_response(200)
+                self._set_cors_headers()
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
+                self.end_headers()
+                self.wfile.write(content.encode('utf-8'))
+            except Exception as e:
+                err_msg = str(e).encode('ascii', 'replace').decode('ascii')
+                self.send_error(500, f"Error reading simulator_v2.html: {err_msg}")
 
         elif path == '/majsoul_hook.user.js':
             # Tampermonkey自動インポート用のユーザースクリプトを返す
@@ -1839,6 +2467,32 @@ class PacketHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_json({"status": "error", "message": str(e)}, status=500)
 
+    def _handle_evaluate_v2(self, post_data: bytes):
+        try:
+            payload = json.loads(post_data.decode('utf-8'))
+        except Exception as e:
+            self._send_json({"status": "error", "message": f"Invalid JSON: {e}"}, status=400)
+            return
+        try:
+            result = evaluate_state_v2(payload)
+            self._send_json(result)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json({"status": "error", "message": str(e)}, status=500)
+
+    def _handle_evaluate_meld_v2(self, post_data: bytes):
+        try:
+            payload = json.loads(post_data.decode('utf-8'))
+        except Exception as e:
+            self._send_json({"status": "error", "message": f"Invalid JSON: {e}"}, status=400)
+            return
+        try:
+            result = evaluate_meld_v2(payload)
+            self._send_json(result)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json({"status": "error", "message": str(e)}, status=500)
+
     def _handle_evaluate_meld(self, post_data: bytes):
         try:
             payload = json.loads(post_data.decode('utf-8'))
@@ -1859,11 +2513,17 @@ class PacketHandler(BaseHTTPRequestHandler):
         @param {any} obj - 送信するJSON化可能オブジェクト
         @param {int} status - HTTPステータスコード
         """
-        self.send_response(status)
-        self._set_cors_headers()
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(json.dumps(obj, ensure_ascii=False).encode('utf-8'))
+        try:
+            self.send_response(status)
+            self._set_cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(obj, ensure_ascii=False).encode('utf-8'))
+        except (ConnectionAbortedError, ConnectionResetError) as e:
+            print(f"[Info] Client disconnected during send_json: {e}")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
 
     def do_POST(self):
         """
@@ -1923,6 +2583,16 @@ class PacketHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
             self._handle_evaluate(post_data)
+            return
+        if self.path == '/api/evaluate-v2':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            self._handle_evaluate_v2(post_data)
+            return
+        if self.path == '/api/evaluate-meld-v2':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+            self._handle_evaluate_meld_v2(post_data)
             return
         if self.path == '/api/evaluate-meld':
             content_length = int(self.headers.get('Content-Length', 0))
