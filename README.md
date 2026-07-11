@@ -97,11 +97,32 @@ python server/forwarder.py
 ### 1. AI と Akochan のローカル対局シミュレーション
 AIの強さや勝率統計を測定するため、ローカルの `akochan` と対局を実行します。
 
-> [!IMPORTANT]
-> このシミュレーションを実行するには、事前にローカルの Docker 環境で **`mjai-server` (対局管理サーバー)** および **`akochan-docker-app` (対戦相手の Akochan 本体)** のコンテナをビルド・起動しておく必要があります。
+このシミュレーションを実行するには、事前にローカルの Docker 環境で **`mjai-server`** および **`akochan-docker-app`** の Docker イメージをビルドしておく必要があります。
+
+#### 🐳 必要コンテナのセットアップ手順
+
+1. **mjai-server (対局管理サーバー)**
+   - 取得元: [gotodeploy/mjai-server](https://github.com/gotodeploy/mjai-server)
+   - 以下のコマンドで `mjai-server` というタグ名でイメージをビルドします。
+     ```bash
+     git clone https://github.com/gotodeploy/mjai-server.git
+     cd mjai-server
+     docker build -t mjai-server .
+     ```
+
+2. **akochan-docker-app (対戦相手の Akochan 本体)**
+   - 取得元: [Apricot-S/akochan-docker](https://github.com/Apricot-S/akochan-docker)
+   - 以下のコマンドで `akochan-docker-app` というタグ名でイメージをビルドします。
+     ```bash
+     git clone https://github.com/Apricot-S/akochan-docker.git
+     cd akochan-docker
+     docker build -t akochan-docker-app .
+     ```
+
+#### ⚔️ 対局シミュレーションの開始
+上記の準備が完了した状態で、以下のコマンドを実行します。
 
 ```bash
-# 準備が完了した状態で対局シミュレーションを開始
 python tools/mjai_battle.py
 ```
 
@@ -170,17 +191,17 @@ MJsoulCoaching/
 ### サードパーティライブラリ
 - **`majsoul_wrapper/`**: Copyright (c) 2020 Yue Qin, MIT License
   - 雀魂 WebSocket パケットのバイナリデコードに活用しています。
-- **`core/manue/`**: Copyright (c) 2014 tubuann, MIT License
+- **`core/manue/`**: Python port of gimite/mjai-manue, originally by Hiroshi Ichikawa, New BSD Licence
   - 対戦比較の検証用麻雀AIとして同梱しています。
 
 ### 謝辞
 本ツールの開発にあたり、多くの先駆的な麻雀AI研究・ライブラリを参考にさせていただきました。
-- [Akochan](https://github.com/Akagi201/akochan) - コーチングAIのチューニングのための対戦相手
+- [Akochan](https://github.com/critter-mj/akochan) - コーチングAIのチューニングのための対戦相手
 - [mjai-gateway](https://github.com/tomohxx/mjai-gateway) - AI同士の対戦環境用
-- [Cryolite](https://github.com/smly/Cryolite) - 天鳳ログ（XML形式のmjlog）を解析・パースして、学習用データセットを生成するための基礎ライブラリとしての参考
-- [mahjong-soul-wrapper](https://github.com/mjsoul/mahjong-soul-wrapper) - 雀魂のプロトコル解析およびパケット傍受ロジックのベース
+- [smly](https://github.com/smly) - 天鳳のXMLログ（mjlog）解析処理やデータセット構築における設計の参考
+- [houou-logs](https://github.com/Apricot-S/houou-logs) - 天鳳の対局ログ（mjlog）取得スクリプトの参考
 - [雀魂牌譜屋 (Amae-Koromo / Koromo Portal)](https://amae-koromo.sapk.ch/) - プレイヤー統計（スタッツ）項目およびデータ構造設計の参考
-- [manue](https://github.com/tubuann/manue) - 対戦比較・検証用として活用させていただいたオープンソース麻雀AI
+- [mjai-manue](https://github.com/gimite/mjai-manue) - 対戦比較・検証用として活用させていただいたオープンソース麻雀AI
 
 ## 🎁 開発の支援について (Support / Donation)
 本プロジェクトは個人による完全無償のオープンソースとして開発・維持されています。
