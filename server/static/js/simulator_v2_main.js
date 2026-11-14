@@ -487,6 +487,22 @@ function togglePlay() {
     }
 }
 
+// ----- 相手の手牌表示 -----
+// 相手の手牌を表向きで表示するか (localStorage に記憶)
+const SHOW_OPPONENT_HANDS_KEY = 'mjcoach.showOpponentHands';
+let showOpponentHands = localStorage.getItem(SHOW_OPPONENT_HANDS_KEY) === '1';
+
+function toggleOpponentHands(show) {
+    showOpponentHands = !!show;
+    localStorage.setItem(SHOW_OPPONENT_HANDS_KEY, showOpponentHands ? '1' : '0');
+    renderBoard();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    const cb = document.getElementById('showOpponentHands');
+    if (cb) cb.checked = showOpponentHands;
+});
+
 document.addEventListener('keydown', function (event) {
     const tag = (event.target && event.target.tagName) || '';
     if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') {
@@ -614,7 +630,9 @@ function renderBoard() {
             if (tsumoIdx !== -1) hand.splice(tsumoIdx, 1);
         }
 
-        if (pos === 'bottom') {
+        // Why: 牌譜には全員の手牌が記録されているため、トグル ON なら相手の手牌も表向きで描画する。
+        //      player-area ごと CSS で回転しているので、実卓と同じ向きで表示される。
+        if (pos === 'bottom' || showOpponentHands) {
             hand.forEach(t => {
                 const tileEl = document.createElement('div');
                 tileEl.className = `tile ${getTileClass(t)}`;
