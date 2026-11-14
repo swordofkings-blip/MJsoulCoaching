@@ -1613,6 +1613,22 @@ select:focus {
     color: var(--accent-green);
 }
 
+/* 相手の手牌表示トグル */
+.open-hands-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+.open-hands-toggle input {
+    accent-color: #10b981;
+    cursor: pointer;
+}
+
 /* プロンプトテキストボックス */
 .prompt-preview {
     background: #08090c;
