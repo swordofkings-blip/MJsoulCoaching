@@ -544,7 +544,7 @@ function renderBoard() {
     engine.doras.forEach(d => {
         const tileEl = document.createElement('div');
         tileEl.className = `tile ${getTileClass(d)}`;
-        tileEl.innerText = getTileText(d);
+        setTileFace(tileEl, d);
         doraContainer.appendChild(tileEl);
     });
     for (let i = engine.doras.length; i < 5; i++) {
@@ -618,7 +618,7 @@ function renderBoard() {
             hand.forEach(t => {
                 const tileEl = document.createElement('div');
                 tileEl.className = `tile ${getTileClass(t)}`;
-                tileEl.innerText = getTileText(t);
+                setTileFace(tileEl, t);
                 handEl.appendChild(tileEl);
             });
 
@@ -629,7 +629,7 @@ function renderBoard() {
 
                 const tsumoEl = document.createElement('div');
                 tsumoEl.className = `tile ${getTileClass(lastTsumo)}`;
-                tsumoEl.innerText = getTileText(lastTsumo);
+                setTileFace(tsumoEl, lastTsumo);
                 handEl.appendChild(tsumoEl);
             }
         } else {
@@ -703,7 +703,7 @@ function renderBoard() {
                 }
             }
 
-            tileEl.innerText = getTileText(d.tile);
+            setTileFace(tileEl, d.tile);
             riverEl.appendChild(tileEl);
         });
 
@@ -746,7 +746,8 @@ function renderBoard() {
                         tileEl.className = 'tile tile-back';
                     } else {
                         tileEl.className = `tile ${getTileClass(t)}`;
-                        tileEl.innerText = getTileText(t);
+                        // 横向き (鳴いた牌) は絵柄も横に倒して描画する
+                        setTileFace(tileEl, t, !(slot.type === 'vertical'));
                     }
 
                     let isVerticalOnScreen = (slot.type === 'vertical' || slot.type === 'back');
@@ -1037,12 +1038,12 @@ function renderBotCoachUI(data) {
 
         if (data.can_kan) {
             recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.kan_tile);
-            recTile.innerText = getTileText(data.kan_tile);
+            setTileFace(recTile, data.kan_tile);
             document.getElementById('botCoachRecommendText').innerHTML =
                 `<strong>暗槓可能牌があります</strong>`;
         } else {
             recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
-            recTile.innerText = getTileText(data.recommended);
+            setTileFace(recTile, data.recommended);
             document.getElementById('botCoachRecommendText').innerHTML =
                 `<strong>ツモ切りを推奨します</strong>`;
         }
@@ -1058,7 +1059,7 @@ function renderBotCoachUI(data) {
         recBox.style.display = 'flex';
         const recTile = document.getElementById('botCoachRecommendTile');
         recTile.className = 'bot-coach-recommend-tile ' + getTileClass(data.recommended);
-        recTile.innerText = getTileText(data.recommended);
+        setTileFace(recTile, data.recommended);
         document.getElementById('botCoachRecommendText').innerHTML =
             `<strong>${getTileText(data.recommended)}</strong> を切るのが最も評価値が高いと算出されました。`;
 
@@ -1066,7 +1067,7 @@ function renderBotCoachUI(data) {
             document.getElementById('botCoachNear').style.display = 'block';
             document.getElementById('botCoachNearLabel').innerText = '同等候補: ';
             document.getElementById('botCoachNearTiles').innerHTML = data.near_tiles.map(t =>
-                `<span class="tile ${getTileClass(t)}" style="display:inline-block;padding:2px 6px;margin:1px;border-radius:4px;font-size:0.75rem;">${getTileText(t)}</span>`
+                tileFaceHtml(t)
             ).join('');
         } else {
             document.getElementById('botCoachNear').style.display = 'none';
@@ -1182,7 +1183,7 @@ function renderBotCoachUI(data) {
 
             const tileEl = document.createElement('div');
             tileEl.className = 'bot-coach-eval-tile ' + getTileClass(ev.tile);
-            tileEl.innerText = getTileText(ev.tile);
+            setTileFace(tileEl, ev.tile);
 
             const bar = document.createElement('div');
             bar.className = 'bot-coach-eval-bar';
