@@ -2664,6 +2664,24 @@ class PacketHandler(BaseHTTPRequestHandler):
             else:
                 cmd = [sys.executable, os.path.abspath(__file__)]
 
+            env = os.environ.copy()
+            env['COACH_RESTARTED'] = '1'
+
+            if os.name != 'nt':
+                # Why: Linux/macOS (WSL 含む) では DETACHED_PROCESS (creationflags) が使えず
+                #      Popen が ValueError になり、旧プロセスだけ終了してサーバーが停止していた。
+                #      execve で同じプロセス・同じターミナルのまま置き換える。待受ソケットは
+                #      Python では非継承のため exec 時に閉じられ、新プロセスが同じポートを使える。
+                time.sleep(0.5)
+                try:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    os.execve(cmd[0], cmd, env)
+                except Exception as e:
+                    sys.stderr.write(f"[restart] Failed to exec: {e}\n")
+                    sys.stderr.flush()
+                    return
+
             try:
                 # 旧プロセスから完全に独立した新プロセスを起動
                 # Why: DETACHED_PROCESS を指定しないと新プロセスがコンソールを
@@ -2676,10 +2694,7 @@ class PacketHandler(BaseHTTPRequestHandler):
                 new_stdout = open(os.path.join(restart_log_dir, 'restart_stdout.log'), 'wb')
                 new_stderr = open(os.path.join(restart_log_dir, 'restart_stderr.log'), 'wb')
 
-                # 環境変数で再起動を通知 (新プロセスはブラウザを開かない)
-                env = os.environ.copy()
-                env['COACH_RESTARTED'] = '1'
-
+                # 環境変数 COACH_RESTARTED で再起動を通知 (新プロセスはブラウザを開かない)
                 subprocess.Popen(
                     cmd,
                     cwd=os.path.dirname(os.path.abspath(__file__)),
