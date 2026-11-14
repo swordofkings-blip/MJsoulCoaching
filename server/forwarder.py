@@ -270,6 +270,16 @@ def _is_failed_eval_file(eval_filename: str) -> bool:
         return False
 
 
+def _get_eval_status(uuid: str) -> str:
+    """牌譜の AI 評価状態を返す: 'pending' (評価中/未評価) / 'failed' / 'done'"""
+    if uuid in _evaluating_uuids:
+        return 'pending'
+    eval_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_eval.json")
+    if not os.path.exists(eval_filename):
+        return 'pending'
+    return 'failed' if _is_failed_eval_file(eval_filename) else 'done'
+
+
 def _retry_pending_evaluations():
     """
     @title 未評価・評価失敗の牌譜を再評価
@@ -2151,6 +2161,7 @@ class PacketHandler(BaseHTTPRequestHandler):
                             'players': players,
                             'evaluations': evaluations,
                             'actions': actions_map,
+                            'eval_status': _get_eval_status(uuid),
                         })
                     except Exception as fe:
                         print(f"[Warning] 牌譜一覧API用ファイルの読み込みに失敗しました ({filepath}): {fe}")

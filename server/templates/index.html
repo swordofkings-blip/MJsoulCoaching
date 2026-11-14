@@ -284,6 +284,26 @@
             margin-left: 4px;
             vertical-align: middle;
         }
+        .eval-failed-text {
+            display: inline-block;
+            font-size: 0.7rem;
+            color: #f87171;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        /* AI 分析中の牌譜は開けないようにする */
+        .record-card.is-locked {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .record-card.is-locked:hover {
+            transform: none;
+            border-color: var(--card-border);
+            box-shadow: none;
+        }
+        .record-card.is-locked:hover::before {
+            opacity: 0;
+        }
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -467,6 +487,7 @@
                 // 牌譜追加時は UUID リスト、eval 完了時は評価ステータスが変化するため検知できる。
                 const ids = records.map(r => r.uuid).join('|');
                 const evalHash = records.map(r => {
+                    if (r.eval_status !== 'done') return r.eval_status || 'pending';
                     if (!r.evaluations) return 'pending';
                     return Object.entries(r.evaluations).map(([k, v]) => `${k}:${v.grade}:${v.avg_score}`).join('|');
                 }).join('#');
@@ -492,9 +513,15 @@
                 grid.innerHTML = '';
 
                 records.forEach(rec => {
+                    // Why: AI 分析が終わる前に開くと推奨手が表示されないため、完了まで開けないようにする。
+                    //      失敗 (failed) の場合は推奨手なしで開けるようにする。
+                    const evalStatus = rec.eval_status || (rec.evaluations ? 'done' : 'pending');
+                    const isEvalPending = evalStatus === 'pending';
                     const card = document.createElement('div');
-                    card.className = 'record-card';
+                    card.className = 'record-card' + (isEvalPending ? ' is-locked' : '');
+                    card.title = isEvalPending ? 'AI分析中のため、完了するまで開けません' : '';
                     card.onclick = () => {
+                        if (isEvalPending) return;
                         window.location.href = `/simulator_v2?uuid=${rec.uuid}`;
                     };
 
@@ -555,11 +582,14 @@
                         }
                     }
 
-                    // AI評価中フラグ: rec.evaluations が null なら未完了
-                    const isEvalPending = !rec.evaluations;
-                    const evalSpinnerHtml = isEvalPending
-                        ? '<span class="eval-spinner" title="AI評価中"></span><span class="eval-spinner-text">AI評価中…</span>'
-                        : '<span class="eval-spinner hidden"></span>';
+                    let evalSpinnerHtml;
+                    if (isEvalPending) {
+                        evalSpinnerHtml = '<span class="eval-spinner" title="AI分析中"></span><span class="eval-spinner-text">AI分析中…完了まで開けません</span>';
+                    } else if (evalStatus === 'failed') {
+                        evalSpinnerHtml = '<span class="eval-failed-text" title="サーバー再起動時に再分析します">AI分析失敗 (推奨手なしで閲覧可)</span>';
+                    } else {
+                        evalSpinnerHtml = '<span class="eval-spinner hidden"></span>';
+                    }
 
                     card.innerHTML = `
                         <div class="card-header">
