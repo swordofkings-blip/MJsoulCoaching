@@ -6,6 +6,8 @@ let currentActionIndex = 0;
 let isPlaying = false;
 let playInterval = null;
 let perspectiveSeat = 0;
+// 自分のニックネーム (視点選択時に記憶し、次回以降の初期視点に使う)
+const MY_NICKNAME_KEY = 'mjcoach.myNickname';
 
 // ----- BOTコーチング制御変数 -----
 let _coachEvalSeq = 0;
@@ -302,6 +304,16 @@ async function loadGame() {
                 const radioLabel = document.querySelector(`label[for="pers${acc.seat}"]`);
                 if (radioLabel) radioLabel.innerText = acc.nickname;
             });
+
+            // Why: 視点は従来 席0 固定だったため、自分以外 (東家) の分析が表示されていた。
+            //      前回選んだ視点のニックネームを記憶し、同じプレイヤーがいればその席を初期視点にする。
+            const myNickname = localStorage.getItem(MY_NICKNAME_KEY);
+            const me = myNickname && gameData.head.accounts.find(acc => acc.nickname === myNickname);
+            if (me && typeof me.seat === 'number') {
+                perspectiveSeat = me.seat;
+                const radio = document.getElementById(`pers${me.seat}`);
+                if (radio) radio.checked = true;
+            }
         }
 
         const allActions = gameData.detail_records.actions || [];
@@ -509,6 +521,8 @@ document.addEventListener('keydown', function (event) {
 
 function changePerspective(seat) {
     perspectiveSeat = seat;
+    const acc = gameData && gameData.head && (gameData.head.accounts || []).find(a => a.seat === seat);
+    if (acc && acc.nickname) localStorage.setItem(MY_NICKNAME_KEY, acc.nickname);
     renderBoard();
     updatePromptPreview();
 }
