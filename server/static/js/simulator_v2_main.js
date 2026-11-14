@@ -258,6 +258,7 @@ async function loadGame() {
                 if (evalJson) {
                     window.__precomputedActions = evalJson.actions || {};
                     window.__precomputedMeldDecisions = evalJson.precomputed_meld_decisions || {};
+                    window.__evalGrades = evalJson.grades || {};
                 }
             }
         } catch (e) {
