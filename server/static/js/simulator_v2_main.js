@@ -985,6 +985,10 @@ function _renderFromPrecomputed() {
     const cri = timelineSteps[currentActionIndex];
     if (cri === undefined) return false;
     const nextRawIdx = cri + 1;
+    // Why: 事前計算データは「次に打牌する人」の評価なので、視点の席が打牌する局面以外では使わない。
+    //      (使うと、手番でない局面に他家の推奨手が自分の推奨のように表示されてしまう)
+    const nextAct = rawActionsList[nextRawIdx];
+    if (!nextAct || !nextAct.result || !nextAct.result.data || nextAct.result.data.seat !== perspectiveSeat) return false;
     const actionIdx = window.__rawIdxToActionIdx[nextRawIdx];
     if (actionIdx === undefined) return false;
     const pre = window.__precomputedActions[String(actionIdx)];
