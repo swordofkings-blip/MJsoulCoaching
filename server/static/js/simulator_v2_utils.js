@@ -486,7 +486,7 @@ function highlightRecommendedTile(tile, nearTiles, tsumogiri) {
     handEl.querySelectorAll('.tile-recommended').forEach(el => el.classList.remove('tile-recommended'));
     handEl.querySelectorAll('.tile-near').forEach(el => el.classList.remove('tile-near'));
     if (!tile) return;
-    const nearSet = new Set((nearTiles || []).map(t => getTileText(t)));
+    const nearSet = new Set(nearTiles || []);
 
     let foundGap = false;
     let highlighted = false;
@@ -498,10 +498,11 @@ function highlightRecommendedTile(tile, nearTiles, tsumogiri) {
         }
         if (!el.classList.contains('tile') || el.classList.contains('tile-back')) return;
 
-        const txt = el.innerText;
+        // Why: 牌は SVG 絵柄で描画するため innerText ではなく data-tile (牌コード) で照合する
+        const txt = el.dataset.tile;
         const isTsumoTile = foundGap;
 
-        if (txt === getTileText(tile)) {
+        if (txt === tile) {
             if (tsumogiri) {
                 if (isTsumoTile) {
                     el.classList.add('tile-recommended');
@@ -521,7 +522,7 @@ function highlightRecommendedTile(tile, nearTiles, tsumogiri) {
     if (!highlighted) {
         handEl.querySelectorAll('.tile').forEach(el => {
             if (el.classList.contains('tile-back') || el.classList.contains('tsumo-gap')) return;
-            if (el.innerText === getTileText(tile)) {
+            if (el.dataset.tile === tile) {
                 el.classList.add('tile-recommended');
             }
         });
@@ -597,7 +598,7 @@ function _render_meld_eval(data, statusText, mp) {
         if (rec.type !== 'skip' && rec.best_discard) {
             const discClass = getTileClass(rec.best_discard);
             const discText = getTileText(rec.best_discard);
-            discardHtml = '<div style="margin-top:6px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); display:flex; align-items:center; gap:6px; font-size:0.72rem;"><span style="color:var(--text-muted);">鳴いた後の切り牌:</span><span class="tile ' + discClass + '" style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;">' + discText + '</span></div>';
+            discardHtml = '<div style="margin-top:6px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); display:flex; align-items:center; gap:6px; font-size:0.72rem;"><span style="color:var(--text-muted);">鳴いた後の切り牌:</span>' + tileFaceHtml(rec.best_discard, discClass) + '<span>' + discText + '</span></div>';
         }
         reasonEl.innerHTML = rec.reason + discardHtml;
     } else {
