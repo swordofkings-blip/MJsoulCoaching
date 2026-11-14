@@ -26,6 +26,7 @@ from core.game_state import GameState, Meld, ReachState
 from core.evaluator import Evaluator
 from core.evaluator_v2 import EvaluatorV2, TIER_NAMES_7D, Mode as ModeV2
 from core.str_converter import validate_tiles, hand_to_counts
+from core.record_normalizer import normalize_record, STRIP_KEYS
 from majsoul_wrapper.proto import liqi_pb2 as pb
 
 # 雀魂のWebSocketデータを解析するためのパーサークラスを初期化
@@ -105,9 +106,8 @@ def trim_game_record(data):
         new_dict = {}
         # 不要なメタデータキーを削除対象として指定
         # これらは雀魂のProtobufスキーマ内の特定の項目名です
-        strip_keys = {'zhenting', 'paishan', 'passed', 'timeuse', 'timeAdd', 'timeFixed', 'views'}
         for k, v in data.items():
-            if k in strip_keys:
+            if k in STRIP_KEYS:
                 continue
             new_dict[k] = trim_game_record(v)
         return new_dict
@@ -214,6 +214,10 @@ def save_game_record(data_dict):
         # 1段目のアンラップが失敗した場合は、そのままの解析結果を表示用に入れる
         detail_dict = detail_dict or {"raw_base64_original": base64_data}
 
+    # Why: MessageToDict は proto3 のデフォルト値 (seat=0 等) を出力しないため、
+    #      後続処理の前に head の欠落値を補完しておく (東家の seat が None になるのを防ぐ)。
+    normalize_record({'head': head})
+
     # 牌譜屋APIからプレイヤーのスタッツを取得し seat 番号をキーに埋め込む
     accounts = head.get('accounts', [])
     player_stats = {}
@@ -232,6 +236,7 @@ def save_game_record(data_dict):
         "detail_records": deep_decode(detail_dict),
         "decoded_rounds": deep_decode(decoded_rounds)
     }
+    normalize_record(output_data)
 
     # data フォルダが存在することを確認
     os.makedirs(os.path.join(_FW_ROOT, 'data'), exist_ok=True)
@@ -253,19 +258,67 @@ def save_game_record(data_dict):
     _schedule_record_evaluation(uuid, trimmed_filename)
 
 
+_evaluating_uuids = set()
+
+
+def _is_failed_eval_file(eval_filename: str) -> bool:
+    """評価失敗マーカー ({} のみ) が保存された eval ファイルかを判定する"""
+    try:
+        with open(eval_filename, 'r', encoding='utf-8') as f:
+            return json.load(f) == {}
+    except Exception:
+        return False
+
+
+def _retry_pending_evaluations():
+    """
+    @title 未評価・評価失敗の牌譜を再評価
+    @description サーバー起動時に、eval が無い牌譜や失敗マーカー ({}) の牌譜を順番に再評価する。
+                 起動ごとに 1 回だけ試行するため無限再試行にはならない。
+    """
+    import threading
+    targets = []
+    for trimmed in sorted(glob.glob(os.path.join(_FW_ROOT, 'data', 'record_*_trimmed.json'))):
+        uuid = os.path.basename(trimmed)[len('record_'):-len('_trimmed.json')]
+        eval_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_eval.json")
+        if not os.path.exists(eval_filename) or _is_failed_eval_file(eval_filename):
+            targets.append((uuid, trimmed))
+            _evaluating_uuids.add(uuid)
+    if not targets:
+        return
+
+    def _run_all():
+        for uuid, trimmed in targets:
+            _run_record_evaluation(uuid, trimmed)
+
+    print(f"[Info] 未評価/評価失敗の牌譜 {len(targets)} 件を再評価します", flush=True)
+    threading.Thread(target=_run_all, daemon=True).start()
+
+
 def _schedule_record_evaluation(uuid: str, trimmed_filename: str):
     """牌譜の AI 総合評価をバックグラウンドで実行し、結果をキャッシュする"""
     import threading
     eval_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_eval.json")
 
     # 既に評価結果があればスキップ
-    if os.path.exists(eval_filename):
+    if os.path.exists(eval_filename) or uuid in _evaluating_uuids:
         return
 
-    def _run():
+    _evaluating_uuids.add(uuid)
+    thread = threading.Thread(target=_run_record_evaluation, args=(uuid, trimmed_filename), daemon=True)
+    thread.start()
+
+
+def _run_record_evaluation(uuid: str, trimmed_filename: str):
+    """牌譜の AI 総合評価を同期実行し、結果を eval.json に保存する"""
+    eval_filename = os.path.join(_FW_ROOT, 'data', f"record_{uuid}_eval.json")
+    _evaluating_uuids.add(uuid)
+    try:
         try:
             with open(trimmed_filename, 'r', encoding='utf-8') as f:
                 record = json.load(f)
+            # Why: 修正前に保存された牌譜は seat=0 等が欠落しているため評価前に補完する
+            normalize_record(record)
             from core.record_evaluator import evaluate_record
             result = evaluate_record(record)
             # キャッシュに保存
@@ -280,9 +333,8 @@ def _schedule_record_evaluation(uuid: str, trimmed_filename: str):
                     json.dump({}, f, ensure_ascii=False)
             except Exception:
                 pass
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
+    finally:
+        _evaluating_uuids.discard(uuid)
 
 from collections import OrderedDict
 _eval_cache = OrderedDict()
@@ -2048,6 +2100,8 @@ class PacketHandler(BaseHTTPRequestHandler):
                         with open(filepath, 'r', encoding='utf-8') as f:
                             data = json.load(f)
                         head = data.get('head', {})
+                        # Why: 修正前に保存された牌譜は東家の seat (=0) が欠落しているため補完する
+                        normalize_record({'head': head})
                         uuid = head.get('uuid')
                         if not uuid:
                             # ファイル名からUUIDを抽出: record_{uuid}_trimmed.json
@@ -2133,6 +2187,10 @@ class PacketHandler(BaseHTTPRequestHandler):
                 if filename.endswith('.mjson'):
                     majsoul = self._convert_mjson_to_majsoul(content, uuid)
                     content = json.dumps(majsoul, ensure_ascii=False)
+                else:
+                    # Why: 修正前に保存された牌譜は seat=0 / chang=0 / ju=0 / ben=0 が欠落しており、
+                    #      シミュレーターが例外で停止するため配信時に補完する。
+                    content = json.dumps(normalize_record(json.loads(content)), ensure_ascii=False)
 
                 # Why: 事前計算データは /api/eval-actions 経由の軽量エンドポイントで取得する
                 #      ようにしたため、/api/record レスポンスは牌譜データのみを返す。
@@ -2759,6 +2817,9 @@ def run(server_class=ThreadingHTTPServer, handler_class=PacketHandler, port=8080
     httpd = server_class(server_address, handler_class)
     # ハードコードされた数値 8080 は、ローカル開発サーバー用ポートとして一般的で重複を避けるために選定されたものです。
     print(f"Starting server on port {port}...", flush=True)
+
+    # Why: 再起動のたびに未評価・評価失敗の牌譜を 1 回だけ再評価する
+    _retry_pending_evaluations()
 
     # Why: 初回起動時にブラウザを自動で開く。
     # ただし /api/restart による再起動では開かない (ユーザーは既に開いているため)。
