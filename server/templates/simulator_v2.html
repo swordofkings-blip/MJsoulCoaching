@@ -132,6 +132,7 @@
                     </div>
                 </div>
                 <div class="control-section">
+                    <button class="legend-btn review-open-btn" onclick="toggleHanchanReview(true)">📋 半荘総評</button>
                     <button class="legend-btn" onclick="toggleLegend()">凡例</button>
                     <button class="legend-btn" onclick="toggleTacticalFlow()" style="margin-left: 5px; background: linear-gradient(135deg, rgba(139,92,246,0.2) 0%, rgba(59,130,246,0.2) 100%); border-color: rgba(139,92,246,0.4);">🧠 AI戦術フロー</button>
                     <button class="legend-btn" onclick="window.location.href='/'">← 一覧</button>
@@ -368,6 +369,17 @@
         </div>
     </div>
 
+    <!-- 半荘総評モーダル -->
+    <div class="legend-modal-overlay" id="reviewOverlay" onclick="if(event.target===this)toggleHanchanReview(false)">
+        <div class="legend-modal review-modal">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div class="legend-modal-title" style="margin:0;">📋 半荘総評: <span id="reviewTitleName"></span></div>
+                <button onclick="toggleHanchanReview(false)" style="background:none; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer;">✕</button>
+            </div>
+            <div id="reviewBody"></div>
+        </div>
+    </div>
+
     <!-- AI戦術フロー解説モーダル -->
     <div class="legend-modal-overlay" id="tacticalFlowOverlay" onclick="if(event.target===this)toggleTacticalFlow()">
         <div class="legend-modal" style="max-width: 520px;">
@@ -411,6 +423,7 @@
 
     <script src="/static/js/simulator_v2_utils.js"></script>
     <script src="/static/js/simulator_v2_main.js"></script>
+    <script src="/static/js/simulator_v2_review.js"></script>
 </body>
 
 </html>

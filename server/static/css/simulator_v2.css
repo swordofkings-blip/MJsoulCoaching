@@ -1705,3 +1705,108 @@ select:focus {
         border-top: 1px solid var(--card-border);
     }
 }
+
+/* ----- 半荘総評モーダル ----- */
+.review-open-btn {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(239, 68, 68, 0.2) 100%);
+    border-color: rgba(245, 158, 11, 0.5);
+    margin-right: 5px;
+}
+.legend-modal.review-modal {
+    max-width: 640px;
+    width: 92vw;
+    max-height: 86vh;
+    overflow-y: auto;
+}
+.review-summary {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+.review-summary-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.review-final { font-weight: 700; color: var(--text-main); font-size: 0.9rem; }
+.grade-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-weight: 800; color: #fff; font-size: 0.85rem;
+}
+.grade-pill.grade-s { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+.grade-pill.grade-a { background: linear-gradient(135deg, #3b82f6, #8b5cf6); }
+.grade-pill.grade-b { background: linear-gradient(135deg, #10b981, #059669); }
+.grade-pill.grade-c { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.grade-pill.grade-d { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+.grade-pill.grade-e { background: #6b7280; }
+.review-comment { font-size: 0.78rem; color: var(--text-muted); line-height: 1.6; }
+.review-comment p { margin: 0 0 4px; }
+.review-comment b { color: var(--text-main); }
+.review-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+.review-chip {
+    display: inline-block; font-size: 0.68rem; padding: 1px 8px; border-radius: 10px;
+    background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3);
+}
+.review-label { font-size: 0.7rem; color: var(--text-muted); margin-right: 4px; }
+.review-section-title { font-size: 0.82rem; font-weight: 700; color: var(--text-main); margin: 14px 0 8px; }
+.review-item {
+    border: 1px solid var(--card-border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
+    background: rgba(0, 0, 0, 0.15);
+}
+.review-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.75rem; }
+.review-rank { color: var(--text-muted); font-weight: 700; }
+.review-where { color: var(--text-main); font-weight: 700; }
+.review-mode { color: var(--text-muted); font-size: 0.68rem; }
+.review-sev { font-size: 0.68rem; font-weight: 800; padding: 1px 8px; border-radius: 10px; }
+.review-sev.sev-fatal { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
+.review-sev.sev-major { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.review-sev.sev-minor { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.35); }
+.review-tiles { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; }
+.review-tiles .tile.tile-mini { width: 26px; height: 36px; }
+.review-tilename { color: var(--text-main); font-weight: 700; margin-right: 6px; }
+.review-arrow { color: #10b981; font-weight: 700; margin: 0 4px 0 6px; }
+.review-dealin { margin-top: 6px; font-size: 0.75rem; color: #f87171; font-weight: 700; }
+.review-reason { margin-top: 6px; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; }
+.review-jump { margin-top: 6px; font-size: 0.7rem; padding: 3px 10px; }
+.review-empty { font-size: 0.78rem; color: var(--text-muted); }
+.review-rounds { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+.review-rounds td { padding: 3px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+.review-rounds td:last-child { text-align: right; font-family: monospace; font-weight: 700; }
+
+/* 半荘総評: 全体評価・長所/課題・妥当な判断 */
+.review-verdict {
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    border: 1px solid;
+}
+.review-verdict.verdict-great { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.5); }
+.review-verdict.verdict-good { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.5); }
+.review-verdict.verdict-mid { background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.45); }
+.review-verdict.verdict-bad { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.5); }
+.review-verdict-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.review-verdict-level { font-size: 1.05rem; font-weight: 800; color: var(--text-main); }
+.review-verdict-score { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); font-family: monospace; }
+.review-verdict-text { font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; }
+.review-list-title { font-size: 0.75rem; font-weight: 700; margin-top: 8px; }
+.review-list-title.good { color: #34d399; }
+.review-list-title.bad { color: #fbbf24; }
+.review-list { margin: 4px 0 0 1.1rem; padding: 0; font-size: 0.75rem; color: var(--text-muted); line-height: 1.55; }
+.review-context { margin-top: 5px; font-size: 0.68rem; color: #a5b4fc; }
+.review-sev.sev-good { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.45); }
+.review-item.review-item-good { border-color: rgba(16, 185, 129, 0.3); }
+.review-note { font-size: 0.65rem; color: var(--text-muted); margin-top: 10px; }
+
+/* 牌の絵柄 (tile_faces.js) が無い場合の文字表示 */
+.review-tile-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto !important;
+    min-width: 26px;
+    padding: 0 3px;
+    background: #f8f6ee;
+    border: 1px solid #c9c1aa;
+    border-radius: 3px;
+    color: #111827;
+    font-size: 0.62rem;
+    font-weight: 700;
+}
